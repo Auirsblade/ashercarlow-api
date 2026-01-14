@@ -135,6 +135,8 @@ export class MusicService {
       image = entity.thumbnailUrl;
     }
 
+    releaseDate = new Date(releaseDate)?.toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" })
+
     return {
       title,
       artist,
