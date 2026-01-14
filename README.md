@@ -1,98 +1,145 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# ashercarlow-api
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+> A NestJS-powered API serving as the backend infrastructure for ashercarlow projects and various utility endpoints.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+[![Built with NestJS](https://img.shields.io/badge/Built%20with-NestJS-E0234E?logo=nestjs)](https://nestjs.com/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Strict%20Mode-3178C6?logo=typescript)](https://www.typescriptlang.org/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
 
-## Description
+## About
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+This API serves as the centralized backend for all things **ashercarlow**—from core application services to miscellaneous endpoints I wanted deployed and accessible. It's also a hands-on learning project for exploring NestJS patterns, TypeScript best practices, and modern API development.
 
-## Project setup
+### Why This Exists
+
+- **Backend Infrastructure**: Powers various ashercarlow projects and services
+- **Utility Endpoints**: A collection of useful endpoints for personal projects
+- **Learning Platform**: Experimenting with NestJS architecture, dependency injection, and TypeScript
+- **Production-Ready**: Docker deployment with Dokploy, Swagger documentation, and strict TypeScript
+
+## Features
+
+- **OpenAPI/Swagger Documentation**: Interactive API docs at `/api`
+- **TypeScript Strict Mode**: Type-safe code with full type checking
+- **Docker Support**: Multi-stage builds optimized for production
+- **Hot Reload**: Fast development with automatic reloading
+- **Testing Suite**: Unit, e2e, and coverage testing configured
+- **Code Quality**: ESLint and Prettier for consistent code style
+
+## Current Endpoints
+
+### Music Metadata
+
+Retrieve cross-platform music links and metadata from various streaming services.
+
+- **Universal Links**: Get links across Spotify, Apple Music, YouTube, and more using the [Odesli API](https://odesli.co/)
+- **Spotify Metadata**: Scrape track/album/artist metadata from Spotify URLs (no auth required)
+
+More endpoints coming as the project grows.
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v18+ recommended)
+- npm or yarn
+- Docker (optional, for containerized deployment)
+
+### Installation
 
 ```bash
-$ npm install
+# Clone the repository
+git clone https://github.com/yourusername/ashercarlow-api.git
+cd ashercarlow-api
+
+# Install dependencies
+npm install
 ```
 
-## Compile and run the project
+### Development
 
 ```bash
-# development
-$ npm run start
+# Start with hot reload
+npm run start:dev
 
-# watch mode
-$ npm run start:dev
+# Start with debugger attached
+npm run start:debug
 
-# production mode
-$ npm run start:prod
+# Run tests in watch mode
+npm run test:watch
 ```
 
-## Run tests
+The API will be available at `http://localhost:3000`
+Swagger documentation at `http://localhost:3000/api`
+
+### Building for Production
 
 ```bash
-# unit tests
-$ npm run test
+# Build the project
+npm run build
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+# Run production build
+npm run start:prod
 ```
+
+### Docker Deployment
+
+```bash
+# Build and run with Docker Compose
+docker compose up --build
+
+# Or build the Docker image directly
+docker build -t ashercarlow-api .
+docker run -p 3000:3000 ashercarlow-api
+```
+
+## Available Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run start:dev` | Start development server with hot reload |
+| `npm run start:debug` | Start with debugger attached |
+| `npm run build` | Build to `dist/` directory |
+| `npm run start:prod` | Run production build |
+| `npm test` | Run unit tests |
+| `npm run test:watch` | Run tests in watch mode |
+| `npm run test:cov` | Run tests with coverage |
+| `npm run test:e2e` | Run end-to-end tests |
+| `npm run lint` | Lint and auto-fix with ESLint |
+| `npm run format` | Format code with Prettier |
+
+## Project Structure
+
+```
+src/
+├── main.ts           # Application bootstrap with Swagger setup
+├── app.module.ts     # Root module
+├── music/            # Music module (Odesli API + Spotify scraping)
+└── ...               # Additional modules as they're added
+```
+
+## API Documentation
+
+This project uses Swagger/OpenAPI for interactive API documentation. The Swagger CLI plugin automatically extracts metadata from DTOs and controllers.
+
+Access the Swagger UI at: **`http://localhost:3000/api`**
+
+## Tech Stack
+
+- **[NestJS](https://nestjs.com/)**: Progressive Node.js framework
+- **[TypeScript](https://www.typescriptlang.org/)**: Strict mode enabled
+- **[Swagger/OpenAPI](https://swagger.io/)**: API documentation
+- **[Docker](https://www.docker.com/)**: Containerization
+- **[Dokploy](https://dokploy.com/)**: Deployment platform
 
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+This project uses a multi-stage Dockerfile optimized for production deployments. Configured for Dokploy, which can use either `docker-compose.yml` or `Dockerfile` directly.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Contributing
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+This is a personal learning project, but suggestions and ideas are welcome. Feel free to open an issue if you spot something interesting.
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+MIT
