@@ -77,12 +77,47 @@ export class MusicService {
     if (spotifyUrl) {
       try {
         const spotifyData = await this.fetchSpotifyMetadata(spotifyUrl);
-        title = spotifyData.track || spotifyData.title;
-        artist = spotifyData.artist;
-        album =
-          spotifyData.title !== spotifyData.track ? spotifyData.title : '';
-        releaseDate = spotifyData.date || null;
-        image = spotifyData.image;
+
+        // getData() returns different structures for tracks vs albums
+        if (spotifyData.type === 'album') {
+          // For albums: use album name as title
+          title = spotifyData.name || spotifyData.title;
+          artist =
+            spotifyData.subtitle ||
+            spotifyData.artists?.[0]?.name ||
+            spotifyData.artist;
+          album = title; // Album field is same as title for album URLs
+          image =
+            spotifyData.visualIdentity?.backgroundBase?.backgroundImageUrl ||
+            spotifyData.image;
+
+          // Scrape release date from album page HTML
+          releaseDate = await this.extractReleaseDateFromPage(spotifyUrl);
+        } else {
+          // For tracks: extract basic metadata
+          title = spotifyData.name || spotifyData.title || spotifyData.track;
+          artist =
+            spotifyData.artists?.[0]?.name ||
+            spotifyData.artist ||
+            spotifyData.subtitle;
+          releaseDate = spotifyData.releaseDate?.isoString || null;
+          image =
+            spotifyData.visualIdentity?.backgroundBase?.backgroundImageUrl ||
+            spotifyData.image;
+
+          // Try to get album information by scraping the track page
+          const albumUrl = await this.extractAlbumUrlFromTrackPage(spotifyUrl);
+          if (albumUrl) {
+            try {
+              const albumData = await this.fetchSpotifyMetadata(albumUrl);
+              album = albumData.name || albumData.title || '';
+            } catch {
+              album = '';
+            }
+          } else {
+            album = '';
+          }
+        }
       } catch {
         // Fallback to Odesli data if Spotify scraping fails
         const entity = this.getPrimaryEntity(odesliResponse);
@@ -129,9 +164,50 @@ export class MusicService {
 
   private async fetchSpotifyMetadata(
     spotifyUrl: string,
-  ): Promise<SpotifyPreview> {
-    const { getPreview } = await this.getSpotifyUrlInfo();
-    return getPreview(spotifyUrl);
+  ): Promise<any> {
+    const { getData } = await this.getSpotifyUrlInfo();
+    return getData(spotifyUrl);
+  }
+
+  /**
+   * Scrapes the Spotify page HTML to extract album URL from a track page
+   */
+  private async extractAlbumUrlFromTrackPage(
+    trackUrl: string,
+  ): Promise<string | null> {
+    try {
+      const response = await fetch(trackUrl);
+      const html = await response.text();
+      const albumUrlMatch = html.match(
+        /https:\/\/open\.spotify\.com\/album\/[a-zA-Z0-9]+/,
+      );
+      return albumUrlMatch ? albumUrlMatch[0] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Extracts release date from JSON-LD structured data in Spotify page HTML
+   */
+  private async extractReleaseDateFromPage(
+    url: string,
+  ): Promise<string | null> {
+    try {
+      const response = await fetch(url);
+      const html = await response.text();
+      const jsonLdMatch = html.match(
+        /<script type="application\/ld\+json">(.+?)<\/script>/s,
+      );
+
+      if (jsonLdMatch) {
+        const jsonData = JSON.parse(jsonLdMatch[1]);
+        return jsonData.datePublished || null;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   private extractPlatformLinks(odesliResponse: OdesliResponse): PlatformLink[] {
