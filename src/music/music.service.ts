@@ -1,5 +1,4 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import type SpotifyUrlInfo from 'spotify-url-info';
 import { MusicMetadataResponse, PlatformLink } from './dto/get-metadata.dto';
 
 interface OdesliResponse {
@@ -29,31 +28,38 @@ interface OdesliResponse {
   >;
 }
 
-interface SpotifyPreview {
-  title: string;
+interface AppleMusicAttributes {
+  name: string;
+  artistName: string;
+  albumName?: string;
+  releaseDate?: string;
+  genreNames?: string[];
+  artwork?: {
+    url: string;
+    width: number;
+    height: number;
+  };
+  url: string;
+  trackCount?: number;
+  isSingle?: boolean;
+}
+
+interface AppleMusicResource {
+  id: string;
   type: string;
-  track: string;
-  artist: string;
-  image: string;
-  audio: string;
-  link: string;
-  embed: string;
-  date: string;
-  description: string;
+  attributes: AppleMusicAttributes;
 }
 
 @Injectable()
 export class MusicService {
-  private spotifyUrlInfo: ReturnType<typeof SpotifyUrlInfo> | null = null;
-
-  private async getSpotifyUrlInfo(): Promise<
-    ReturnType<typeof SpotifyUrlInfo>
-  > {
-    if (!this.spotifyUrlInfo) {
-      const spotifyUrlInfoFactory = (await import('spotify-url-info')).default;
-      this.spotifyUrlInfo = spotifyUrlInfoFactory(fetch);
+  private get appleMusicToken(): string {
+    const token = process.env.APPLE_MUSIC_DEVELOPER_TOKEN;
+    if (!token) {
+      throw new BadRequestException(
+        'APPLE_MUSIC_DEVELOPER_TOKEN environment variable is not set',
+      );
     }
-    return this.spotifyUrlInfo;
+    return token;
   }
 
   async getMetadata(url: string): Promise<MusicMetadataResponse> {
@@ -63,63 +69,41 @@ export class MusicService {
     // Step 2: Extract platform links
     const platformLinks = this.extractPlatformLinks(odesliResponse);
 
-    // Step 3: Get Spotify URL if available
-    const spotifyLink = odesliResponse.linksByPlatform?.spotify;
-    const spotifyUrl = spotifyLink?.url;
+    // Step 3: Get Apple Music URL from Odesli
+    const appleMusicLink = odesliResponse.linksByPlatform?.appleMusic;
+    const appleMusicUrl = appleMusicLink?.url;
 
-    // Step 4: Get metadata from Spotify or fallback to Odesli data
+    // Step 4: Get metadata from Apple Music API or fallback to Odesli
     let title: string;
     let artist: string;
     let album: string;
     let releaseDate: string | null = null;
+    let genres: string[] | null = null;
     let image: string;
 
-    if (spotifyUrl) {
+    if (appleMusicUrl) {
       try {
-        const spotifyData = await this.fetchSpotifyMetadata(spotifyUrl);
+        const resource = await this.fetchAppleMusicMetadata(appleMusicUrl);
+        const attrs = resource.attributes;
 
-        // getData() returns different structures for tracks vs albums
-        if (spotifyData.type === 'album') {
-          // For albums: use album name as title
-          title = spotifyData.name || spotifyData.title;
-          artist =
-            spotifyData.subtitle ||
-            spotifyData.artists?.[0]?.name ||
-            spotifyData.artist;
-          album = title; // Album field is same as title for album URLs
-          image =
-            spotifyData.visualIdentity?.backgroundBase?.backgroundImageUrl ||
-            spotifyData.image;
-
-          // Scrape release date from album page HTML
-          releaseDate = await this.extractReleaseDateFromPage(spotifyUrl);
+        if (resource.type === 'albums') {
+          title = attrs.name;
+          artist = attrs.artistName;
+          album = attrs.name;
+          releaseDate = attrs.releaseDate ?? null;
+          genres = this.filterGenres(attrs.genreNames);
+          image = this.artworkUrl(attrs.artwork) ?? '';
         } else {
-          // For tracks: extract basic metadata
-          title = spotifyData.name || spotifyData.title || spotifyData.track;
-          artist =
-            spotifyData.artists?.[0]?.name ||
-            spotifyData.artist ||
-            spotifyData.subtitle;
-          releaseDate = spotifyData.releaseDate?.isoString || null;
-          image =
-            spotifyData.visualIdentity?.backgroundBase?.backgroundImageUrl ||
-            spotifyData.image;
-
-          // Try to get album information by scraping the track page
-          const albumUrl = await this.extractAlbumUrlFromTrackPage(spotifyUrl);
-          if (albumUrl) {
-            try {
-              const albumData = await this.fetchSpotifyMetadata(albumUrl);
-              album = albumData.name || albumData.title || '';
-            } catch {
-              album = '';
-            }
-          } else {
-            album = '';
-          }
+          // songs
+          title = attrs.name;
+          artist = attrs.artistName;
+          album = attrs.albumName ?? '';
+          releaseDate = attrs.releaseDate ?? null;
+          genres = this.filterGenres(attrs.genreNames);
+          image = this.artworkUrl(attrs.artwork) ?? '';
         }
       } catch {
-        // Fallback to Odesli data if Spotify scraping fails
+        // Fallback to Odesli data if Apple Music API fails
         const entity = this.getPrimaryEntity(odesliResponse);
         title = entity.title;
         artist = entity.artistName;
@@ -127,7 +111,7 @@ export class MusicService {
         image = entity.thumbnailUrl;
       }
     } else {
-      // Use Odesli data if no Spotify link available
+      // Use Odesli data if no Apple Music link available
       const entity = this.getPrimaryEntity(odesliResponse);
       title = entity.title;
       artist = entity.artistName;
@@ -142,7 +126,7 @@ export class MusicService {
       artist,
       album,
       releaseDate,
-      genres: null, // Spotify doesn't provide genres for tracks, only artists
+      genres,
       image,
       platformLinks,
       universalLink: odesliResponse.pageUrl,
@@ -164,55 +148,90 @@ export class MusicService {
     return response.json() as Promise<OdesliResponse>;
   }
 
-  private async fetchSpotifyMetadata(
-    spotifyUrl: string,
-  ): Promise<any> {
-    const { getData } = await this.getSpotifyUrlInfo();
-    return getData(spotifyUrl);
+  /**
+   * Parse an Apple Music URL and fetch metadata from the catalog API.
+   * Handles URLs like:
+   *   https://music.apple.com/us/album/album-name/12345
+   *   https://music.apple.com/us/album/album-name/12345?i=67890  (track within album)
+   *   https://music.apple.com/us/song/song-name/12345
+   */
+  private async fetchAppleMusicMetadata(
+    appleMusicUrl: string,
+  ): Promise<AppleMusicResource> {
+    const parsed = new URL(appleMusicUrl);
+    const pathParts = parsed.pathname.split('/').filter(Boolean);
+    // pathParts: ["us", "album"|"song", "name-slug", "id"]
+    const storefront = pathParts[0] ?? 'us';
+    const kind = pathParts[1]; // "album" or "song"
+    const catalogId = pathParts[3];
+
+    // Check for ?i= param which indicates a specific track within an album
+    const trackId = parsed.searchParams.get('i');
+
+    if (trackId) {
+      // Fetch the specific song
+      return this.fetchFromCatalog(storefront, 'songs', trackId);
+    }
+
+    if (kind === 'song') {
+      return this.fetchFromCatalog(storefront, 'songs', catalogId);
+    }
+
+    // Default: album
+    return this.fetchFromCatalog(storefront, 'albums', catalogId);
+  }
+
+  private async fetchFromCatalog(
+    storefront: string,
+    type: 'songs' | 'albums',
+    id: string,
+  ): Promise<AppleMusicResource> {
+    const apiUrl = `https://api.music.apple.com/v1/catalog/${storefront}/${type}/${id}`;
+
+    const response = await fetch(apiUrl, {
+      headers: { Authorization: `Bearer ${this.appleMusicToken}` },
+    });
+
+    if (!response.ok) {
+      throw new BadRequestException(
+        `Apple Music API request failed: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const data = await response.json();
+    const resource = data?.data?.[0];
+
+    if (!resource) {
+      throw new BadRequestException(
+        'No data returned from Apple Music API',
+      );
+    }
+
+    return resource as AppleMusicResource;
+  }
+
+  private artworkUrl(
+    artwork: AppleMusicAttributes['artwork'],
+    size = 600,
+  ): string | null {
+    if (!artwork?.url) return null;
+    return artwork.url
+      .replace('{w}', String(size))
+      .replace('{h}', String(size));
   }
 
   /**
-   * Scrapes the Spotify page HTML to extract album URL from a track page
+   * Filter out the generic "Music" genre that Apple Music includes on everything.
    */
-  private async extractAlbumUrlFromTrackPage(
-    trackUrl: string,
-  ): Promise<string | null> {
-    try {
-      const response = await fetch(trackUrl);
-      const html = await response.text();
-      const albumUrlMatch = html.match(
-        /https:\/\/open\.spotify\.com\/album\/[a-zA-Z0-9]+/,
-      );
-      return albumUrlMatch ? albumUrlMatch[0] : null;
-    } catch {
-      return null;
-    }
+  private filterGenres(genreNames?: string[]): string[] | null {
+    if (!genreNames?.length) return null;
+    const filtered = genreNames.filter((g) => g !== 'Music');
+    return filtered.length > 0 ? filtered : null;
   }
 
-  /**
-   * Extracts release date from JSON-LD structured data in Spotify page HTML
-   */
-  private async extractReleaseDateFromPage(
-    url: string,
-  ): Promise<string | null> {
-    try {
-      const response = await fetch(url);
-      const html = await response.text();
-      const jsonLdMatch = html.match(
-        /<script type="application\/ld\+json">(.+?)<\/script>/s,
-      );
-
-      if (jsonLdMatch) {
-        const jsonData = JSON.parse(jsonLdMatch[1]);
-        return jsonData.datePublished || null;
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  private extractPlatformLinks(odesliResponse: OdesliResponse): PlatformLink[] {
+  private extractPlatformLinks(
+    odesliResponse: OdesliResponse,
+  ): PlatformLink[] {
     const links: PlatformLink[] = [];
 
     for (const [platform, data] of Object.entries(
