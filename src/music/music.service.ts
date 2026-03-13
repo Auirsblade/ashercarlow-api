@@ -1,32 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { MusicMetadataResponse, PlatformLink } from './dto/get-metadata.dto';
-
-interface OdesliResponse {
-  entityUniqueId: string;
-  userCountry: string;
-  pageUrl: string;
-  linksByPlatform: Record<
-    string,
-    {
-      url: string;
-      entityUniqueId: string;
-    }
-  >;
-  entitiesByUniqueId: Record<
-    string,
-    {
-      id: string;
-      type: string;
-      title: string;
-      artistName: string;
-      thumbnailUrl: string;
-      thumbnailWidth: number;
-      thumbnailHeight: number;
-      apiProvider: string;
-      platforms: string[];
-    }
-  >;
-}
+import { MusicMetadataResponse } from './dto/get-metadata.dto';
 
 interface AppleMusicAttributes {
   name: string;
@@ -63,113 +36,170 @@ export class MusicService {
   }
 
   async getMetadata(url: string): Promise<MusicMetadataResponse> {
-    // Step 1: Call Odesli API to get platform links
-    const odesliResponse = await this.fetchOdesliLinks(url);
-
-    // Step 2: Extract platform links
-    const platformLinks = this.extractPlatformLinks(odesliResponse);
-
-    // Step 3: Get Apple Music URL from Odesli
-    const appleMusicLink = odesliResponse.linksByPlatform?.appleMusic;
-    const appleMusicUrl = appleMusicLink?.url;
-
-    // Step 4: Get metadata from Apple Music API or fallback to Odesli
-    let title: string;
-    let artist: string;
-    let album: string;
-    let releaseDate: string | null = null;
-    let genres: string[] | null = null;
-    let image: string;
-
-    if (appleMusicUrl) {
-      try {
-        const resource = await this.fetchAppleMusicMetadata(appleMusicUrl);
-        const attrs = resource.attributes;
-
-        if (resource.type === 'albums') {
-          title = attrs.name;
-          artist = attrs.artistName;
-          album = attrs.name;
-          releaseDate = attrs.releaseDate ?? null;
-          genres = this.filterGenres(attrs.genreNames);
-          image = this.artworkUrl(attrs.artwork) ?? '';
-        } else {
-          // songs
-          title = attrs.name;
-          artist = attrs.artistName;
-          album = attrs.albumName ?? '';
-          releaseDate = attrs.releaseDate ?? null;
-          genres = this.filterGenres(attrs.genreNames);
-          image = this.artworkUrl(attrs.artwork) ?? '';
-        }
-      } catch {
-        // Fallback to Odesli data if Apple Music API fails
-        const entity = this.getPrimaryEntity(odesliResponse);
-        title = entity.title;
-        artist = entity.artistName;
-        album = '';
-        image = entity.thumbnailUrl;
-      }
-    } else {
-      // Use Odesli data if no Apple Music link available
-      const entity = this.getPrimaryEntity(odesliResponse);
-      title = entity.title;
-      artist = entity.artistName;
-      album = '';
-      image = entity.thumbnailUrl;
+    if (this.isSpotifyUrl(url)) {
+      return this.handleSpotifyUrl(url);
     }
 
-    releaseDate = new Date(releaseDate ?? '')?.toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" })
+    if (this.isAppleMusicUrl(url)) {
+      return this.handleAppleMusicUrl(url);
+    }
 
-    return {
-      title,
-      artist,
-      album,
-      releaseDate,
-      genres,
-      image,
-      platformLinks,
-      universalLink: odesliResponse.pageUrl,
-    };
+    throw new BadRequestException('URL must be a Spotify or Apple Music link');
   }
 
-  private async fetchOdesliLinks(url: string): Promise<OdesliResponse> {
-    const encodedUrl = encodeURIComponent(url);
-    const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodedUrl}`;
+  private async handleSpotifyUrl(url: string): Promise<MusicMetadataResponse> {
+    const { title, artist } = await this.scrapeSpotifyMetadata(url);
+    const resource = await this.searchAppleMusic(title, artist);
 
-    const response = await fetch(apiUrl);
-
-    if (!response.ok) {
+    if (!resource) {
       throw new BadRequestException(
-        `Failed to fetch links from Odesli: ${response.statusText}`,
+        'Could not find matching track on Apple Music',
       );
     }
 
-    return response.json() as Promise<OdesliResponse>;
+    const attrs = resource.attributes;
+
+    return {
+      title: attrs.name,
+      artist: attrs.artistName,
+      album: resource.type === 'albums' ? attrs.name : (attrs.albumName ?? ''),
+      releaseDate: this.formatDate(attrs.releaseDate),
+      genres: this.filterGenres(attrs.genreNames),
+      image: this.artworkUrl(attrs.artwork) ?? '',
+      spotifyUrl: url,
+      appleMusicUrl: attrs.url,
+    };
   }
 
-  /**
-   * Parse an Apple Music URL and fetch metadata from the catalog API.
-   * Handles URLs like:
-   *   https://music.apple.com/us/album/album-name/12345
-   *   https://music.apple.com/us/album/album-name/12345?i=67890  (track within album)
-   *   https://music.apple.com/us/song/song-name/12345
-   */
+  private async handleAppleMusicUrl(
+    url: string,
+  ): Promise<MusicMetadataResponse> {
+    const resource = await this.fetchAppleMusicMetadata(url);
+    const attrs = resource.attributes;
+
+    const spotifyUrl = await this.searchSpotifyUrl(
+      attrs.name,
+      attrs.artistName,
+    );
+
+    return {
+      title: attrs.name,
+      artist: attrs.artistName,
+      album: resource.type === 'albums' ? attrs.name : (attrs.albumName ?? ''),
+      releaseDate: this.formatDate(attrs.releaseDate),
+      genres: this.filterGenres(attrs.genreNames),
+      image: this.artworkUrl(attrs.artwork) ?? '',
+      spotifyUrl,
+      appleMusicUrl: url,
+    };
+  }
+
+  private isSpotifyUrl(url: string): boolean {
+    try {
+      const hostname = new URL(url).hostname;
+      return hostname === 'open.spotify.com' || hostname === 'spotify.com';
+    } catch {
+      return false;
+    }
+  }
+
+  private isAppleMusicUrl(url: string): boolean {
+    try {
+      const hostname = new URL(url).hostname;
+      return hostname === 'music.apple.com';
+    } catch {
+      return false;
+    }
+  }
+
+  private async scrapeSpotifyMetadata(
+    url: string,
+  ): Promise<{ title: string; artist: string }> {
+    const oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`;
+    const response = await fetch(oembedUrl);
+
+    if (!response.ok) {
+      throw new BadRequestException(
+        `Failed to fetch Spotify metadata: ${response.statusText}`,
+      );
+    }
+
+    const data = (await response.json()) as {
+      title?: string;
+      description?: string;
+    };
+    const title = data.title ?? '';
+
+    // description is formatted as "Title · Artist · Album · Year"
+    const description = data.description ?? '';
+    const parts = description.split(' · ');
+    const artist = parts.length >= 2 ? parts[1] : '';
+
+    return { title, artist };
+  }
+
+  private async searchAppleMusic(
+    title: string,
+    artist: string,
+  ): Promise<AppleMusicResource | null> {
+    const term = encodeURIComponent(`${title} ${artist}`);
+    const apiUrl = `https://api.music.apple.com/v1/catalog/us/search?term=${term}&types=songs`;
+
+    const response = await fetch(apiUrl, {
+      headers: { Authorization: `Bearer ${this.appleMusicToken}` },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as {
+      results?: { songs?: { data?: AppleMusicResource[] } };
+    };
+    const firstResult = data?.results?.songs?.data?.[0];
+    return firstResult ?? null;
+  }
+
+  private async searchSpotifyUrl(
+    title: string,
+    artist: string,
+  ): Promise<string | null> {
+    try {
+      const query = encodeURIComponent(
+        `site:open.spotify.com ${title} ${artist}`,
+      );
+      const ddgUrl = `https://html.duckduckgo.com/html/?q=${query}`;
+
+      const response = await fetch(ddgUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+      });
+
+      if (!response.ok) return null;
+
+      const html = await response.text();
+      const match = html.match(
+        /https?:\/\/open\.spotify\.com\/(?:track|album)\/[a-zA-Z0-9]+/,
+      );
+      return match ? match[0] : null;
+    } catch {
+      return null;
+    }
+  }
+
   private async fetchAppleMusicMetadata(
     appleMusicUrl: string,
   ): Promise<AppleMusicResource> {
     const parsed = new URL(appleMusicUrl);
     const pathParts = parsed.pathname.split('/').filter(Boolean);
-    // pathParts: ["us", "album"|"song", "name-slug", "id"]
     const storefront = pathParts[0] ?? 'us';
-    const kind = pathParts[1]; // "album" or "song"
+    const kind = pathParts[1];
     const catalogId = pathParts[3];
-
-    // Check for ?i= param which indicates a specific track within an album
     const trackId = parsed.searchParams.get('i');
 
     if (trackId) {
-      // Fetch the specific song
       return this.fetchFromCatalog(storefront, 'songs', trackId);
     }
 
@@ -177,7 +207,6 @@ export class MusicService {
       return this.fetchFromCatalog(storefront, 'songs', catalogId);
     }
 
-    // Default: album
     return this.fetchFromCatalog(storefront, 'albums', catalogId);
   }
 
@@ -198,16 +227,16 @@ export class MusicService {
       );
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as {
+      data?: AppleMusicResource[];
+    };
     const resource = data?.data?.[0];
 
     if (!resource) {
-      throw new BadRequestException(
-        'No data returned from Apple Music API',
-      );
+      throw new BadRequestException('No data returned from Apple Music API');
     }
 
-    return resource as AppleMusicResource;
+    return resource;
   }
 
   private artworkUrl(
@@ -220,42 +249,18 @@ export class MusicService {
       .replace('{h}', String(size));
   }
 
-  /**
-   * Filter out the generic "Music" genre that Apple Music includes on everything.
-   */
   private filterGenres(genreNames?: string[]): string[] | null {
     if (!genreNames?.length) return null;
     const filtered = genreNames.filter((g) => g !== 'Music');
     return filtered.length > 0 ? filtered : null;
   }
 
-  private extractPlatformLinks(
-    odesliResponse: OdesliResponse,
-  ): PlatformLink[] {
-    const links: PlatformLink[] = [];
-
-    for (const [platform, data] of Object.entries(
-      odesliResponse.linksByPlatform || {},
-    )) {
-      links.push({
-        platform,
-        url: data.url,
-      });
-    }
-
-    return links;
-  }
-
-  private getPrimaryEntity(odesliResponse: OdesliResponse) {
-    const entityId = odesliResponse.entityUniqueId;
-    const entity = odesliResponse.entitiesByUniqueId?.[entityId];
-
-    if (!entity) {
-      throw new BadRequestException(
-        'Could not find entity data in Odesli response',
-      );
-    }
-
-    return entity;
+  private formatDate(releaseDate?: string): string | null {
+    if (!releaseDate) return null;
+    return new Date(releaseDate).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
   }
 }

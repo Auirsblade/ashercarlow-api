@@ -8,16 +8,6 @@ export class GetMetadataDto {
   url: string;
 }
 
-export class PlatformLink {
-  @ApiProperty({
-    example: 'https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT',
-  })
-  url: string;
-
-  @ApiProperty({ example: 'spotify' })
-  platform: string;
-}
-
 export class MusicMetadataResponse {
   @ApiProperty({ example: 'Never Gonna Give You Up' })
   title: string;
@@ -37,9 +27,16 @@ export class MusicMetadataResponse {
   @ApiProperty({ example: 'https://i.scdn.co/image/...' })
   image: string;
 
-  @ApiProperty({ type: [PlatformLink] })
-  platformLinks: PlatformLink[];
+  @ApiProperty({
+    example: 'https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT',
+    nullable: true,
+  })
+  spotifyUrl: string | null;
 
-  @ApiProperty({ example: 'https://song.link/...' })
-  universalLink: string;
+  @ApiProperty({
+    example:
+      'https://music.apple.com/us/song/never-gonna-give-you-up/1558533900',
+    nullable: true,
+  })
+  appleMusicUrl: string | null;
 }

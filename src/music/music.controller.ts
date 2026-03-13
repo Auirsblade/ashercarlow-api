@@ -12,7 +12,7 @@ export class MusicController {
   @ApiOperation({
     summary: 'Get music metadata from a Spotify or Apple Music URL',
     description:
-      'Fetches cross-platform links via Odesli and metadata from Apple Music API',
+      'Scrapes Spotify metadata and uses Apple Music API to return cross-platform URLs and rich metadata',
   })
   @ApiResponse({
     status: 200,
