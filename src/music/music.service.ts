@@ -211,7 +211,7 @@ export class MusicService {
   ): Promise<string | null> {
     try {
       const query = encodeURIComponent(
-        `site:open.spotify.com ${title} ${artist}`,
+        `site:open.spotify.com/track OR site:open.spotify.com/album ${title} ${artist}`,
       );
       const ddgUrl = `https://html.duckduckgo.com/html/?q=${query}`;
 
@@ -232,23 +232,24 @@ export class MusicService {
       const html = await response.text();
       this.logger.debug(`DuckDuckGo response length: ${html.length} chars`);
 
+      const spotifyPattern =
+        /https?:\/\/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(?:track|album)\/[a-zA-Z0-9]+/;
+
       // DDG HTML lite wraps results in uddg= redirect params with URL-encoded URLs
-      const uddgMatch = html.match(/uddg=([^&"]+open\.spotify\.com[^&"]+)/);
-      if (uddgMatch) {
+      const uddgMatches = html.matchAll(
+        /uddg=([^&"]+open\.spotify\.com[^&"]+)/g,
+      );
+      for (const uddgMatch of uddgMatches) {
         const decoded = decodeURIComponent(uddgMatch[1]);
-        const spotifyMatch = decoded.match(
-          /https?:\/\/open\.spotify\.com\/(?:track|album)\/[a-zA-Z0-9]+/,
-        );
+        const spotifyMatch = decoded.match(spotifyPattern);
         if (spotifyMatch) return spotifyMatch[0];
-        this.logger.warn(
-          `DDG uddg param found but no Spotify URL extracted. Decoded: "${decoded}"`,
+        this.logger.debug(
+          `DDG uddg param skipped (no track/album): "${decoded}"`,
         );
       }
 
       // Fallback: direct URL match in case format changes
-      const directMatch = html.match(
-        /https?:\/\/open\.spotify\.com\/(?:track|album)\/[a-zA-Z0-9]+/,
-      );
+      const directMatch = html.match(spotifyPattern);
 
       if (!directMatch) {
         this.logger.warn(
