@@ -210,59 +210,50 @@ export class MusicService {
     artist: string,
   ): Promise<string | null> {
     try {
-      const query = encodeURIComponent(
-        `site:open.spotify.com/track OR site:open.spotify.com/album ${title} ${artist}`,
-      );
-      const ddgUrl = `https://html.duckduckgo.com/html/?q=${query}`;
+      const query = encodeURIComponent(`"${title}" "${artist}" spotify track`);
+      const googleUrl = `https://www.google.com/search?q=${query}&btnI=1`;
 
-      const response = await fetch(ddgUrl, {
+      const response = await fetch(googleUrl, {
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         },
+        redirect: 'follow',
       });
 
-      if (!response.ok) {
-        this.logger.warn(
-          `DuckDuckGo request failed: ${response.status} ${response.statusText}`,
-        );
-        return null;
-      }
-
-      const html = await response.text();
-      this.logger.debug(`DuckDuckGo response length: ${html.length} chars`);
+      const finalUrl = response.url;
+      this.logger.debug(`Google redirect resolved to: ${finalUrl}`);
 
       const spotifyPattern =
-        /https?:\/\/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(?:track|album)\/[a-zA-Z0-9]+/;
+        /https?:\/\/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(?:track|album|prerelease)\/[a-zA-Z0-9]+/;
 
-      // DDG HTML lite wraps results in uddg= redirect params with URL-encoded URLs
-      const uddgMatches = html.matchAll(
-        /uddg=([^&"]+open\.spotify\.com[^&"]+)/g,
+      // Google wraps the redirect in a /url?q= param
+      const googleRedirect = finalUrl.match(/[?&]q=(https?[^&]+)/);
+      if (googleRedirect) {
+        const decoded = decodeURIComponent(googleRedirect[1]);
+        const match = decoded.match(spotifyPattern);
+        if (match) {
+          this.logger.log(
+            `Spotify URL extracted from Google redirect: ${match[0]}`,
+          );
+          return match[0];
+        }
+        this.logger.debug(`Google redirected to non-Spotify URL: ${decoded}`);
+      }
+
+      // Direct match if Google redirected straight to Spotify
+      const directMatch = finalUrl.match(spotifyPattern);
+      if (directMatch) {
+        this.logger.log(`Spotify URL from direct redirect: ${directMatch[0]}`);
+        return directMatch[0];
+      }
+
+      this.logger.warn(
+        `No Spotify URL found via Google for "${title}" by "${artist}"`,
       );
-      for (const uddgMatch of uddgMatches) {
-        const decoded = decodeURIComponent(uddgMatch[1]);
-        const spotifyMatch = decoded.match(spotifyPattern);
-        if (spotifyMatch) return spotifyMatch[0];
-        this.logger.debug(
-          `DDG uddg param skipped (no track/album): "${decoded}"`,
-        );
-      }
-
-      // Fallback: direct URL match in case format changes
-      const directMatch = html.match(spotifyPattern);
-
-      if (!directMatch) {
-        this.logger.warn(
-          `No Spotify URL found in DuckDuckGo results for "${title} ${artist}"`,
-        );
-      }
-
-      return directMatch ? directMatch[0] : null;
+      return null;
     } catch (error) {
-      this.logger.error(
-        `DuckDuckGo search threw an error`,
-        (error as Error).stack,
-      );
+      this.logger.error('Google search threw an error', (error as Error).stack);
       return null;
     }
   }
