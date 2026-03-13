@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { MusicMetadataResponse } from './dto/get-metadata.dto';
 
 interface AppleMusicAttributes {
@@ -25,6 +25,8 @@ interface AppleMusicResource {
 
 @Injectable()
 export class MusicService {
+  private readonly logger = new Logger(MusicService.name);
+
   private get appleMusicToken(): string {
     const token = process.env.APPLE_MUSIC_DEVELOPER_TOKEN;
     if (!token) {
@@ -48,14 +50,26 @@ export class MusicService {
   }
 
   private async handleSpotifyUrl(url: string): Promise<MusicMetadataResponse> {
+    this.logger.log(`Handling Spotify URL: ${url}`);
     const { title, artist } = await this.scrapeSpotifyMetadata(url);
+    this.logger.log(
+      `Spotify oEmbed scraped — title: "${title}", artist: "${artist}"`,
+    );
+
     const resource = await this.searchAppleMusic(title, artist);
 
     if (!resource) {
+      this.logger.warn(
+        `Apple Music search returned no results for "${title}" by "${artist}"`,
+      );
       throw new BadRequestException(
         'Could not find matching track on Apple Music',
       );
     }
+
+    this.logger.log(
+      `Apple Music match found: "${resource.attributes.name}" (${resource.id})`,
+    );
 
     const attrs = resource.attributes;
 
@@ -74,13 +88,25 @@ export class MusicService {
   private async handleAppleMusicUrl(
     url: string,
   ): Promise<MusicMetadataResponse> {
+    this.logger.log(`Handling Apple Music URL: ${url}`);
     const resource = await this.fetchAppleMusicMetadata(url);
     const attrs = resource.attributes;
+    this.logger.log(
+      `Apple Music metadata fetched — "${attrs.name}" by "${attrs.artistName}"`,
+    );
 
     const spotifyUrl = await this.searchSpotifyUrl(
       attrs.name,
       attrs.artistName,
     );
+
+    if (spotifyUrl) {
+      this.logger.log(`Spotify URL found: ${spotifyUrl}`);
+    } else {
+      this.logger.warn(
+        `Spotify search returned null for "${attrs.name}" by "${attrs.artistName}"`,
+      );
+    }
 
     return {
       title: attrs.name,
@@ -135,6 +161,15 @@ export class MusicService {
     const parts = description.split(' · ');
     const artist = parts.length >= 2 ? parts[1] : '';
 
+    if (!title) {
+      this.logger.warn(`Spotify oEmbed returned empty title for ${url}`);
+    }
+    if (!artist) {
+      this.logger.warn(
+        `Spotify oEmbed could not extract artist from description: "${description}"`,
+      );
+    }
+
     return { title, artist };
   }
 
@@ -150,6 +185,9 @@ export class MusicService {
     });
 
     if (!response.ok) {
+      this.logger.warn(
+        `Apple Music search failed: ${response.status} ${response.statusText}`,
+      );
       return null;
     }
 
@@ -157,6 +195,13 @@ export class MusicService {
       results?: { songs?: { data?: AppleMusicResource[] } };
     };
     const firstResult = data?.results?.songs?.data?.[0];
+
+    if (!firstResult) {
+      this.logger.warn(
+        `Apple Music search returned empty results for term: "${title} ${artist}"`,
+      );
+    }
+
     return firstResult ?? null;
   }
 
@@ -177,14 +222,46 @@ export class MusicService {
         },
       });
 
-      if (!response.ok) return null;
+      if (!response.ok) {
+        this.logger.warn(
+          `DuckDuckGo request failed: ${response.status} ${response.statusText}`,
+        );
+        return null;
+      }
 
       const html = await response.text();
-      const match = html.match(
+      this.logger.debug(`DuckDuckGo response length: ${html.length} chars`);
+
+      // DDG HTML lite wraps results in uddg= redirect params with URL-encoded URLs
+      const uddgMatch = html.match(/uddg=([^&"]+open\.spotify\.com[^&"]+)/);
+      if (uddgMatch) {
+        const decoded = decodeURIComponent(uddgMatch[1]);
+        const spotifyMatch = decoded.match(
+          /https?:\/\/open\.spotify\.com\/(?:track|album)\/[a-zA-Z0-9]+/,
+        );
+        if (spotifyMatch) return spotifyMatch[0];
+        this.logger.warn(
+          `DDG uddg param found but no Spotify URL extracted. Decoded: "${decoded}"`,
+        );
+      }
+
+      // Fallback: direct URL match in case format changes
+      const directMatch = html.match(
         /https?:\/\/open\.spotify\.com\/(?:track|album)\/[a-zA-Z0-9]+/,
       );
-      return match ? match[0] : null;
-    } catch {
+
+      if (!directMatch) {
+        this.logger.warn(
+          `No Spotify URL found in DuckDuckGo results for "${title} ${artist}"`,
+        );
+      }
+
+      return directMatch ? directMatch[0] : null;
+    } catch (error) {
+      this.logger.error(
+        `DuckDuckGo search threw an error`,
+        (error as Error).stack,
+      );
       return null;
     }
   }
