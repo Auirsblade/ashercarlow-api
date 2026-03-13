@@ -211,7 +211,7 @@ export class MusicService {
   ): Promise<string | null> {
     try {
       const query = encodeURIComponent(
-        `site:open.spotify.com/track "${title}" "${artist}"`,
+        `site:open.spotify.com "${title}" "${artist}"`,
       );
       const googleUrl = `https://www.google.com/search?q=${query}&btnI=1`;
 
@@ -227,7 +227,7 @@ export class MusicService {
       this.logger.debug(`Google redirect resolved to: ${finalUrl}`);
 
       const spotifyPattern =
-        /https?:\/\/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(?:track|album)\/[a-zA-Z0-9]+/;
+        /https?:\/\/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(?:track|album|prerelease)\/[a-zA-Z0-9]+/;
 
       // Google wraps the redirect in a /url?q= param
       const googleRedirect = finalUrl.match(/[?&]q=(https?[^&]+)/);
