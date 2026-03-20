@@ -55,7 +55,8 @@ export class MusicService {
 
   private spotifyContentType(url: string): 'songs' | 'albums' {
     const path = new URL(url).pathname;
-    if (path.includes('/album')) return 'albums';
+    if (path.includes('/album') || path.includes('/prerelease'))
+      return 'albums';
     return 'songs';
   }
 
