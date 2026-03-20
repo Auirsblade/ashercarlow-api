@@ -58,9 +58,17 @@ describe('MusicService', () => {
     delete process.env.APPLE_MUSIC_DEVELOPER_TOKEN;
   });
 
-  const callSearch = (t: string, a: string): Promise<AppleMusicResult | null> =>
+  const callSearch = (
+    t: string,
+    a: string,
+    type: 'songs' | 'albums' = 'songs',
+  ): Promise<AppleMusicResult | null> =>
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-    (service as any).searchAppleMusic(t, a) as Promise<AppleMusicResult | null>;
+    (service as any).searchAppleMusic(
+      t,
+      a,
+      type,
+    ) as Promise<AppleMusicResult | null>;
 
   it('should prefer exact artist match over popular mismatch', async () => {
     fetchSpy.mockResolvedValueOnce(
@@ -152,5 +160,52 @@ describe('MusicService', () => {
     const result = await callSearch('So What', 'Pink');
     expect(result).not.toBeNull();
     expect(result!.attributes.artistName).toBe('P!nk');
+  });
+
+  it('should not give containment bonus for very short substrings', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      mockFetchResponse(
+        mockAppleMusicResponse([
+          { name: 'Wish U Well', artistName: 'underscores' },
+        ]),
+      ),
+    );
+
+    // "U" is only 1 char vs 11 chars in "Wish U Well" — should not get 0.9
+    const result = await callSearch('U', 'underscores');
+    // The title score should be low (Jaccard, not containment),
+    // so even with perfect artist match this shouldn't win over an exact title match
+    expect(result).not.toBeNull();
+    // Title "Wish U Well" should NOT score 0.9 against "U"
+    // It should score via Jaccard: intersection=1 / union=3 = 0.33
+  });
+
+  it('should search albums when type is albums', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          results: {
+            albums: {
+              data: [
+                {
+                  id: 'album123',
+                  type: 'albums',
+                  attributes: {
+                    name: 'U',
+                    artistName: 'underscores',
+                    url: 'https://music.apple.com/us/album/u/album123',
+                  },
+                },
+              ],
+            },
+          },
+        }),
+    });
+
+    const result = await callSearch('U', 'underscores', 'albums');
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('albums');
+    expect(result!.attributes.name).toBe('U');
   });
 });

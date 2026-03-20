@@ -49,14 +49,21 @@ export class MusicService {
     throw new BadRequestException('URL must be a Spotify or Apple Music link');
   }
 
+  private spotifyContentType(url: string): 'songs' | 'albums' {
+    const path = new URL(url).pathname;
+    if (path.includes('/album')) return 'albums';
+    return 'songs';
+  }
+
   private async handleSpotifyUrl(url: string): Promise<MusicMetadataResponse> {
     this.logger.log(`Handling Spotify URL: ${url}`);
     const { title, artist } = await this.scrapeSpotifyMetadata(url);
+    const type = this.spotifyContentType(url);
     this.logger.log(
-      `Spotify oEmbed scraped — title: "${title}", artist: "${artist}"`,
+      `Spotify embed scraped — title: "${title}", artist: "${artist}", type: ${type}`,
     );
 
-    const resource = await this.searchAppleMusic(title, artist);
+    const resource = await this.searchAppleMusic(title, artist, type);
 
     if (!resource) {
       this.logger.warn(
@@ -217,7 +224,15 @@ export class MusicService {
     const nb = this.normalize(b);
 
     if (na === nb) return 1.0;
-    if (na.includes(nb) || nb.includes(na)) return 0.9;
+
+    // Containment check — only if the shorter string is a meaningful
+    // portion of the longer one (at least 40%), so single-letter titles
+    // like "U" don't match "Wish U Well"
+    const shorter = na.length <= nb.length ? na : nb;
+    const longer = na.length <= nb.length ? nb : na;
+    if (longer.includes(shorter) && shorter.length / longer.length >= 0.4) {
+      return 0.9;
+    }
 
     const wordsA = new Set(na.split(' '));
     const wordsB = new Set(nb.split(' '));
@@ -230,9 +245,10 @@ export class MusicService {
   private async searchAppleMusic(
     title: string,
     artist: string,
+    type: 'songs' | 'albums' = 'songs',
   ): Promise<AppleMusicResource | null> {
     const term = encodeURIComponent(`${title} ${artist}`);
-    const apiUrl = `https://api.music.apple.com/v1/catalog/us/search?term=${term}&types=songs&limit=25`;
+    const apiUrl = `https://api.music.apple.com/v1/catalog/us/search?term=${term}&types=${type}&limit=25`;
 
     const response = await fetch(apiUrl, {
       headers: { Authorization: `Bearer ${this.appleMusicToken}` },
@@ -246,9 +262,15 @@ export class MusicService {
     }
 
     const data = (await response.json()) as {
-      results?: { songs?: { data?: AppleMusicResource[] } };
+      results?: {
+        songs?: { data?: AppleMusicResource[] };
+        albums?: { data?: AppleMusicResource[] };
+      };
     };
-    const results = data?.results?.songs?.data;
+    const results =
+      type === 'albums'
+        ? data?.results?.albums?.data
+        : data?.results?.songs?.data;
 
     if (!results?.length) {
       this.logger.warn(
