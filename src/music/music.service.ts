@@ -173,12 +173,37 @@ export class MusicService {
     return { title, artist };
   }
 
+  private normalize(s: string): string {
+    return s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\w\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private similarityScore(a: string, b: string): number {
+    const na = this.normalize(a);
+    const nb = this.normalize(b);
+
+    if (na === nb) return 1.0;
+    if (na.includes(nb) || nb.includes(na)) return 0.9;
+
+    const wordsA = new Set(na.split(' '));
+    const wordsB = new Set(nb.split(' '));
+    const intersection = [...wordsA].filter((w) => wordsB.has(w)).length;
+    const union = new Set([...wordsA, ...wordsB]).size;
+
+    return union === 0 ? 0 : intersection / union;
+  }
+
   private async searchAppleMusic(
     title: string,
     artist: string,
   ): Promise<AppleMusicResource | null> {
     const term = encodeURIComponent(`${title} ${artist}`);
-    const apiUrl = `https://api.music.apple.com/v1/catalog/us/search?term=${term}&types=songs`;
+    const apiUrl = `https://api.music.apple.com/v1/catalog/us/search?term=${term}&types=songs&limit=25`;
 
     const response = await fetch(apiUrl, {
       headers: { Authorization: `Bearer ${this.appleMusicToken}` },
@@ -194,15 +219,48 @@ export class MusicService {
     const data = (await response.json()) as {
       results?: { songs?: { data?: AppleMusicResource[] } };
     };
-    const firstResult = data?.results?.songs?.data?.[0];
+    const results = data?.results?.songs?.data;
 
-    if (!firstResult) {
+    if (!results?.length) {
       this.logger.warn(
         `Apple Music search returned empty results for term: "${title} ${artist}"`,
       );
+      return null;
     }
 
-    return firstResult ?? null;
+    let bestResult: AppleMusicResource = results[0];
+    let bestScore = -1;
+
+    for (const result of results) {
+      const titleScore = this.similarityScore(title, result.attributes.name);
+      const artistScore = this.similarityScore(
+        artist,
+        result.attributes.artistName,
+      );
+      const score = artistScore * 0.6 + titleScore * 0.4;
+
+      this.logger.debug(
+        `Apple Music candidate: "${result.attributes.name}" by "${result.attributes.artistName}" — title=${titleScore.toFixed(2)} artist=${artistScore.toFixed(2)} total=${score.toFixed(2)}`,
+      );
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestResult = result;
+      }
+    }
+
+    if (bestScore < 0.3) {
+      this.logger.warn(
+        `Best Apple Music match scored ${bestScore.toFixed(2)}, below threshold 0.3`,
+      );
+      return null;
+    }
+
+    this.logger.log(
+      `Best Apple Music match: "${bestResult.attributes.name}" by "${bestResult.attributes.artistName}" (score=${bestScore.toFixed(2)})`,
+    );
+
+    return bestResult;
   }
 
   private async searchSpotifyUrl(
