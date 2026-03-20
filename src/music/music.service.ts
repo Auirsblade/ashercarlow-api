@@ -141,33 +141,62 @@ export class MusicService {
   private async scrapeSpotifyMetadata(
     url: string,
   ): Promise<{ title: string; artist: string }> {
-    const oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`;
-    const response = await fetch(oembedUrl);
+    // Extract path from the Spotify URL to build the embed URL
+    const parsed = new URL(url);
+    const embedUrl = `https://open.spotify.com/embed${parsed.pathname}`;
+
+    const response = await fetch(embedUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    });
 
     if (!response.ok) {
       throw new BadRequestException(
-        `Failed to fetch Spotify metadata: ${response.statusText}`,
+        `Failed to fetch Spotify embed page: ${response.statusText}`,
       );
     }
 
-    const data = (await response.json()) as {
-      title?: string;
-      description?: string;
-    };
-    const title = data.title ?? '';
+    const html = await response.text();
 
-    // description is formatted as "Title · Artist · Album · Year"
-    const description = data.description ?? '';
-    const parts = description.split(' · ');
-    const artist = parts.length >= 2 ? parts[1] : '';
+    // Parse __NEXT_DATA__ JSON from the embed page
+    const nextDataMatch = html.match(
+      /__NEXT_DATA__[^>]*>(\{.*?\})\s*<\/script/s,
+    );
+    if (!nextDataMatch) {
+      throw new BadRequestException(
+        'Could not parse Spotify embed page metadata',
+      );
+    }
+
+    const nextData = JSON.parse(nextDataMatch[1]) as {
+      props?: {
+        pageProps?: {
+          state?: {
+            data?: {
+              entity?: {
+                title?: string;
+                name?: string;
+                subtitle?: string;
+                artists?: { name: string }[];
+              };
+            };
+          };
+        };
+      };
+    };
+
+    const entity = nextData?.props?.pageProps?.state?.data?.entity;
+    const title = entity?.title ?? entity?.name ?? '';
+    // Tracks use artists array, albums use subtitle
+    const artist = entity?.artists?.[0]?.name ?? entity?.subtitle ?? '';
 
     if (!title) {
-      this.logger.warn(`Spotify oEmbed returned empty title for ${url}`);
+      this.logger.warn(`Spotify embed returned empty title for ${url}`);
     }
     if (!artist) {
-      this.logger.warn(
-        `Spotify oEmbed could not extract artist from description: "${description}"`,
-      );
+      this.logger.warn(`Spotify embed could not extract artist for ${url}`);
     }
 
     return { title, artist };
