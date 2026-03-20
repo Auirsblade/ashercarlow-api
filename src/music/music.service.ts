@@ -38,12 +38,16 @@ export class MusicService {
   }
 
   async getMetadata(url: string): Promise<MusicMetadataResponse> {
-    if (this.isSpotifyUrl(url)) {
-      return this.handleSpotifyUrl(url);
+    // Strip any text before the URL (e.g. Spotify share messages)
+    const urlMatch = url.match(/(https?:\/\/\S+)/);
+    const cleanUrl = urlMatch ? decodeURIComponent(urlMatch[1]) : url;
+
+    if (this.isSpotifyUrl(cleanUrl)) {
+      return this.handleSpotifyUrl(cleanUrl);
     }
 
-    if (this.isAppleMusicUrl(url)) {
-      return this.handleAppleMusicUrl(url);
+    if (this.isAppleMusicUrl(cleanUrl)) {
+      return this.handleAppleMusicUrl(cleanUrl);
     }
 
     throw new BadRequestException('URL must be a Spotify or Apple Music link');
