@@ -107,9 +107,11 @@ export class MusicService {
       `Apple Music metadata fetched — "${attrs.name}" by "${attrs.artistName}"`,
     );
 
+    const type = resource.type === 'albums' ? 'albums' : 'songs';
     const spotifyUrl = await this.searchSpotifyUrl(
       attrs.name,
       attrs.artistName,
+      type,
     );
 
     if (spotifyUrl) {
@@ -239,12 +241,60 @@ export class MusicService {
       return 0.9;
     }
 
+    // Word-level Jaccard similarity
     const wordsA = new Set(na.split(' '));
     const wordsB = new Set(nb.split(' '));
     const intersection = [...wordsA].filter((w) => wordsB.has(w)).length;
     const union = new Set([...wordsA, ...wordsB]).size;
+    const jaccard = union === 0 ? 0 : intersection / union;
 
-    return union === 0 ? 0 : intersection / union;
+    // Character-level edit distance ratio for stylized names
+    // (e.g. "Pink" vs "P!nk" → "pink" vs "pnk")
+    // Only use when strings are similar in length to avoid false positives
+    const minLen = Math.min(na.length, nb.length);
+    const maxLen = Math.max(na.length, nb.length);
+    const lengthRatio = maxLen === 0 ? 1 : minLen / maxLen;
+    let charSimilarity = 0;
+    if (lengthRatio >= 0.6) {
+      const editDist = this.levenshtein(na, nb);
+      charSimilarity = 1 - editDist / maxLen;
+    }
+
+    return Math.max(jaccard, charSimilarity);
+  }
+
+  private levenshtein(a: string, b: string): number {
+    const m = a.length;
+    const n = b.length;
+    const dp: number[][] = Array.from(
+      { length: m + 1 },
+      () => Array(n + 1).fill(0) as number[],
+    );
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] =
+          a[i - 1] === b[j - 1]
+            ? dp[i - 1][j - 1]
+            : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+    return dp[m][n];
+  }
+
+  private meetsMatchThreshold(
+    searchTitle: string,
+    searchArtist: string,
+    resultTitle: string,
+    resultArtist: string,
+  ): { pass: boolean; score: number; titleScore: number; artistScore: number } {
+    const titleScore = this.similarityScore(searchTitle, resultTitle);
+    const artistScore = this.similarityScore(searchArtist, resultArtist);
+    const score = artistScore * 0.6 + titleScore * 0.4;
+
+    const pass = titleScore >= 0.15 && artistScore >= 0.15 && score >= 0.3;
+    return { pass, score, titleScore, artistScore };
   }
 
   private async searchAppleMusic(
@@ -285,35 +335,35 @@ export class MusicService {
     }
 
     let bestResult: AppleMusicResource = results[0];
-    let bestScore = -1;
+    let bestMatch = { pass: false, score: -1, titleScore: 0, artistScore: 0 };
 
     for (const result of results) {
-      const titleScore = this.similarityScore(title, result.attributes.name);
-      const artistScore = this.similarityScore(
+      const match = this.meetsMatchThreshold(
+        title,
         artist,
+        result.attributes.name,
         result.attributes.artistName,
       );
-      const score = artistScore * 0.6 + titleScore * 0.4;
 
       this.logger.debug(
-        `Apple Music candidate: "${result.attributes.name}" by "${result.attributes.artistName}" — title=${titleScore.toFixed(2)} artist=${artistScore.toFixed(2)} total=${score.toFixed(2)}`,
+        `Apple Music candidate: "${result.attributes.name}" by "${result.attributes.artistName}" — title=${match.titleScore.toFixed(2)} artist=${match.artistScore.toFixed(2)} total=${match.score.toFixed(2)}`,
       );
 
-      if (score > bestScore) {
-        bestScore = score;
+      if (match.score > bestMatch.score) {
+        bestMatch = match;
         bestResult = result;
       }
     }
 
-    if (bestScore < 0.3) {
+    if (!bestMatch.pass) {
       this.logger.warn(
-        `Best Apple Music match scored ${bestScore.toFixed(2)}, below threshold 0.3`,
+        `Best Apple Music match scored ${bestMatch.score.toFixed(2)} (title=${bestMatch.titleScore.toFixed(2)}, artist=${bestMatch.artistScore.toFixed(2)}), below threshold`,
       );
       return null;
     }
 
     this.logger.log(
-      `Best Apple Music match: "${bestResult.attributes.name}" by "${bestResult.attributes.artistName}" (score=${bestScore.toFixed(2)})`,
+      `Best Apple Music match: "${bestResult.attributes.name}" by "${bestResult.attributes.artistName}" (score=${bestMatch.score.toFixed(2)})`,
     );
 
     return bestResult;
@@ -322,11 +372,60 @@ export class MusicService {
   private async searchSpotifyUrl(
     title: string,
     artist: string,
+    type: 'songs' | 'albums' = 'songs',
   ): Promise<string | null> {
+    const spotifyType = type === 'albums' ? 'album' : 'track';
+
+    // Try type-constrained search first, then fall back to unconstrained
+    const queries = [
+      `site:open.spotify.com/${spotifyType} "${title}" "${artist}"`,
+      `site:open.spotify.com "${title}" "${artist}"`,
+    ];
+
+    for (const rawQuery of queries) {
+      const url = await this.googleFeelingLucky(rawQuery);
+      if (!url) continue;
+
+      // Verify the result by scraping and scoring
+      try {
+        const scraped = await this.scrapeSpotifyMetadata(url);
+        const match = this.meetsMatchThreshold(
+          title,
+          artist,
+          scraped.title,
+          scraped.artist,
+        );
+
+        this.logger.debug(
+          `Spotify verification: "${scraped.title}" by "${scraped.artist}" — title=${match.titleScore.toFixed(2)} artist=${match.artistScore.toFixed(2)} total=${match.score.toFixed(2)}`,
+        );
+
+        if (match.pass) {
+          this.logger.log(
+            `Spotify match verified: "${scraped.title}" by "${scraped.artist}" (score=${match.score.toFixed(2)})`,
+          );
+          return url;
+        }
+
+        this.logger.warn(
+          `Spotify result rejected: "${scraped.title}" by "${scraped.artist}" (score=${match.score.toFixed(2)}, title=${match.titleScore.toFixed(2)}, artist=${match.artistScore.toFixed(2)})`,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to verify Spotify result ${url}: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    this.logger.warn(
+      `No verified Spotify URL found for "${title}" by "${artist}"`,
+    );
+    return null;
+  }
+
+  private async googleFeelingLucky(rawQuery: string): Promise<string | null> {
     try {
-      const query = encodeURIComponent(
-        `site:open.spotify.com "${title}" "${artist}"`,
-      );
+      const query = encodeURIComponent(rawQuery);
       const googleUrl = `https://www.google.com/search?q=${query}&btnI=1`;
 
       const response = await fetch(googleUrl, {
@@ -364,9 +463,6 @@ export class MusicService {
         return directMatch[0];
       }
 
-      this.logger.warn(
-        `No Spotify URL found via Google for "${title}" by "${artist}"`,
-      );
       return null;
     } catch (error) {
       this.logger.error('Google search threw an error', (error as Error).stack);
