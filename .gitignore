@@ -31,3 +31,6 @@ coverage/
 tmp/
 temp/
 tmpclaude-*
+
+# Kalshi observer local database
+data/

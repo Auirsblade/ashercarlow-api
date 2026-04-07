@@ -1,0 +1,93 @@
+{
+  "nyc": {
+    "city": "New York City",
+    "nws_wfo": "OKX",
+    "nws_cli_location_id": "NYC",
+    "primary_station": {
+      "name": "Central Park",
+      "icao": "KNYC",
+      "lat": 40.7794,
+      "lon": -73.9692,
+      "elevation_m": 47
+    },
+    "divergence_notes": "Same instrument feeds METAR and CLI. ~1°F drift from QC/rounding. Trace precip is NOT > 0 for rain markets."
+  },
+  "lax": {
+    "city": "Los Angeles",
+    "nws_wfo": "LOX",
+    "nws_cli_location_id": "LAX",
+    "primary_station": {
+      "name": "Los Angeles International Airport",
+      "icao": "KLAX",
+      "lat": 33.9381,
+      "lon": -118.3889,
+      "elevation_m": 30
+    },
+    "divergence_notes": "CLI location is LAX (CLILAX product = airport), NOT FHM (CLIFHM = downtown LA). KCQT and KBUR are different stations entirely. Verified live 2026-04-07: CLIFHM showed 81/59 while CLILAX showed 78/61 on the same day — 3°F high divergence."
+  },
+  "chi_midway": {
+    "city": "Chicago",
+    "nws_wfo": "LOT",
+    "nws_cli_location_id": "MDW",
+    "primary_station": {
+      "name": "Chicago Midway International Airport",
+      "icao": "KMDW",
+      "lat": 41.7861,
+      "lon": -87.7522,
+      "elevation_m": 188
+    },
+    "divergence_notes": "CRITICAL: Kalshi resolves Chicago on KMDW, NOT KORD. KMDW averages 1-3°F warmer."
+  },
+  "mia": {
+    "city": "Miami",
+    "nws_wfo": "MFL",
+    "nws_cli_location_id": "MIA",
+    "primary_station": {
+      "name": "Miami International Airport",
+      "icao": "KMIA",
+      "lat": 25.7959,
+      "lon": -80.287,
+      "elevation_m": 9
+    },
+    "divergence_notes": "KMIA at the airport, not KMFL or KOPF."
+  },
+  "bos": {
+    "city": "Boston",
+    "nws_wfo": "BOX",
+    "nws_cli_location_id": "BOS",
+    "primary_station": {
+      "name": "Boston Logan International Airport",
+      "icao": "KBOS",
+      "lat": 42.3656,
+      "lon": -71.0096,
+      "elevation_m": 6
+    },
+    "divergence_notes": "Coastal; cooler than KBED inland on summer afternoons."
+  },
+  "dca": {
+    "city": "Washington DC",
+    "nws_wfo": "LWX",
+    "nws_cli_location_id": "DCA",
+    "primary_station": {
+      "name": "Ronald Reagan Washington National Airport",
+      "icao": "KDCA",
+      "lat": 38.8521,
+      "lon": -77.0377,
+      "elevation_m": 5
+    },
+    "divergence_notes": "Reagan National. Do NOT substitute KIAD (Dulles) — runs 3-5°F colder on min temps."
+  },
+  "dfw": {
+    "city": "Dallas",
+    "nws_wfo": "FWD",
+    "nws_cli_location_id": "DFW",
+    "primary_station": {
+      "name": "Dallas/Fort Worth International Airport",
+      "icao": "KDFW",
+      "lat": 32.8968,
+      "lon": -97.038,
+      "elevation_m": 184
+    },
+    "divergence_notes": "KDFW, not KDAL (Love Field). KDAL runs slightly warmer."
+  }
+}
