@@ -261,6 +261,46 @@ export class AlpacaClient implements OnModuleInit {
     return this.fetchTrade<AlpacaPosition[]>('GET', '/v2/positions');
   }
 
+  // ---------- stock bars (data API) ----------
+
+  /**
+   * Fetch daily bars for an equity. Used by SignalService to compute the
+   * 30-day realized vol of SPY.
+   *
+   * Endpoint: GET https://data.alpaca.markets/v2/stocks/{symbol}/bars
+   * Free tier returns 15-min delayed data which is fine for end-of-day signals.
+   */
+  async getStockBars(
+    symbol: string,
+    params: {
+      timeframe?: string; // e.g. '1Day'
+      start?: string; // ISO date
+      end?: string; // ISO date
+      limit?: number;
+      feed?: 'iex' | 'sip';
+    } = {},
+  ): Promise<StockBar[]> {
+    const query = new URLSearchParams();
+    query.set('timeframe', params.timeframe ?? '1Day');
+    if (params.start) query.set('start', params.start);
+    if (params.end) query.set('end', params.end);
+    query.set('limit', String(params.limit ?? 60));
+    query.set('feed', params.feed ?? 'iex');
+    query.set('adjustment', 'raw');
+
+    const url = `${this.dataUrl}/v2/stocks/${encodeURIComponent(symbol)}/bars?${query.toString()}`;
+    const json = await this.fetchAuthed<{ bars?: RawStockBar[] }>(url);
+    return (json.bars ?? []).map((b) => ({
+      symbol,
+      timestamp: b.t,
+      open: b.o,
+      high: b.h,
+      low: b.l,
+      close: b.c,
+      volume: b.v,
+    }));
+  }
+
   // ---------- internal ----------
 
   private parseSnapshot(
@@ -336,6 +376,27 @@ export class AlpacaClient implements OnModuleInit {
     }
     return (await res.json()) as T;
   }
+}
+
+// ---------- types ----------
+
+export interface StockBar {
+  symbol: string;
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface RawStockBar {
+  t: string;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v: number;
 }
 
 // ---------- helpers ----------
