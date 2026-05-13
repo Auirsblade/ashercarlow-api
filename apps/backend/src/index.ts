@@ -1,11 +1,19 @@
 import { createApiApp } from './lib/openapi';
 import { serveStaticSpa } from './lib/static';
+import { LOGIN_HTML } from './lib/login-page';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
 const RESUME_DIST = process.env.RESUME_DIST ?? 'apps/resume/dist';
 const WEDDING_DIST = process.env.WEDDING_DIST ?? 'apps/wedding/dist';
 const STARWARS_DIST = process.env.STARWARS_DIST ?? 'apps/starwars/dist';
+
+const FRONTEND_HOSTS = new Set([
+  'ashercarlow.com',
+  'www.ashercarlow.com',
+  'paulina.ashercarlow.com',
+  'starwars.ashercarlow.com',
+]);
 
 const api = createApiApp();
 
@@ -22,6 +30,16 @@ const server = Bun.serve({
   port: PORT,
   async fetch(req) {
     const host = effectiveHost(req.headers.get('host'));
+    const pathname = new URL(req.url).pathname;
+
+    // Standalone login page — served on every frontend host so any subdomain can be the
+    // landing point. The form POSTs to api.ashercarlow.com/auth/login and the cookie is
+    // scoped to .ashercarlow.com.
+    if (pathname === '/login' && FRONTEND_HOSTS.has(host)) {
+      return new Response(LOGIN_HTML, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
 
     switch (host) {
       case 'ashercarlow.com':

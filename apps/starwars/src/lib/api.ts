@@ -4,34 +4,39 @@ const API_BASE =
   (import.meta.env.VITE_API_BASE as string | undefined) ??
   "https://api.ashercarlow.com";
 
-const TOKEN_KEY = "ashercarlow_token";
+export const [authSignal, setAuthSignal] = createSignal(false);
 
-function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+/** Hits /auth/me and updates authSignal. Returns the new value. */
+export async function refreshAuth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
+    if (!res.ok) {
+      setAuthSignal(false);
+      return false;
+    }
+    const body = (await res.json()) as { authed?: boolean };
+    const authed = !!body.authed;
+    setAuthSignal(authed);
+    return authed;
+  } catch {
+    setAuthSignal(false);
+    return false;
+  }
 }
 
-export function setToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
-  setAuthSignal(true);
-}
-
-export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
+export async function logout(): Promise<void> {
+  await fetch(`${API_BASE}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
   setAuthSignal(false);
 }
-
-export function isAuthenticated(): boolean {
-  return !!getToken();
-}
-
-export const [authSignal, setAuthSignal] = createSignal(isAuthenticated());
 
 export async function api<T = unknown>(
   path: string,
   options: RequestInit & { timeout?: number } = {},
 ): Promise<T> {
   const { timeout, ...fetchOptions } = options;
-  const token = getToken();
 
   let signal = fetchOptions.signal;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -47,9 +52,9 @@ export async function api<T = unknown>(
     res = await fetch(`${API_BASE}${path}`, {
       ...fetchOptions,
       signal,
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...fetchOptions.headers,
       },
     });
@@ -64,7 +69,7 @@ export async function api<T = unknown>(
   }
 
   if (res.status === 401) {
-    clearToken();
+    setAuthSignal(false);
     throw new Error("Unauthorized");
   }
 

@@ -2,6 +2,7 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { HTTPException } from 'hono/http-exception';
 import { corsMiddleware } from '../middleware/cors';
+import { registerAuthRoutes } from '../routes/auth';
 import { registerMusicRoutes } from '../routes/music';
 import { registerSwtcwRoutes } from '../routes/swtcw';
 
@@ -37,6 +38,7 @@ export function createApiApp(): OpenAPIHono {
     description: 'ASHERCARLOW_AUTH_TOKEN as a Bearer token.',
   });
 
+  registerAuthRoutes(app);
   registerMusicRoutes(app);
   registerSwtcwRoutes(app);
 

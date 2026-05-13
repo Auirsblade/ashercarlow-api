@@ -1,6 +1,8 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
+import type { Context } from 'hono';
 import { db } from '../db';
+import { isCookieAuthed } from './auth';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -255,16 +257,18 @@ const importRoute = createRoute({
 // Auth middleware
 // ---------------------------------------------------------------------------
 
-function authGate(c: { req: { method: string; header: (k: string) => string | undefined } }): Response | null {
+function authGate(c: Context): Response | null {
   if (c.req.method === 'GET') return null;
   const expected = process.env.ASHERCARLOW_AUTH_TOKEN;
   if (!expected) return null; // dev-mode: no token configured → allow
+
   const header = c.req.header('Authorization');
-  const token = header?.replace('Bearer ', '');
-  if (token !== expected) {
-    return Response.json({ message: 'Unauthorized' }, { status: 401 });
-  }
-  return null;
+  const headerToken = header?.replace('Bearer ', '');
+  if (headerToken === expected) return null;
+
+  if (isCookieAuthed(c)) return null;
+
+  return Response.json({ message: 'Unauthorized' }, { status: 401 });
 }
 
 // ---------------------------------------------------------------------------
