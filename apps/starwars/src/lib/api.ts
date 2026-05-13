@@ -32,7 +32,6 @@ export async function api<T = unknown>(
 ): Promise<T> {
   const { timeout, ...fetchOptions } = options;
   const token = getToken();
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   let signal = fetchOptions.signal;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -51,7 +50,6 @@ export async function api<T = unknown>(
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        "X-Timezone": tz,
         ...fetchOptions.headers,
       },
     });
