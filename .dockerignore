@@ -1,10 +1,15 @@
 node_modules
+**/node_modules
 dist
+**/dist
 .git
 .gitignore
 *.md
 .env*
-coverage
-test
 .vscode
 .idea
+.DS_Store
+data
+tasks
+test
+coverage

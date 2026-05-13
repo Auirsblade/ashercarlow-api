@@ -1,0 +1,72 @@
+@import "tailwindcss";
+@config "../../tailwind.config.js";
+
+@font-face {
+    font-family: "JetBrains";
+    src: url('fonts/webfonts/JetBrainsMono-Medium.woff2') format('woff2'),
+    url('fonts/ttf/JetBrainsMono-Medium.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+@font-face {
+    font-family: "JetBrains Bold";
+    src: url('fonts/webfonts/JetBrainsMono-BoldItalic.woff2') format('woff2'),
+    url('fonts/ttf/JetBrainsMono-BoldItalic.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+::selection {
+    background-color: #2dd4bf;
+    color: #0f172a;
+}
+
+* {
+    scroll-margin-top: 4rem;
+}
+
+/* Animated dot grid background */
+body {
+    position: relative;
+    background: linear-gradient(135deg, #0f172a 0%, #020617 50%, #0f172a 100%);
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background-image: radial-gradient(circle, #2dd4bf 0.5px, transparent 0.5px);
+    background-size: 32px 32px;
+    opacity: 0.07;
+    animation: dotShift 20s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+
+@keyframes dotShift {
+    0% {
+        background-position: 0px 0px;
+    }
+    100% {
+        background-position: 16px 16px;
+    }
+}
+
+/* Glass card utility */
+.glass-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px);
+    border-radius: 0.75rem;
+}
+
+.glass-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Ensure app content is above the dot grid */
+#app, footer {
+    position: relative;
+    z-index: 1;
+}

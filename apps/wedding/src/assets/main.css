@@ -1,0 +1,6 @@
+@import 'tailwindcss';
+@source inline("{md:,lg:,}h-{44,64}");
+
+@theme {
+    --color-beige: #F5DEC0;
+}

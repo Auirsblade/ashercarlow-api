@@ -1,0 +1,682 @@
+{
+  "generatedAt": "2026-05-06T17:49:55.549Z",
+  "range": {
+    "firstMessage": "2020-08-26T15:15:21.950Z",
+    "lastMessage": "2026-05-06T13:08:08.725Z",
+    "daysSpan": 2080,
+    "daysWithMessages": 1939,
+    "coveragePct": 93.2
+  },
+  "totals": {
+    "messages": 60931,
+    "fromMe": 27343,
+    "fromHer": 33588,
+    "words": 352827,
+    "wordsMe": 155846,
+    "wordsHer": 196981,
+    "characters": 1843907,
+    "attachments": 2747,
+    "textExtractFails": 0
+  },
+  "averages": {
+    "messagesPerDay": 29.3,
+    "messagesPerActiveDay": 31.4,
+    "wordsPerMessageMe": 5.7,
+    "wordsPerMessageHer": 5.9,
+    "responseTimeMedianMsMe": 56724,
+    "responseTimeMedianMsHer": 73591,
+    "responseTimeMeanMsMe": 719422,
+    "responseTimeMeanMsHer": 957980
+  },
+  "phrases": {
+    "iLoveYou": {
+      "me": 284,
+      "her": 483
+    },
+    "iLoveYouTotal": 767,
+    "goodMorning": {
+      "me": 1496,
+      "her": 942
+    },
+    "goodMorningTotal": 2438,
+    "goodNight": {
+      "me": 34,
+      "her": 40
+    },
+    "goodNightTotal": 74,
+    "laughs": {
+      "me": 3104,
+      "her": 2124
+    },
+    "laughsTotal": 5228
+  },
+  "timeOfDay": [
+    {
+      "hour": 0,
+      "count": 662
+    },
+    {
+      "hour": 1,
+      "count": 477
+    },
+    {
+      "hour": 2,
+      "count": 180
+    },
+    {
+      "hour": 3,
+      "count": 113
+    },
+    {
+      "hour": 4,
+      "count": 9
+    },
+    {
+      "hour": 5,
+      "count": 13
+    },
+    {
+      "hour": 6,
+      "count": 101
+    },
+    {
+      "hour": 7,
+      "count": 2174
+    },
+    {
+      "hour": 8,
+      "count": 4721
+    },
+    {
+      "hour": 9,
+      "count": 4169
+    },
+    {
+      "hour": 10,
+      "count": 4726
+    },
+    {
+      "hour": 11,
+      "count": 4867
+    },
+    {
+      "hour": 12,
+      "count": 5029
+    },
+    {
+      "hour": 13,
+      "count": 3938
+    },
+    {
+      "hour": 14,
+      "count": 5013
+    },
+    {
+      "hour": 15,
+      "count": 4070
+    },
+    {
+      "hour": 16,
+      "count": 4252
+    },
+    {
+      "hour": 17,
+      "count": 3303
+    },
+    {
+      "hour": 18,
+      "count": 3087
+    },
+    {
+      "hour": 19,
+      "count": 2576
+    },
+    {
+      "hour": 20,
+      "count": 2102
+    },
+    {
+      "hour": 21,
+      "count": 2229
+    },
+    {
+      "hour": 22,
+      "count": 1930
+    },
+    {
+      "hour": 23,
+      "count": 1190
+    }
+  ],
+  "dayOfWeek": [
+    {
+      "dow": 0,
+      "count": 5459
+    },
+    {
+      "dow": 1,
+      "count": 7384
+    },
+    {
+      "dow": 2,
+      "count": 11271
+    },
+    {
+      "dow": 3,
+      "count": 12665
+    },
+    {
+      "dow": 4,
+      "count": 11173
+    },
+    {
+      "dow": 5,
+      "count": 7771
+    },
+    {
+      "dow": 6,
+      "count": 5208
+    }
+  ],
+  "monthSeries": [
+    {
+      "month": "2020-08",
+      "count": 170
+    },
+    {
+      "month": "2020-09",
+      "count": 468
+    },
+    {
+      "month": "2020-10",
+      "count": 160
+    },
+    {
+      "month": "2020-11",
+      "count": 146
+    },
+    {
+      "month": "2020-12",
+      "count": 201
+    },
+    {
+      "month": "2021-01",
+      "count": 374
+    },
+    {
+      "month": "2021-02",
+      "count": 178
+    },
+    {
+      "month": "2021-03",
+      "count": 156
+    },
+    {
+      "month": "2021-04",
+      "count": 400
+    },
+    {
+      "month": "2021-05",
+      "count": 660
+    },
+    {
+      "month": "2021-06",
+      "count": 648
+    },
+    {
+      "month": "2021-07",
+      "count": 822
+    },
+    {
+      "month": "2021-08",
+      "count": 939
+    },
+    {
+      "month": "2021-09",
+      "count": 1535
+    },
+    {
+      "month": "2021-10",
+      "count": 1578
+    },
+    {
+      "month": "2021-11",
+      "count": 848
+    },
+    {
+      "month": "2021-12",
+      "count": 697
+    },
+    {
+      "month": "2022-01",
+      "count": 1314
+    },
+    {
+      "month": "2022-02",
+      "count": 1823
+    },
+    {
+      "month": "2022-03",
+      "count": 1418
+    },
+    {
+      "month": "2022-04",
+      "count": 1341
+    },
+    {
+      "month": "2022-05",
+      "count": 1684
+    },
+    {
+      "month": "2022-06",
+      "count": 983
+    },
+    {
+      "month": "2022-07",
+      "count": 593
+    },
+    {
+      "month": "2022-08",
+      "count": 962
+    },
+    {
+      "month": "2022-09",
+      "count": 1171
+    },
+    {
+      "month": "2022-10",
+      "count": 1424
+    },
+    {
+      "month": "2022-11",
+      "count": 936
+    },
+    {
+      "month": "2022-12",
+      "count": 1021
+    },
+    {
+      "month": "2023-01",
+      "count": 919
+    },
+    {
+      "month": "2023-02",
+      "count": 963
+    },
+    {
+      "month": "2023-03",
+      "count": 1131
+    },
+    {
+      "month": "2023-04",
+      "count": 765
+    },
+    {
+      "month": "2023-05",
+      "count": 897
+    },
+    {
+      "month": "2023-06",
+      "count": 829
+    },
+    {
+      "month": "2023-07",
+      "count": 1048
+    },
+    {
+      "month": "2023-08",
+      "count": 1794
+    },
+    {
+      "month": "2023-09",
+      "count": 1410
+    },
+    {
+      "month": "2023-10",
+      "count": 1124
+    },
+    {
+      "month": "2023-11",
+      "count": 1010
+    },
+    {
+      "month": "2023-12",
+      "count": 709
+    },
+    {
+      "month": "2024-01",
+      "count": 1229
+    },
+    {
+      "month": "2024-02",
+      "count": 1596
+    },
+    {
+      "month": "2024-03",
+      "count": 1165
+    },
+    {
+      "month": "2024-04",
+      "count": 776
+    },
+    {
+      "month": "2024-05",
+      "count": 924
+    },
+    {
+      "month": "2024-06",
+      "count": 1382
+    },
+    {
+      "month": "2024-07",
+      "count": 723
+    },
+    {
+      "month": "2024-08",
+      "count": 588
+    },
+    {
+      "month": "2024-09",
+      "count": 1151
+    },
+    {
+      "month": "2024-10",
+      "count": 863
+    },
+    {
+      "month": "2024-11",
+      "count": 571
+    },
+    {
+      "month": "2024-12",
+      "count": 606
+    },
+    {
+      "month": "2025-01",
+      "count": 786
+    },
+    {
+      "month": "2025-02",
+      "count": 857
+    },
+    {
+      "month": "2025-03",
+      "count": 606
+    },
+    {
+      "month": "2025-04",
+      "count": 921
+    },
+    {
+      "month": "2025-05",
+      "count": 548
+    },
+    {
+      "month": "2025-06",
+      "count": 730
+    },
+    {
+      "month": "2025-07",
+      "count": 969
+    },
+    {
+      "month": "2025-08",
+      "count": 798
+    },
+    {
+      "month": "2025-09",
+      "count": 899
+    },
+    {
+      "month": "2025-10",
+      "count": 747
+    },
+    {
+      "month": "2025-11",
+      "count": 621
+    },
+    {
+      "month": "2025-12",
+      "count": 692
+    },
+    {
+      "month": "2026-01",
+      "count": 608
+    },
+    {
+      "month": "2026-02",
+      "count": 553
+    },
+    {
+      "month": "2026-03",
+      "count": 604
+    },
+    {
+      "month": "2026-04",
+      "count": 1084
+    },
+    {
+      "month": "2026-05",
+      "count": 85
+    }
+  ],
+  "topEmojis": [
+    {
+      "key": "❤️",
+      "count": 567
+    },
+    {
+      "key": "😍",
+      "count": 469
+    },
+    {
+      "key": "😂",
+      "count": 394
+    },
+    {
+      "key": "😊",
+      "count": 317
+    },
+    {
+      "key": "🥰",
+      "count": 270
+    },
+    {
+      "key": "💀",
+      "count": 237
+    },
+    {
+      "key": "😘",
+      "count": 214
+    },
+    {
+      "key": "🥵",
+      "count": 195
+    },
+    {
+      "key": "☀️",
+      "count": 154
+    },
+    {
+      "key": "🤩",
+      "count": 140
+    },
+    {
+      "key": "☺️",
+      "count": 140
+    },
+    {
+      "key": "😩",
+      "count": 110
+    }
+  ],
+  "topEmojisMe": [
+    {
+      "key": "💀",
+      "count": 237
+    },
+    {
+      "key": "😍",
+      "count": 221
+    },
+    {
+      "key": "❤️",
+      "count": 177
+    },
+    {
+      "key": "😂",
+      "count": 156
+    },
+    {
+      "key": "☀️",
+      "count": 153
+    },
+    {
+      "key": "🥵",
+      "count": 135
+    }
+  ],
+  "topEmojisHer": [
+    {
+      "key": "❤️",
+      "count": 390
+    },
+    {
+      "key": "😊",
+      "count": 296
+    },
+    {
+      "key": "🥰",
+      "count": 252
+    },
+    {
+      "key": "😍",
+      "count": 248
+    },
+    {
+      "key": "😂",
+      "count": 238
+    },
+    {
+      "key": "🤩",
+      "count": 135
+    }
+  ],
+  "topWords": [
+    {
+      "key": "morning",
+      "count": 2768
+    },
+    {
+      "key": "yea",
+      "count": 1825
+    },
+    {
+      "key": "hun",
+      "count": 1479
+    },
+    {
+      "key": "nice",
+      "count": 1259
+    },
+    {
+      "key": "okie",
+      "count": 1055
+    },
+    {
+      "key": "home",
+      "count": 928
+    },
+    {
+      "key": "well",
+      "count": 888
+    },
+    {
+      "key": "babe",
+      "count": 758
+    },
+    {
+      "key": "fun",
+      "count": 715
+    },
+    {
+      "key": "goodie",
+      "count": 688
+    },
+    {
+      "key": "call",
+      "count": 670
+    },
+    {
+      "key": "work",
+      "count": 667
+    },
+    {
+      "key": "yay",
+      "count": 662
+    },
+    {
+      "key": "want",
+      "count": 661
+    },
+    {
+      "key": "true",
+      "count": 655
+    },
+    {
+      "key": "dear",
+      "count": 648
+    },
+    {
+      "key": "beeb",
+      "count": 628
+    },
+    {
+      "key": "sleep",
+      "count": 517
+    },
+    {
+      "key": "lmao",
+      "count": 500
+    },
+    {
+      "key": "omg",
+      "count": 493
+    },
+    {
+      "key": "done",
+      "count": 492
+    },
+    {
+      "key": "sounds",
+      "count": 491
+    },
+    {
+      "key": "pretty",
+      "count": 458
+    },
+    {
+      "key": "stuff",
+      "count": 453
+    },
+    {
+      "key": "need",
+      "count": 450
+    }
+  ],
+  "longestStreak": {
+    "days": 320,
+    "start": "2024-08-14",
+    "end": "2025-06-29"
+  },
+  "longestDay": {
+    "date": "2022-05-16",
+    "count": 336
+  },
+  "longestMessage": {
+    "length": 2019,
+    "fromMe": false,
+    "text": "Okay so today I’m going to finish my paper. Tomorrow I’m driving to Wausau and riding to EC with mom and Marco, the last patient is at 3:30 so we’ll have enough time to make it back for the movie. After the movie I’m going to pack up my stuff for the weekend. On Friday, I’m going to work in Wausau, mom and I are getting our nails done around 4/4:30, then dinner is at 6:30 at Back Wind. After dinner we can just stop here and grab our bags and drop off one of our cars since we will ride down together. I’m hoping we’ll be to Madison around 10:30 ish to have enough time to go out. Then on Saturday, there is a graduation reception at the psych building that starts at 9, a college of Letters and Science reception at Camp Randall from 10-11, and I have to be seated for the ceremony at 11:20. Since this weekend is also when people in the dorms are moving out, traffic and parking is going to be insane, so I think mom is going to drop us off at the psych building and park somewhere. That way when the ceremony and photos are done we won’t have to walk all the way back to my apartment. The ceremony is from 12-1:30 ish. Afterwards I’m hoping we’ll go around campus & the capitol to take photos. We aren’t going to dinner with dads side anymore on Saturday because my Aunt Carol was supposed to make the reservation weeks ago but never did and now every single place in Madison is completely booked out. So instead of dinner, we are going to get a uhaul after photos and move all my stuff out of the apartment. That might be happening Sunday though because my grandma is riding down with my dad so he has to see what she wants to do. If we move out on Sunday I guess we’ll have to stay overnight but I’ll let u know what the plan is there. Once all my stuff is out of my apartment, we will stop in point to unload the couch at the house, and pick up kris’s futon in his dorm. Then we’ll have to go to my moms house and unload everything in her detached garage behind the house, take the uhaul back and then go home.",
+    "date": "2022-05-11T17:29:34.921Z"
+  }
+}

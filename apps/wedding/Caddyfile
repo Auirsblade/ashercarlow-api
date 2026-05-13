@@ -1,0 +1,9 @@
+:{$PORT} {
+    root * dist
+    encode gzip
+
+    # SPA fallback: any path that isn't a real file falls back to index.html
+    # so Vue Router (HTML5 history mode) can handle /stats, /invite/*, etc.
+    try_files {path} /index.html
+    file_server
+}
