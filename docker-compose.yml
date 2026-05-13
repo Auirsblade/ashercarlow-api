@@ -3,8 +3,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+    # No `ports:` — Dokploy routes external traffic to this container through
+    # its internal Traefik over the docker network. Publishing the host port
+    # would conflict with anything else on :3000 (including a previous deploy
+    # of this app). For local docker testing, run with:
+    #   docker compose run --rm --service-ports ashercarlow
+    # or:
+    #   docker run --rm -p 3000:3000 -e ASHERCARLOW_AUTH_TOKEN=... <image>
+    expose:
+      - "3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -12,5 +19,8 @@ services:
       - ASHERCARLOW_AUTH_TOKEN=${ASHERCARLOW_AUTH_TOKEN:-}
       - SWTCW_DB_PATH=/app/data/swtcw.sqlite
     volumes:
-      - ./data:/app/data
+      - ashercarlow-data:/app/data
     restart: unless-stopped
+
+volumes:
+  ashercarlow-data:
