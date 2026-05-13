@@ -32,5 +32,5 @@ tmp/
 temp/
 tmpclaude-*
 
-# Kalshi observer local database
-data/
+# Root-level SQLite data directory (NOT apps/*/src/data)
+/data/
