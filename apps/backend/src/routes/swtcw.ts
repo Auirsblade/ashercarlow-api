@@ -1,8 +1,7 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
-import type { Context } from 'hono';
 import { db } from '../db';
-import { isCookieAuthed } from './auth';
+import { authGate } from './auth';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -252,24 +251,6 @@ const importRoute = createRoute({
     502: { description: 'Failed to reach pitwall', content: { 'application/json': { schema: ErrorBody } } },
   },
 });
-
-// ---------------------------------------------------------------------------
-// Auth middleware
-// ---------------------------------------------------------------------------
-
-function authGate(c: Context): Response | null {
-  if (c.req.method === 'GET') return null;
-  const expected = process.env.ASHERCARLOW_AUTH_TOKEN;
-  if (!expected) return null; // dev-mode: no token configured → allow
-
-  const header = c.req.header('Authorization');
-  const headerToken = header?.replace('Bearer ', '');
-  if (headerToken === expected) return null;
-
-  if (isCookieAuthed(c)) return null;
-
-  return Response.json({ message: 'Unauthorized' }, { status: 401 });
-}
 
 // ---------------------------------------------------------------------------
 // Pitwall import

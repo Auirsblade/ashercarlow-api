@@ -31,6 +31,20 @@ export function isCookieAuthed(c: Context): boolean {
   return !!cookie && cookie === expected;
 }
 
+/** Shared mutation gate: GET requests pass; non-GET requires the admin Bearer
+ * token or a valid session cookie. Allows everything when ASHERCARLOW_AUTH_TOKEN
+ * is unset (dev mode). */
+export function authGate(c: Context): Response | null {
+  if (c.req.method === 'GET') return null;
+  const expected = process.env.ASHERCARLOW_AUTH_TOKEN;
+  if (!expected) return null;
+  const header = c.req.header('Authorization');
+  const headerToken = header?.replace('Bearer ', '');
+  if (headerToken === expected) return null;
+  if (isCookieAuthed(c)) return null;
+  return Response.json({ message: 'Unauthorized' }, { status: 401 });
+}
+
 const ErrorBody = z.object({ message: z.string() });
 const Ok = z.object({ ok: z.boolean() });
 const Me = z.object({ authed: z.boolean() });
