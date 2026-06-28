@@ -26,7 +26,7 @@ export function runMigrations(
     applied_at TEXT NOT NULL
   )`);
 
-  const applied = db.query<{ version: string }, [string]>(
+  const applied = db.prepare<{ version: string }, [string]>(
     'SELECT version FROM schema_migrations WHERE version = ?',
   );
   const insert = db.prepare(
