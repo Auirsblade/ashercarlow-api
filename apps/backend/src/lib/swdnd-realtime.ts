@@ -45,6 +45,9 @@ export const swdndWebsocket: WebSocketHandler<WsData> = {
     ws.subscribe(ws.data.room);
     ws.send(JSON.stringify({ type: 'joined', room: ws.data.room }));
   },
+  // NOTE: ws.publish() delivers to all OTHER subscribers in the room, not the
+  // sender — intentional for ephemeral client frames. Authoritative state uses
+  // publishToRoom() (server.publish), which reaches every subscriber.
   message(ws: ServerWebSocket<WsData>, message: string | Buffer) {
     const env = parseEnvelope(typeof message === 'string' ? message : message.toString());
     if (!env || env.room !== ws.data.room) return;
