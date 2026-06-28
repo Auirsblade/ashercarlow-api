@@ -34,3 +34,6 @@ tmpclaude-*
 
 # Root-level SQLite data directory (NOT apps/*/src/data)
 /data/
+
+# sw5e source clone for the import script (not committed)
+/vendor/
