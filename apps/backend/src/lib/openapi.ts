@@ -50,7 +50,7 @@ export function createApiApp(): OpenAPIHono {
       version: '1.0.0',
       title: 'ashercarlow API',
       description:
-        'Backend endpoints for ashercarlow.com properties (music metadata, SWTCW Clone Wars tracker).',
+        'Backend endpoints for ashercarlow.com properties (music metadata, SWTCW Clone Wars tracker, swdnd Star Wars D&D).',
     },
   });
 
