@@ -10,6 +10,7 @@ COPY apps/backend/package.json ./apps/backend/
 COPY apps/resume/package.json ./apps/resume/
 COPY apps/wedding/package.json ./apps/wedding/
 COPY apps/starwars/package.json ./apps/starwars/
+COPY apps/swdnd/package.json ./apps/swdnd/
 
 RUN bun install --frozen-lockfile
 
@@ -22,10 +23,11 @@ COPY apps/ ./apps/
 ARG VITE_API_BASE=https://api.ashercarlow.com
 ENV VITE_API_BASE=${VITE_API_BASE}
 
-# Build the three frontends
+# Build the four frontends
 RUN cd apps/resume   && bun run build && cd ../.. \
  && cd apps/wedding  && bun run build && cd ../.. \
- && cd apps/starwars && bun run build && cd ../..
+ && cd apps/starwars && bun run build && cd ../.. \
+ && cd apps/swdnd    && bun run build && cd ../..
 
 # ---- Stage 2: lean runtime image -------------------------------------------
 FROM oven/bun:1-slim AS runner
@@ -37,6 +39,7 @@ COPY apps/backend/package.json ./apps/backend/
 COPY apps/resume/package.json ./apps/resume/
 COPY apps/wedding/package.json ./apps/wedding/
 COPY apps/starwars/package.json ./apps/starwars/
+COPY apps/swdnd/package.json ./apps/swdnd/
 RUN bun install --production --frozen-lockfile
 
 # Backend source (includes migrations under src/db/migrations)
@@ -46,6 +49,7 @@ COPY apps/backend/src ./apps/backend/src
 COPY --from=builder /app/apps/resume/dist ./apps/resume/dist
 COPY --from=builder /app/apps/wedding/dist ./apps/wedding/dist
 COPY --from=builder /app/apps/starwars/dist ./apps/starwars/dist
+COPY --from=builder /app/apps/swdnd/dist ./apps/swdnd/dist
 
 ENV NODE_ENV=production
 ENV PORT=3000

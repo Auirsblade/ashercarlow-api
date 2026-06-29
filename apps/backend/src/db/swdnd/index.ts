@@ -1,0 +1,12 @@
+import { join } from 'node:path';
+import { openDatabase, runMigrations, type Migration } from '../runner';
+import { ensureReferenceTables } from './reference';
+
+const DB_PATH = process.env.SWDND_DB_PATH ?? './data/swdnd.sqlite';
+
+export const swdndDb = openDatabase(DB_PATH);
+
+const MIGRATIONS: Migration[] = [{ version: '001_swdnd_core', file: '001_swdnd_core.sql' }];
+
+runMigrations(swdndDb, MIGRATIONS, join(import.meta.dir, '..', 'migrations', 'swdnd'));
+ensureReferenceTables(swdndDb);

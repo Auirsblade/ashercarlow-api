@@ -5,6 +5,7 @@ import { corsMiddleware } from '../middleware/cors';
 import { registerAuthRoutes } from '../routes/auth';
 import { registerMusicRoutes } from '../routes/music';
 import { registerSwtcwRoutes } from '../routes/swtcw';
+import { registerSwdndRoutes } from '../routes/swdnd';
 
 export function createApiApp(): OpenAPIHono {
   const app = new OpenAPIHono({
@@ -41,6 +42,7 @@ export function createApiApp(): OpenAPIHono {
   registerAuthRoutes(app);
   registerMusicRoutes(app);
   registerSwtcwRoutes(app);
+  registerSwdndRoutes(app);
 
   app.doc('/openapi.json', {
     openapi: '3.0.0',
@@ -48,7 +50,7 @@ export function createApiApp(): OpenAPIHono {
       version: '1.0.0',
       title: 'ashercarlow API',
       description:
-        'Backend endpoints for ashercarlow.com properties (music metadata, SWTCW Clone Wars tracker).',
+        'Backend endpoints for ashercarlow.com properties (music metadata, SWTCW Clone Wars tracker, swdnd Star Wars D&D).',
     },
   });
 

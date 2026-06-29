@@ -5,6 +5,7 @@ const ALLOWED_HOSTS = new Set([
   'www.ashercarlow.com',
   'paulina.ashercarlow.com',
   'starwars.ashercarlow.com',
+  'swdnd.ashercarlow.com',
   'api.ashercarlow.com',
 ]);
 
