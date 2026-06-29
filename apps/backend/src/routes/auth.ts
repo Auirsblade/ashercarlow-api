@@ -23,7 +23,12 @@ function cookieSecure(c: Context): boolean {
   return h !== 'localhost' && h !== '127.0.0.1';
 }
 
-/** Read the auth cookie and check it against the configured admin token. */
+/**
+ * Read the auth cookie and check it against the configured admin token.
+ * Note: returns false when ASHERCARLOW_AUTH_TOKEN is unset, even though dev-mode
+ * (unset token) intentionally allows all mutations via authGate(). For access
+ * control use authGate(); call this only to report cookie session validity.
+ */
 export function isCookieAuthed(c: Context): boolean {
   const expected = process.env.ASHERCARLOW_AUTH_TOKEN;
   if (!expected) return false;
