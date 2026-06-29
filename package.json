@@ -12,7 +12,8 @@
     "build:resume": "cd apps/resume && bun run build",
     "build:wedding": "cd apps/wedding && bun run build",
     "build:starwars": "cd apps/starwars && bun run build",
-    "build:frontends": "bun run build:resume && bun run build:wedding && bun run build:starwars"
+    "build:swdnd": "cd apps/swdnd && bun run build",
+    "build:frontends": "bun run build:resume && bun run build:wedding && bun run build:starwars && bun run build:swdnd"
   },
   "devDependencies": {
     "@types/bun": "latest",

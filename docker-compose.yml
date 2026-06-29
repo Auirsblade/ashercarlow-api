@@ -18,6 +18,7 @@ services:
       - APPLE_MUSIC_DEVELOPER_TOKEN=${APPLE_MUSIC_DEVELOPER_TOKEN:-}
       - ASHERCARLOW_AUTH_TOKEN=${ASHERCARLOW_AUTH_TOKEN:-}
       - SWTCW_DB_PATH=/app/data/swtcw.sqlite
+      - SWDND_DB_PATH=/app/data/swdnd.sqlite
     volumes:
       - ashercarlow-data:/app/data
     restart: unless-stopped
