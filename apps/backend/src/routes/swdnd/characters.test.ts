@@ -14,6 +14,8 @@ beforeAll(async () => {
   const { registerSwdndRoutes } = await import('./index');
   app = new OpenAPIHono();
   registerSwdndRoutes(app);
+  // swdndDb is a shared singleton across test files — reset before seeding.
+  swdndDb.exec('DELETE FROM character; DELETE FROM player; DELETE FROM campaign;');
   swdndDb.run('INSERT INTO campaign (id,name,created_at,updated_at) VALUES (?,?,?,?)', ['c1', 'Camp', 'n', 'n']);
 });
 

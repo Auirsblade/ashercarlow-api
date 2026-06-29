@@ -11,6 +11,9 @@ beforeAll(async () => {
   delete process.env.ASHERCARLOW_AUTH_TOKEN;
   dbMod = await import('../../db/swdnd');
   mod = await import('./access');
+  // The swdndDb singleton is shared across test files in one bun process, so
+  // clear it before seeding to stay isolated regardless of file run order.
+  dbMod.swdndDb.exec('DELETE FROM character; DELETE FROM player; DELETE FROM campaign;');
   // seed a campaign + player
   dbMod.swdndDb.run('INSERT INTO campaign (id,name,created_at,updated_at) VALUES (?,?,?,?)', ['c1', 'C', 'n', 'n']);
   dbMod.swdndDb.run('INSERT INTO player (id,campaign_id,name,access_token,created_at) VALUES (?,?,?,?,?)', ['p1', 'c1', 'Ash', 'tok-1', 'n']);
