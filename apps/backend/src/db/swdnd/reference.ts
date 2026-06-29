@@ -18,9 +18,9 @@ const COMMON =
 export const REFERENCE_TABLES: RefTable[] = [
   { table: 'species', extra: [] },
   { table: 'species_features', extra: [] },
-  { table: 'classes', extra: [{ name: 'caster_type', type: 'TEXT' }, { name: 'caster_ratio', type: 'REAL' }] },
+  { table: 'classes', extra: [] },
   { table: 'class_features', extra: [] },
-  { table: 'archetypes', extra: [{ name: 'caster_type', type: 'TEXT' }, { name: 'caster_ratio', type: 'REAL' }] },
+  { table: 'archetypes', extra: [] },
   { table: 'archetype_features', extra: [] },
   { table: 'backgrounds', extra: [] },
   { table: 'feats', extra: [] },

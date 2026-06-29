@@ -31,6 +31,10 @@ describe('ensureReferenceTables', () => {
       .query<{ name: string }, []>('PRAGMA table_info(classes)')
       .all()
       .map((r) => r.name);
-    expect(classCols).toContain('caster_ratio');
+    expect(classCols).toEqual(
+      expect.arrayContaining(['id', 'name', 'content_source', 'content_type', 'raw_json']),
+    );
+    expect(classCols).not.toContain('caster_type');
+    expect(classCols).not.toContain('caster_ratio');
   });
 });
