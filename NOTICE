@@ -1,0 +1,18 @@
+swdnd — sw5e content attribution & licensing
+============================================
+
+The swdnd module imports game content from the Star Wars 5e (sw5e) project's
+Foundry VTT system repository:
+
+  Source:  https://github.com/sw5e-foundry/sw5e  (packs/, GPL-3.0)
+
+Notes:
+- The sw5e Foundry system code/data is licensed GPL-3.0. Redistribution of the
+  imported data files or derivative code carries GPL-3.0 obligations.
+- sw5e is an unofficial fan project. Its content rests on unlicensed Star Wars
+  intellectual property and is NOT affiliated with or endorsed by sw5e.com,
+  Disney, Lucasfilm, or Wizards of the Coast.
+- This application is for personal, non-commercial use only.
+
+The sw5e website API (https://sw5eapi.azurewebsites.net/api/) carries no license
+and is used (if at all) only for cross-checking, never redistribution.
