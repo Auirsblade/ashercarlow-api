@@ -3,6 +3,7 @@ import { authGate } from '../auth';
 import { registerContentRoutes } from './content';
 import { registerCampaignRoutes } from './campaigns';
 import { registerCharacterRoutes } from './characters';
+import { registerPlayerRoutes } from './players';
 
 export function registerSwdndRoutes(app: OpenAPIHono): void {
   app.use('/swdnd/*', async (c, next) => {
@@ -14,4 +15,5 @@ export function registerSwdndRoutes(app: OpenAPIHono): void {
   registerContentRoutes(app);
   registerCampaignRoutes(app);
   registerCharacterRoutes(app);
+  registerPlayerRoutes(app);
 }
