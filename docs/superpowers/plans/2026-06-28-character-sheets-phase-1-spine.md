@@ -1320,7 +1320,8 @@ beforeAll(async () => {
 });
 
 function reqWith(headers: Record<string, string>, url = 'http://x/swdnd/characters/x') {
-  return { req: { header: (k: string) => headers[k.toLowerCase()], url, method: 'PATCH' } } as any;
+  // raw.headers is required because isCookieAuthed -> getCookie reads c.req.raw.headers.
+  return { req: { header: (k: string) => headers[k.toLowerCase()], url, method: 'PATCH', raw: { headers: new Headers(headers) } } } as any;
 }
 
 test('resolvePlayerByToken finds the owning player', () => {
