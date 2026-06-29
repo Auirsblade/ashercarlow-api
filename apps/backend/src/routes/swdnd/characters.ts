@@ -36,6 +36,9 @@ const PatchBody = z
 function toApi(row: CharacterRow) {
   return { ...row, data_json: JSON.parse(row.data_json) as Record<string, unknown> };
 }
+// Mirrors the frontend engine's emptyBuild() (apps/swdnd/src/lib/rules/types.ts).
+// They can't share code across the backend/frontend boundary — keep the two in
+// sync when the build schema (schemaVersion) changes.
 function emptyBuildJson(name: string): string {
   return JSON.stringify({
     schemaVersion: 1,
