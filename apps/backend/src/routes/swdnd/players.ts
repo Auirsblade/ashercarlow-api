@@ -2,7 +2,7 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
 import { swdndDb } from '../../db/swdnd';
-import { assertAdmin, resolvePlayerByToken } from './access';
+import { assertAdmin, resolvePlayerByToken, PlayerRow } from './access';
 
 const Player = z
   .object({
@@ -14,9 +14,6 @@ const Player = z
   })
   .openapi('SwdndPlayer');
 
-interface PlayerRow {
-  id: string; campaign_id: string; name: string; access_token: string; created_at: string;
-}
 interface CharLite { id: string; name: string; campaign_id: string }
 
 const ErrorBody = z.object({ message: z.string() });
@@ -68,7 +65,7 @@ export function registerPlayerRoutes(app: OpenAPIHono): void {
 
   app.openapi(meRoute, (c) => {
     const { token } = c.req.valid('query');
-    const player = resolvePlayerByToken(token) as PlayerRow | null;
+    const player = resolvePlayerByToken(token);
     if (!player) throw new HTTPException(404, { message: 'Unknown token' });
     const characters = swdndDb
       .query<CharLite, [string]>('SELECT id, name, campaign_id FROM character WHERE player_id = ? ORDER BY created_at ASC')

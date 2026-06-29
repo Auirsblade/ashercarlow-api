@@ -48,3 +48,19 @@ test('a stranger cannot PATCH the character', async () => {
   });
   expect(res.status).toBe(403);
 });
+
+test('player-slot creation is blocked without admin auth', async () => {
+  const res = await app.request('/swdnd/campaigns/c1/players', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Mara' }),
+  });
+  expect(res.status).toBe(403);
+});
+
+test('player-slot creation succeeds with the admin bearer token', async () => {
+  const res = await app.request('/swdnd/campaigns/c1/players', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer admin-secret' },
+    body: JSON.stringify({ name: 'Mara' }),
+  });
+  expect(res.status).toBe(201);
+});
