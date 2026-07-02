@@ -1,15 +1,35 @@
+// apps/backend/src/routes/swdnd/index.ts
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import { authGate } from '../auth';
 import { registerContentRoutes } from './content';
 import { registerCampaignRoutes } from './campaigns';
+import { registerCharacterRoutes } from './characters';
+import { registerPlayerRoutes } from './players';
+
+/** Paths whose mutations run their own (player-or-admin) access check, so the
+ * blanket admin-only gate must not pre-empt them.
+ *
+ * NOTE: this is intentionally a coarse prefix/suffix match for the current
+ * route set. It fails CLOSED on edge cases (trailing slash, query string) but
+ * a NEW route that happens to start with `/swdnd/characters` or end in
+ * `/characters`/`/players` would be silently exempted from the admin gate.
+ * When adding swdnd routes, confirm any newly-exempted path enforces its own
+ * access check (assertAdmin / assertCharacterWriteAccess), or tighten this. */
+function selfGated(path: string): boolean {
+  return path.startsWith('/swdnd/characters') || path.endsWith('/characters') || path.endsWith('/players');
+}
 
 export function registerSwdndRoutes(app: OpenAPIHono): void {
   app.use('/swdnd/*', async (c, next) => {
-    const blocked = authGate(c);
-    if (blocked) return blocked;
+    if (!selfGated(new URL(c.req.url).pathname)) {
+      const blocked = authGate(c);
+      if (blocked) return blocked;
+    }
     return next();
   });
 
   registerContentRoutes(app);
   registerCampaignRoutes(app);
+  registerCharacterRoutes(app);
+  registerPlayerRoutes(app);
 }

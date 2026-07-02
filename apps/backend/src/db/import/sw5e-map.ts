@@ -75,11 +75,6 @@ export function mapFoundryDoc(source: PackSource, doc: any): RefRow {
     const align = system.forceAlignment ?? system.alignment ?? null;
     extra.force_alignment = typeof align === 'string' ? align : null;
   }
-  if (source.table === 'classes' || source.table === 'archetypes') {
-    extra.caster_type = typeof system.casterType === 'string' ? system.casterType : null;
-    extra.caster_ratio = typeof system.casterRatio === 'number' ? system.casterRatio : null;
-  }
-
   const source_field = system.source;
   const content_source =
     typeof source_field === 'string'
