@@ -20,6 +20,9 @@ test('rollD20 adds modifier; advantage keeps the higher', () => {
   expect(adv).toMatchObject({ kept: 20, total: 20, rolls: [3, 20] });
   const dis = rollD20(0, { disadvantage: true }, seq([0.1, 0.95])); // keep 3
   expect(dis.kept).toBe(3);
+  // advantage + disadvantage together: advantage wins (keeps the higher)
+  const both = rollD20(0, { advantage: true, disadvantage: true }, seq([0.1, 0.95]));
+  expect(both.kept).toBe(20);
 });
 
 test('rollDamage parses NdM+K', () => {

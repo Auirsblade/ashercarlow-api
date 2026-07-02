@@ -50,6 +50,20 @@ test('at-will power (level 0) costs 0', () => {
   expect(applyPlayAction(build(), derived(), { t: 'castPower', power }).forcePointsSpent).toBe(0);
 });
 
+test('castPower charges the tech pool for tech powers, pinned to 0 when there is no tech pool', () => {
+  const techPower: RefPower = { id: 'scan', name: 'Sensor Scan', level: 1, castType: 'tech' };
+  // default derived() has no tech pool (pointsMax 0) -> stays 0, force pool untouched
+  const noTech = applyPlayAction(build(), derived(), { t: 'castPower', power: techPower });
+  expect(noTech.techPointsSpent).toBe(0);
+  expect(noTech.forcePointsSpent).toBe(0);
+  // tech-enabled -> charges level+1 on the tech track
+  const base = derived();
+  const techDerived = derived({
+    casting: { force: base.casting.force, tech: { ...base.casting.tech, classes: 1, pointsMax: 10 } },
+  });
+  expect(applyPlayAction(build(), techDerived, { t: 'castPower', power: techPower }).techPointsSpent).toBe(2);
+});
+
 test('hit dice, conditions, exhaustion, inspiration', () => {
   const b = build();
   expect(applyPlayAction(b, derived(), { t: 'spendHitDie' }).hitDiceSpent).toBe(1);
