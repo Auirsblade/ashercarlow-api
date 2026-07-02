@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getCharacter, loadReference, patchCharacter, type CharacterDto } from '../lib/characters';
+import { connectCampaign } from '../lib/ws';
 import { useAuth } from '../lib/auth';
 import { resolveCanEdit } from '../lib/canEdit';
 import { applyPlayAction, type PlayAction } from '../lib/playState';
@@ -59,6 +60,19 @@ export function useCharacterSheet(characterId: string): SheetState {
     () => (build && ref ? computeSheet(build, ref) : null),
     [build, ref],
   );
+
+  useEffect(() => {
+    const campaignId = dto?.campaign_id;
+    if (!campaignId) return;
+    const sock = connectCampaign(campaignId, (env) => {
+      if (env.type !== 'character:updated') return;
+      const payload = env.payload as { characterId?: string; play?: PlayState } | undefined;
+      if (payload?.characterId === characterId && payload.play) {
+        setPlay(payload.play);
+      }
+    });
+    return () => sock.close();
+  }, [dto?.campaign_id, characterId]);
 
   const canEdit = resolveCanEdit({ admin: authed, token });
 
