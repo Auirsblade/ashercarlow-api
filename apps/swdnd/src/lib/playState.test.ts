@@ -36,6 +36,14 @@ test('heal caps at derived maxHp', () => {
   expect(applyPlayAction(build({ hp: 28 }), derived(), { t: 'heal', n: 10 }).hp).toBe(30);
 });
 
+test('setHp sets an exact value clamped to 0..maxHp, leaving temp HP alone', () => {
+  const lowered = applyPlayAction(build({ hp: 20, tempHp: 5 }), derived(), { t: 'setHp', n: 12 });
+  expect(lowered.hp).toBe(12); // can go DOWN, unlike heal
+  expect(lowered.tempHp).toBe(5); // not routed through temp
+  expect(applyPlayAction(build({ hp: 5 }), derived(), { t: 'setHp', n: 99 }).hp).toBe(30);
+  expect(applyPlayAction(build({ hp: 5 }), derived(), { t: 'setHp', n: -4 }).hp).toBe(0);
+});
+
 test('spendForce and castPower clamp to the pool and use power cost level+1', () => {
   const b = build();
   expect(applyPlayAction(b, derived(), { t: 'spendForce', n: 5 }).forcePointsSpent).toBe(5);

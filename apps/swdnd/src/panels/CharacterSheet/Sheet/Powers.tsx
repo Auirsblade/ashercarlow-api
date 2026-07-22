@@ -10,10 +10,11 @@ interface Props {
   editable: boolean;
   playForceSpent: number;
   playTechSpent: number;
+  playSuperioritySpent: number;
   dispatch: (a: PlayAction) => void;
 }
 
-export default function Powers({ build, derived, ref, editable, playForceSpent, playTechSpent, dispatch }: Props) {
+export default function Powers({ build, derived, ref, editable, playForceSpent, playTechSpent, playSuperioritySpent, dispatch }: Props) {
   const groups = knownPowersByLevel(build, ref);
   const tracks = [
     { key: 'force' as const, title: 'Force Powers', track: derived.casting.force, groups: groups.force, spent: playForceSpent },
@@ -65,7 +66,7 @@ export default function Powers({ build, derived, ref, editable, playForceSpent, 
           <div className="flex justify-between text-ht-text">
             <span>{derived.superiority.die} dice</span>
             <span className="text-ht-muted">
-              {remaining(derived.superiority.diceMax, build.play.superiorityDiceSpent)}/{derived.superiority.diceMax} · known {derived.superiority.knownMax}
+              {remaining(derived.superiority.diceMax, playSuperioritySpent)}/{derived.superiority.diceMax} · known {derived.superiority.knownMax}
             </span>
           </div>
           {editable && (

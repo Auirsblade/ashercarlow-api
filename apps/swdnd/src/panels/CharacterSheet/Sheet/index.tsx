@@ -40,12 +40,13 @@ export default function Sheet({ characterId }: { characterId: string }) {
   );
   const colPowers = (
     <Powers build={s.build} derived={s.derived} ref={s.ref} editable={s.canEdit}
-      playForceSpent={s.play.forcePointsSpent} playTechSpent={s.play.techPointsSpent} dispatch={s.dispatch} />
+      playForceSpent={s.play.forcePointsSpent} playTechSpent={s.play.techPointsSpent}
+      playSuperioritySpent={s.play.superiorityDiceSpent} dispatch={s.dispatch} />
   );
 
   return (
     <div className="@container min-h-screen bg-ht-bg p-3 text-ht-text" style={factionStyle(s.build.identity.alignment)}>
-      <CoreBar build={s.build} derived={s.derived} play={s.play} editable={s.canEdit} dispatch={s.dispatch} />
+      <CoreBar characterId={characterId} build={s.build} derived={s.derived} play={s.play} editable={s.canEdit} dispatch={s.dispatch} />
 
       {/* Wide: 3 columns */}
       <div className="mt-3 hidden gap-3 @lg:grid @lg:grid-cols-3">

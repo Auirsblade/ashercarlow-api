@@ -6,6 +6,7 @@ import Stepper from './Stepper';
 import ConditionsMenu from './ConditionsMenu';
 
 interface Props {
+  characterId: string;
   build: CharacterBuild;
   derived: DerivedSheet;
   play: PlayState;
@@ -22,7 +23,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-export default function CoreBar({ build, derived, play, editable, dispatch }: Props) {
+export default function CoreBar({ characterId, build, derived, play, editable, dispatch }: Props) {
   const { force, tech } = derived.casting;
   const level = build.levels.length;
   return (
@@ -32,14 +33,14 @@ export default function CoreBar({ build, derived, play, editable, dispatch }: Pr
         <div className="text-[10px] text-ht-muted">
           Level {level} · <span style={{ color: 'var(--faction)' }}>{build.identity.alignment}</span>
         </div>
-        <a href={`/sheet/${build.identity.name ? '' : ''}build`} className="ht-label" style={{ cursor: 'pointer' }}>✎ Edit / Level up ▸</a>
+        <a href={`/sheet/${characterId}/build`} className="ht-label" style={{ cursor: 'pointer' }}>✎ Edit / Level up ▸</a>
       </div>
 
       <div className="ht-panel px-3 py-2 text-center">
         <div className="ht-label">Hit Points</div>
         <Stepper value={play.hp} max={derived.maxHp} editable={editable}
           onDelta={(d) => dispatch(d < 0 ? { t: 'damage', n: -d } : { t: 'heal', n: d })}
-          onSet={(v) => dispatch({ t: 'heal', n: v - play.hp })} />
+          onSet={(v) => dispatch({ t: 'setHp', n: v })} />
         <div className="text-[10px] text-ht-muted">temp +{play.tempHp} · HD {remaining(derived.totalLevel, play.hitDiceSpent)}</div>
       </div>
 

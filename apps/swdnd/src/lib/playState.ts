@@ -4,6 +4,7 @@ import type { CharacterBuild, DerivedSheet, PlayState, RefPower } from './rules/
 export type PlayAction =
   | { t: 'damage'; n: number }
   | { t: 'heal'; n: number }
+  | { t: 'setHp'; n: number }
   | { t: 'setTemp'; n: number }
   | { t: 'spendForce'; n: number }
   | { t: 'spendTech'; n: number }
@@ -40,6 +41,10 @@ export function applyPlayAction(
     }
     case 'heal':
       p.hp = clamp(p.hp + Math.max(0, action.n), 0, derived.maxHp);
+      break;
+    case 'setHp':
+      // Exact-entry: set HP directly (does not route through temp HP).
+      p.hp = clamp(action.n, 0, derived.maxHp);
       break;
     case 'setTemp':
       p.tempHp = Math.max(0, action.n);

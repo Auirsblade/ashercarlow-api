@@ -66,6 +66,11 @@ export function useCharacterSheet(characterId: string): SheetState {
     if (!campaignId) return;
     const sock = connectCampaign(campaignId, (env) => {
       if (env.type !== 'character:updated') return;
+      // While a local edit is pending (debounce timer armed), skip incoming
+      // merges: our own earlier echo — or a concurrent writer — must not
+      // clobber the newer local state. Once our PATCH fires, its echo matches
+      // local state and merging is idempotent (last-write-wins).
+      if (saveTimer.current) return;
       const payload = env.payload as { characterId?: string; play?: PlayState } | undefined;
       if (payload?.characterId === characterId && payload.play) {
         setPlay(payload.play);
@@ -83,7 +88,10 @@ export function useCharacterSheet(characterId: string): SheetState {
       setPlay(nextPlay);
       const nextBuild = { ...build, play: nextPlay };
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      // Deliberately NOT cleared on unmount: a pending timer flushes the last
+      // edit rather than dropping it when the user navigates away.
       saveTimer.current = setTimeout(() => {
+        saveTimer.current = null; // edit no longer pending; WS merges resume
         void patchCharacter(characterId, { data_json: nextBuild }, token ?? undefined).catch(
           (e: unknown) => setError(e instanceof Error ? e.message : 'Save failed'),
         );
