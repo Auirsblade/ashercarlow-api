@@ -1,7 +1,7 @@
 // apps/swdnd/src/panels/CharacterSheet/Sheet/CoreBar.tsx
-import type { CharacterBuild, DerivedSheet, PlayState } from '../../../lib/rules/types';
+import type { CharacterBuild, DerivedSheet, PlayState, ReferenceData } from '../../../lib/rules/types';
 import type { PlayAction } from '../../../lib/playState';
-import { remaining } from '../../../lib/sheetView';
+import { classSummary, remaining } from '../../../lib/sheetView';
 import Stepper from './Stepper';
 import ConditionsMenu from './ConditionsMenu';
 
@@ -9,6 +9,7 @@ interface Props {
   characterId: string;
   build: CharacterBuild;
   derived: DerivedSheet;
+  ref: ReferenceData;
   play: PlayState;
   editable: boolean;
   dispatch: (a: PlayAction) => void;
@@ -23,15 +24,17 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-export default function CoreBar({ characterId, build, derived, play, editable, dispatch }: Props) {
+export default function CoreBar({ characterId, build, derived, ref, play, editable, dispatch }: Props) {
   const { force, tech } = derived.casting;
-  const level = build.levels.length;
+  const classLine = classSummary(build, ref) || `Level ${build.levels.length}`;
+  const speciesName = ref.species[build.identity.speciesId]?.name;
   return (
     <div className="ht-glow flex flex-wrap items-center gap-2 rounded-md p-3">
       <div className="min-w-[120px]">
-        <div className="font-mono text-sm font-bold text-ht-bright">{build.identity.name || 'Unnamed'}</div>
+        <div className="ht-name font-mono text-sm font-bold">{build.identity.name || 'Unnamed'}</div>
         <div className="text-[10px] text-ht-muted">
-          Level {level} · <span style={{ color: 'var(--faction)' }}>{build.identity.alignment}</span>
+          {classLine} · <span className="capitalize" style={{ color: 'var(--faction)' }}>{build.identity.alignment}</span>
+          {speciesName && ` · ${speciesName}`}
         </div>
         <a href={`/sheet/${characterId}/build`} className="ht-label" style={{ cursor: 'pointer' }}>✎ Edit / Level up ▸</a>
       </div>

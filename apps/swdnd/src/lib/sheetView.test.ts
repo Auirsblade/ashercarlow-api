@@ -1,11 +1,26 @@
 // apps/swdnd/src/lib/sheetView.test.ts
 import { test, expect } from 'bun:test';
 import { emptyBuild, type ReferenceData, type RefPower } from './rules/types';
-import { remaining, powerCost, knownPowersByLevel } from './sheetView';
+import { remaining, powerCost, knownPowersByLevel, classSummary } from './sheetView';
 
 test('remaining never goes negative', () => {
   expect(remaining(22, 17)).toBe(5);
   expect(remaining(22, 30)).toBe(0);
+});
+
+test('classSummary names classes with levels in first-taken order, raw-id fallback', () => {
+  const ref = {
+    classes: { consular: { id: 'consular', name: 'Consular' }, fighter: { id: 'fighter', name: 'Fighter' } },
+  } as unknown as ReferenceData;
+  const b = emptyBuild('x');
+  b.levels = [
+    { n: 1, classId: 'consular', archetypeId: null, hp: 'avg' },
+    { n: 2, classId: 'fighter', archetypeId: null, hp: 'avg' },
+    { n: 3, classId: 'consular', archetypeId: null, hp: 'avg' },
+    { n: 4, classId: 'mystery', archetypeId: null, hp: 'avg' },
+  ];
+  expect(classSummary(b, ref)).toBe('Consular 2 / Fighter 1 / mystery 1');
+  expect(classSummary(emptyBuild('y'), ref)).toBe('');
 });
 
 test('powerCost is level+1, 0 for at-will', () => {

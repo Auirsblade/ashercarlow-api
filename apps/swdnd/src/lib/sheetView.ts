@@ -4,6 +4,15 @@ import type { CharacterBuild, CastType, ReferenceData, RefPower } from './rules/
 export const remaining = (max: number, spent: number): number => Math.max(0, max - spent);
 export const powerCost = (level: number): number => (level === 0 ? 0 : level + 1);
 
+/** "Consular 5 / Fighter 1" — class names + levels in first-taken order; falls back to raw ids. */
+export function classSummary(build: CharacterBuild, ref: ReferenceData): string {
+  const counts = new Map<string, number>();
+  for (const l of build.levels) counts.set(l.classId, (counts.get(l.classId) ?? 0) + 1);
+  return [...counts.entries()]
+    .map(([id, n]) => `${ref.classes[id]?.name ?? id} ${n}`)
+    .join(' / ');
+}
+
 export interface PowerGroup {
   level: number;
   label: string;

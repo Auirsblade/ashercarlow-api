@@ -92,9 +92,9 @@ export function useCharacterSheet(characterId: string): SheetState {
       // edit rather than dropping it when the user navigates away.
       saveTimer.current = setTimeout(() => {
         saveTimer.current = null; // edit no longer pending; WS merges resume
-        void patchCharacter(characterId, { data_json: nextBuild }, token ?? undefined).catch(
-          (e: unknown) => setError(e instanceof Error ? e.message : 'Save failed'),
-        );
+        void patchCharacter(characterId, { data_json: nextBuild }, token ?? undefined)
+          .then(() => setError(null)) // a successful save clears any stale banner
+          .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Save failed'));
       }, SAVE_DEBOUNCE_MS);
     },
     [canEdit, build, derived, play, characterId, token],

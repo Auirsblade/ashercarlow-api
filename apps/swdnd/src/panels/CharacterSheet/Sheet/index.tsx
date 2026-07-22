@@ -17,17 +17,20 @@ export default function Sheet({ characterId }: { characterId: string }) {
   const { rolls, pushRoll } = useRolls();
 
   if (s.loading) return <div className="p-6 font-mono text-ht-muted">Loading sheet…</div>;
-  if (s.error) return <div className="p-6 font-mono text-red-400">{s.error}</div>;
-  if (!s.build || !s.derived || !s.ref || !s.play) return null;
+  // Only a LOAD failure is fatal; a failed save renders as a banner over live data.
+  if (!s.build || !s.derived || !s.ref || !s.play) {
+    return <div className="p-6 font-mono text-red-400">{s.error ?? 'Character not found'}</div>;
+  }
 
   const roll = (label: string, mod: number) => {
     const r = rollD20(mod);
     pushRoll(label, `d20 ${r.kept} ${mod >= 0 ? '+' : ''}${mod}`, r.total);
   };
 
+  const castingAbility = s.derived.casting.force.ability ?? s.derived.casting.tech.ability;
   const colAbilities = (
     <div className="flex flex-col gap-3">
-      <Abilities derived={s.derived} onRoll={roll} />
+      <Abilities derived={s.derived} highlight={castingAbility} onRoll={roll} />
       <Skills derived={s.derived} onRoll={roll} />
     </div>
   );
@@ -35,7 +38,7 @@ export default function Sheet({ characterId }: { characterId: string }) {
     <div className="flex flex-col gap-3">
       <Combat build={s.build} derived={s.derived} ref={s.ref} onRoll={roll} />
       <Gear build={s.build} ref={s.ref} />
-      <Features build={s.build} />
+      <Features build={s.build} ref={s.ref} />
     </div>
   );
   const colPowers = (
@@ -45,8 +48,13 @@ export default function Sheet({ characterId }: { characterId: string }) {
   );
 
   return (
-    <div className="@container min-h-screen bg-ht-bg p-3 text-ht-text" style={factionStyle(s.build.identity.alignment)}>
-      <CoreBar characterId={characterId} build={s.build} derived={s.derived} play={s.play} editable={s.canEdit} dispatch={s.dispatch} />
+    <div className="@container ht-screen min-h-screen p-3 text-ht-text" style={factionStyle(s.build.identity.alignment)}>
+      {s.error && (
+        <div className="mb-2 rounded border border-red-400/60 bg-red-950/40 px-3 py-1.5 font-mono text-[11px] text-red-300">
+          ⚠ {s.error} — changes may not be saved
+        </div>
+      )}
+      <CoreBar characterId={characterId} build={s.build} derived={s.derived} ref={s.ref} play={s.play} editable={s.canEdit} dispatch={s.dispatch} />
 
       {/* Wide: 3 columns */}
       <div className="mt-3 hidden gap-3 @lg:grid @lg:grid-cols-3">
