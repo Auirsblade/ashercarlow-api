@@ -758,7 +758,13 @@ const consular: RefClass = {
 };
 const human: RefSpecies = { id: 'human', name: 'Human', walkSpeed: 30, description: '', abilityIncreases: { fixed: {}, points: 4 } };
 const ref = {
-  classes: { consular }, species: { human }, archetypes: {}, armor: {}, weapons: {}, powers: {},
+  classes: { consular }, species: { human }, archetypes: {}, armor: {}, weapons: {},
+  // Test 5 counts known powers per-track via ref lookup, so its ids must exist here.
+  powers: {
+    a: { id: 'a', name: 'A', level: 1, castType: 'force', description: '' },
+    b: { id: 'b', name: 'B', level: 1, castType: 'force', description: '' },
+    c: { id: 'c', name: 'C', level: 1, castType: 'force', description: '' },
+  },
   backgrounds: { jedi: { id: 'jedi', name: 'Jedi', description: '', featureName: null, skillProse: null, toolProse: null, equipmentProse: null } },
   feats: {}, maneuvers: {}, gear: {},
 } as unknown as ReferenceData;
