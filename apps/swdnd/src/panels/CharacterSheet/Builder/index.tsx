@@ -12,6 +12,7 @@ import SkillsStep from './steps/Skills';
 import AbilitiesStep from './steps/Abilities';
 import FeatsStep from './steps/Feats';
 import EquipmentStep from './steps/Equipment';
+import PowersStep from './steps/Powers';
 
 export default function Builder({ characterId }: { characterId: string }) {
   const b = useBuilder(characterId);
@@ -64,8 +65,8 @@ export default function Builder({ characterId }: { characterId: string }) {
           )}
           {active === 'feats' && <FeatsStep build={b.build} ref={b.ref} editable={b.canEdit} dispatch={b.dispatch} />}
           {active === 'equipment' && <EquipmentStep build={b.build} ref={b.ref} editable={b.canEdit} dispatch={b.dispatch} />}
-          {!['species', 'background', 'class', 'skills', 'abilities', 'feats', 'equipment'].includes(active) && (
-            <div className="ht-panel p-4 text-[11px] text-ht-muted">step: {active} — coming in the next tasks</div>
+          {active === 'powers' && (
+            <PowersStep build={b.build} derived={b.derived} ref={b.ref} editable={b.canEdit} dispatch={b.dispatch} />
           )}
         </div>
       </div>
