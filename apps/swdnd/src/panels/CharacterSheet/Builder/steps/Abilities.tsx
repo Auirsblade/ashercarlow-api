@@ -61,7 +61,9 @@ export default function AbilitiesStep({ build, derived, editable, dispatch }: Pr
               {mode === 'manual' && (
                 <input
                   type="number" min={1} max={20} disabled={!editable}
-                  className="w-14 bg-transparent text-center text-base text-ht-bright outline-none"
+                  // appearance overrides kill the spin-button gutter that pushed the
+                  // centered value off-axis from the label above it.
+                  className="mx-auto block w-14 bg-transparent text-center text-base text-ht-bright outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   value={base[a]}
                   onChange={(e) => set(a, Number(e.target.value) || 0)}
                 />
