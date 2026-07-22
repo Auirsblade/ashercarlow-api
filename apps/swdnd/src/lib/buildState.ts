@@ -28,11 +28,18 @@ const clone = (b: CharacterBuild): CharacterBuild => ({
   proficiencies: {
     ...b.proficiencies,
     skills: [...b.proficiencies.skills],
+    expertise: [...b.proficiencies.expertise],
+    tools: [...b.proficiencies.tools],
+    languages: [...b.proficiencies.languages],
     savingThrows: [...b.proficiencies.savingThrows],
   },
   equipment: b.equipment.map((e) => ({ ...e })),
   knownPowers: [...b.knownPowers],
   knownManeuvers: [...b.knownManeuvers],
+  // play/overrides aren't touched by any build action today, but clone them so
+  // future actions (Phase 4 ASIs/overrides) can't mutate the caller's build.
+  play: { ...b.play, conditions: [...b.play.conditions] },
+  overrides: { ...b.overrides },
   houseRuled: [...(b.houseRuled ?? [])],
 });
 
