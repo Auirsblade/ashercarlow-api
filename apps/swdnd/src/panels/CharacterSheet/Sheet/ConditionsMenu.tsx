@@ -19,7 +19,7 @@ export default function ConditionsMenu({ active, editable, onAdd, onRemove }: Pr
   const available = SW5E_CONDITIONS.filter((c) => !active.includes(c));
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-1.5">
+    <div className="flex flex-wrap items-center justify-start gap-1.5 @lg:justify-end">
       {active.map((c) => (
         <button
           key={c}
@@ -42,7 +42,7 @@ export default function ConditionsMenu({ active, editable, onAdd, onRemove }: Pr
             + Condition ▾
           </button>
           {open && (
-            <div className="absolute right-0 z-10 mt-1 max-h-56 w-40 overflow-auto ht-panel p-1 text-[11px]">
+            <div className="absolute left-0 z-10 mt-1 max-h-56 w-40 overflow-auto ht-panel p-1 text-[11px] @lg:left-auto @lg:right-0">
               {available.length === 0 && <div className="p-1 text-ht-muted">All applied</div>}
               {available.map((c) => (
                 <button

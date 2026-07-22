@@ -7,6 +7,7 @@ import SplitView from "./layouts/SplitView";
 import CharacterSheet from "./panels/CharacterSheet";
 import Tabletop from "./panels/Tabletop";
 import DMScreen from "./panels/DMScreen";
+import PlayerHome from "./panels/PlayerHome";
 
 function SheetPage() {
   const { characterId = "" } = useParams();
@@ -72,6 +73,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/player" element={<SinglePanel><PlayerHome /></SinglePanel>} />
           <Route path="/sheet/:characterId" element={<SheetPage />} />
           <Route path="/sheet/:characterId/:mode" element={<SheetPage />} />
           <Route path="/map/:campaignId" element={<MapPage />} />

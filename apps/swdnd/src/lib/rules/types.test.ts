@@ -11,4 +11,5 @@ test('emptyBuild produces a schema-versioned, playable blank build', () => {
   expect(b.levels).toEqual([]);
   expect(b.play.hp).toBe(0);
   expect(b.overrides).toEqual({});
+  expect(b.houseRuled).toEqual([]);
 });

@@ -1,4 +1,5 @@
 // apps/swdnd/src/panels/CharacterSheet/Sheet/CoreBar.tsx
+import { Link, useLocation } from 'react-router-dom';
 import type { CharacterBuild, DerivedSheet, PlayState, ReferenceData } from '../../../lib/rules/types';
 import type { PlayAction } from '../../../lib/playState';
 import { classSummary, remaining } from '../../../lib/sheetView';
@@ -15,6 +16,8 @@ interface Props {
   dispatch: (a: PlayAction) => void;
 }
 
+const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
+
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="ht-panel px-3 py-2 text-center">
@@ -26,6 +29,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 export default function CoreBar({ characterId, build, derived, ref, play, editable, dispatch }: Props) {
   const { force, tech } = derived.casting;
+  const { search } = useLocation(); // carry ?token=… into the builder
   const classLine = classSummary(build, ref) || `Level ${build.levels.length}`;
   const speciesName = ref.species[build.identity.speciesId]?.name;
   return (
@@ -36,7 +40,7 @@ export default function CoreBar({ characterId, build, derived, ref, play, editab
           {classLine} · <span className="capitalize" style={{ color: 'var(--faction)' }}>{build.identity.alignment}</span>
           {speciesName && ` · ${speciesName}`}
         </div>
-        <a href={`/sheet/${characterId}/build`} className="ht-label" style={{ cursor: 'pointer' }}>✎ Edit / Level up ▸</a>
+        <Link to={`/sheet/${characterId}/build${search}`} className="ht-label" style={{ cursor: 'pointer' }}>✎ Edit / Level up ▸</Link>
       </div>
 
       <div className="ht-panel px-3 py-2 text-center">
@@ -47,10 +51,13 @@ export default function CoreBar({ characterId, build, derived, ref, play, editab
         <div className="text-[10px] text-ht-muted">temp +{play.tempHp} · HD {remaining(derived.totalLevel, play.hitDiceSpent)}</div>
       </div>
 
-      <Stat label="AC" value={derived.armorClass} />
-      <Stat label="Init" value={`+${derived.initiative}`} />
-      <Stat label="Speed" value={derived.speed} />
-      <Stat label="Prof" value={`+${derived.proficiencyBonus}`} />
+      {/* One flex child so AC…Prof wrap to a new line together, never split. */}
+      <div className="flex gap-2">
+        <Stat label="AC" value={derived.armorClass} />
+        <Stat label="Init" value={fmt(derived.initiative)} />
+        <Stat label="Speed" value={derived.speed} />
+        <Stat label="Prof" value={fmt(derived.proficiencyBonus)} />
+      </div>
 
       {force.classes > 0 && (
         <div className="ht-glow rounded-md px-3 py-2 text-center">
@@ -58,7 +65,7 @@ export default function CoreBar({ characterId, build, derived, ref, play, editab
           <Stepper value={remaining(force.pointsMax, play.forcePointsSpent)} max={force.pointsMax} editable={editable}
             onDelta={(d) => dispatch({ t: 'spendForce', n: -d })}
             onSet={(v) => dispatch({ t: 'spendForce', n: remaining(force.pointsMax, play.forcePointsSpent) - v })} />
-          <div className="text-[10px] text-ht-muted">max lvl {force.maxPowerLevel} · DC {force.saveDc} · atk +{force.attackBonus}</div>
+          <div className="text-[10px] text-ht-muted">max lvl {force.maxPowerLevel} · DC {force.saveDc} · atk {fmt(force.attackBonus ?? 0)}</div>
         </div>
       )}
       {tech.classes > 0 && (
@@ -67,11 +74,12 @@ export default function CoreBar({ characterId, build, derived, ref, play, editab
           <Stepper value={remaining(tech.pointsMax, play.techPointsSpent)} max={tech.pointsMax} editable={editable}
             onDelta={(d) => dispatch({ t: 'spendTech', n: -d })}
             onSet={(v) => dispatch({ t: 'spendTech', n: remaining(tech.pointsMax, play.techPointsSpent) - v })} />
-          <div className="text-[10px] text-ht-muted">max lvl {tech.maxPowerLevel} · DC {tech.saveDc} · atk +{tech.attackBonus}</div>
+          <div className="text-[10px] text-ht-muted">max lvl {tech.maxPowerLevel} · DC {tech.saveDc} · atk {fmt(tech.attackBonus ?? 0)}</div>
         </div>
       )}
 
-      <div className="ml-auto flex flex-col items-end gap-1">
+      {/* Wide: right-aligned column at the bar's end. Narrow: its own full row, left-aligned. */}
+      <div className="flex w-full flex-row flex-wrap items-center gap-2 @lg:ml-auto @lg:w-auto @lg:flex-col @lg:items-end @lg:gap-1">
         <ConditionsMenu active={play.conditions} editable={editable}
           onAdd={(c) => dispatch({ t: 'addCondition', c })}
           onRemove={(c) => dispatch({ t: 'removeCondition', c })} />

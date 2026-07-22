@@ -1,8 +1,9 @@
 // apps/swdnd/src/lib/characters.ts
 import { api } from './api';
+import { cleanRichText } from './richText';
 import type {
-  AbilityKey, CharacterBuild, Progression, RefArchetype, RefArmor, RefClass,
-  RefPower, RefSpecies, RefWeapon, ReferenceData, SkillKey,
+  AbilityKey, CharacterBuild, Progression, RefArchetype, RefArmor, RefBackground, RefClass,
+  RefFeat, RefGear, RefManeuver, RefPower, RefSpecies, RefWeapon, ReferenceData, SkillKey,
 } from './rules/types';
 
 // ---- REST wrappers ----
@@ -58,6 +59,21 @@ function prog(v: unknown): Progression {
 function asAbility(v: unknown): AbilityKey | undefined {
   return ['str', 'dex', 'con', 'int', 'wis', 'cha'].includes(v as string) ? (v as AbilityKey) : undefined;
 }
+function proseOf(v: unknown): string | null {
+  if (typeof v === 'string') return v || null;
+  if (v && typeof v === 'object' && 'value' in v) {
+    const inner = (v as { value?: unknown }).value;
+    return typeof inner === 'string' && inner ? inner : null;
+  }
+  return null;
+}
+function descriptionOf(s: Record<string, any>): string {
+  return cleanRichText(proseOf(s.description));
+}
+function priceOf(s: Record<string, any>): number | null {
+  const v = s.price?.value;
+  return typeof v === 'number' ? v : null;
+}
 
 export function mapClassRow(row: Row): RefClass {
   const s = system(row);
@@ -73,6 +89,7 @@ export function mapClassRow(row: Row): RefClass {
     powercasting: { force: prog(s.powercasting?.force), tech: prog(s.powercasting?.tech) },
     powercastingOverride: Object.keys(override).length ? override : undefined,
     superiorityProgression: Number(s.superiority?.progression ?? 0) || 0,
+    description: descriptionOf(s),
   };
 }
 
@@ -91,7 +108,25 @@ export function mapArchetypeRow(row: Row): RefArchetype {
 
 export function mapSpeciesRow(row: Row): RefSpecies {
   const s = system(row);
-  return { id: row.id, name: row.name ?? row.id, walkSpeed: Number(s.movement?.walk ?? 30) || 30 };
+  const adv = Array.isArray(s.advancement) ? s.advancement : [];
+  const asiEntry = adv.find((a: any) => a?.type === 'AbilityScoreImprovement');
+  let abilityIncreases: RefSpecies['abilityIncreases'] = null;
+  if (asiEntry) {
+    const cfg = asiEntry.configuration ?? {};
+    const fixedRaw = (cfg.fixed ?? {}) as Record<string, unknown>;
+    const fixed: Partial<Record<AbilityKey, number>> = {};
+    for (const [k, v] of Object.entries(fixedRaw)) {
+      const ak = asAbility(k);
+      if (ak) fixed[ak] = Number(v) || 0;
+    }
+    abilityIncreases = { fixed, points: Number(cfg.points ?? 0) || 0 };
+  }
+  return {
+    id: row.id, name: row.name ?? row.id,
+    walkSpeed: Number(s.movement?.walk ?? 30) || 30,
+    description: descriptionOf(s),
+    abilityIncreases,
+  };
 }
 
 export function mapArmorRow(row: Row): RefArmor {
@@ -103,6 +138,8 @@ export function mapArmorRow(row: Row): RefArmor {
     baseAc: Number(s.armor?.value ?? 10) || 10,
     dexCap: s.armor?.dex == null ? null : Number(s.armor.dex),
     kind,
+    price: priceOf(s),
+    description: descriptionOf(s),
   };
 }
 
@@ -114,6 +151,8 @@ export function mapWeaponRow(row: Row): RefWeapon {
     properties: (s.properties ?? {}) as Record<string, unknown>,
     ability: asAbility(s.ability) ?? '',
     attackBonus: Number(s.attackBonus ?? 0) || 0,
+    price: priceOf(s),
+    description: descriptionOf(s),
   };
 }
 
@@ -123,6 +162,47 @@ export function mapPowerRow(row: Row): RefPower {
     id: row.id, name: row.name ?? row.id,
     level: Number(s.level ?? 0) || 0,
     castType: row.power_type === 'tech' ? 'tech' : 'force',
+    description: descriptionOf(s),
+  };
+}
+
+export function mapBackgroundRow(row: Row): RefBackground {
+  const s = system(row);
+  return {
+    id: row.id, name: row.name ?? row.id,
+    description: descriptionOf(s),
+    featureName: proseOf(s.featureName),
+    skillProse: proseOf(s.skillProficiencies),
+    toolProse: proseOf(s.toolProficiencies),
+    equipmentProse: proseOf(s.equipment),
+  };
+}
+
+export function mapFeatRow(row: Row): RefFeat {
+  const s = system(row);
+  return {
+    id: row.id, name: row.name ?? row.id,
+    description: descriptionOf(s),
+    requirements: proseOf(s.requirements),
+  };
+}
+
+export function mapManeuverRow(row: Row): RefManeuver {
+  const s = system(row);
+  return {
+    id: row.id, name: row.name ?? row.id,
+    maneuverType: String(s.maneuverType ?? ''),
+    description: descriptionOf(s),
+  };
+}
+
+export function mapGearRow(row: Row): RefGear {
+  const s = system(row);
+  return {
+    id: row.id, name: row.name ?? row.id,
+    category: typeof row.category === 'string' ? row.category : null,
+    price: priceOf(s),
+    description: descriptionOf(s),
   };
 }
 
@@ -132,13 +212,17 @@ function byId<T extends { id: string }>(rows: T[]): Record<string, T> {
 
 /** Fetch the content categories the engine needs and map them into ReferenceData. */
 export async function loadReference(): Promise<ReferenceData> {
-  const [classes, archetypes, species, armor, weapons, powers] = await Promise.all([
+  const [classes, archetypes, species, armor, weapons, powers, backgrounds, feats, maneuvers, gear] = await Promise.all([
     api<Row[]>('/swdnd/content/classes'),
     api<Row[]>('/swdnd/content/archetypes'),
     api<Row[]>('/swdnd/content/species'),
     api<Row[]>('/swdnd/content/armor'),
     api<Row[]>('/swdnd/content/weapons'),
     api<Row[]>('/swdnd/content/powers'),
+    api<Row[]>('/swdnd/content/backgrounds'),
+    api<Row[]>('/swdnd/content/feats'),
+    api<Row[]>('/swdnd/content/maneuvers'),
+    api<Row[]>('/swdnd/content/gear'),
   ]);
   return {
     classes: byId(classes.map(mapClassRow)),
@@ -147,5 +231,9 @@ export async function loadReference(): Promise<ReferenceData> {
     armor: byId(armor.map(mapArmorRow)),
     weapons: byId(weapons.map(mapWeaponRow)),
     powers: byId(powers.map(mapPowerRow)),
+    backgrounds: byId(backgrounds.map(mapBackgroundRow)),
+    feats: byId(feats.map(mapFeatRow)),
+    maneuvers: byId(maneuvers.map(mapManeuverRow)),
+    gear: byId(gear.map(mapGearRow)),
   };
 }
