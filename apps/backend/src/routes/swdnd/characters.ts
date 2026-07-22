@@ -49,6 +49,7 @@ function emptyBuildJson(name: string): string {
     equipment: [], credits: 0, knownPowers: [], knownManeuvers: [],
     play: { hp: 0, tempHp: 0, hitDiceSpent: 0, forcePointsSpent: 0, techPointsSpent: 0, superiorityDiceSpent: 0, conditions: [], exhaustion: 0, inspiration: false, notes: '' },
     overrides: {},
+    houseRuled: [],
   });
 }
 function getRow(id: string): CharacterRow | null {

@@ -68,6 +68,8 @@ export interface CharacterBuild {
   play: PlayState;
   /** Assisted-mode manual overrides keyed by derived scalar field name. */
   overrides: Record<string, number>;
+  /** Step keys the player has house-rule-unlocked (additive; absent = none). */
+  houseRuled?: string[];
 }
 
 // ---- Reference view types (mapped from /swdnd/content/:category raw_json) ----
@@ -186,5 +188,6 @@ export function emptyBuild(name: string): CharacterBuild {
       superiorityDiceSpent: 0, conditions: [], exhaustion: 0, inspiration: false, notes: '',
     },
     overrides: {},
+    houseRuled: [],
   };
 }
