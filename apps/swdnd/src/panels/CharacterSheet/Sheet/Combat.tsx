@@ -17,6 +17,7 @@ export default function Combat({
     .map((e) => ref.weapons[e.ref])
     .filter(Boolean);
   const atkMod = derived.proficiencyBonus + derived.abilities.str.mod;
+  const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
   return (
     <div className="ht-panel p-2 font-mono text-[11px]">
       <div className="ht-label mb-1">Attacks</div>
@@ -30,7 +31,7 @@ export default function Combat({
       ))}
       <div className="ht-label mb-1 mt-2">Defense</div>
       <div className="flex justify-between text-ht-text"><span>Armor Class</span><b>{derived.armorClass}</b></div>
-      <div className="flex justify-between text-ht-text"><span>Initiative</span><b>+{derived.initiative}</b></div>
+      <div className="flex justify-between text-ht-text"><span>Initiative</span><b>{fmt(derived.initiative)}</b></div>
       <div className="flex justify-between text-ht-text"><span>Speed</span><b>{derived.speed}</b></div>
     </div>
   );

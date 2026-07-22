@@ -4,6 +4,7 @@ import { classSummary } from '../../../lib/sheetView';
 
 export default function Features({ build, ref }: { build: CharacterBuild; ref: ReferenceData }) {
   const speciesName = ref.species[build.identity.speciesId]?.name ?? build.identity.speciesId;
+  const backgroundName = ref.backgrounds[build.identity.backgroundId]?.name ?? build.identity.backgroundId;
   return (
     <div className="ht-panel p-2 font-mono text-[11px]">
       <div className="ht-label mb-1">Features &amp; Traits</div>
@@ -11,7 +12,7 @@ export default function Features({ build, ref }: { build: CharacterBuild; ref: R
         <span>Species</span><span className="text-ht-muted">{speciesName || '—'}</span>
       </div>
       <div className="flex justify-between text-ht-text">
-        <span>Background</span><span className="text-ht-muted">{build.identity.backgroundId || '—'}</span>
+        <span>Background</span><span className="text-ht-muted">{backgroundName || '—'}</span>
       </div>
       <div className="flex justify-between text-ht-text">
         <span>Classes</span><span className="text-ht-muted">{classSummary(build, ref) || '—'}</span>

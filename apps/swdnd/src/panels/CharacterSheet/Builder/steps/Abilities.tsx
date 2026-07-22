@@ -67,7 +67,8 @@ export default function AbilitiesStep({ build, derived, editable, dispatch }: Pr
                 />
               )}
               {mode === 'array' && (
-                <div className="flex flex-wrap justify-center gap-1">
+                // Grid, not flex-wrap: the six values always split evenly (3+3), never 5+1.
+                <div className="grid grid-cols-3 justify-items-center gap-1">
                   {[...new Set(STANDARD_ARRAY)].map((v) => (
                     <button key={v} type="button" disabled={!editable}
                       onClick={() => set(a, v)}
