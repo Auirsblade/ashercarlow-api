@@ -11,5 +11,9 @@ export default function CharacterSheet({ characterId }: { characterId: string })
       </section>
     );
   }
-  return <Sheet characterId={characterId} />;
+  // key: a character change must remount the sheet. Without it, client-side
+  // navigation A→B keeps A's loaded state, so a failed load of B would render
+  // A's live sheet under B's URL; remounting also strands A's pending
+  // save-timer/WS closures on the dead instance instead of leaking into B.
+  return <Sheet key={characterId} characterId={characterId} />;
 }
