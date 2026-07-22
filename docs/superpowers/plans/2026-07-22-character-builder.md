@@ -409,7 +409,7 @@ function priceOf(s: Record<string, any>): number | null {
 - New `mapBackgroundRow`, `mapFeatRow`, `mapManeuverRow`, `mapGearRow` per the test shapes (gear's `category` comes from the ROW column `row.category`, not raw_json).
 - `loadReference()`: add `api<Row[]>('/swdnd/content/backgrounds' | 'feats' | 'maneuvers' | 'gear')` to the `Promise.all` and the returned object via `byId(...)`.
 
-Update the ONE existing assertion that breaks: in the old `mapArmorRow` test, change `toEqual({...})` to `toMatchObject({...})` (the row now also carries `price`/`description`).
+Update the TWO existing assertions that break on the additive fields: in the old `mapArmorRow` AND `mapPowerRow` tests, change `toEqual({...})` to `toMatchObject({...})` (the rows now also carry `price`/`description`).
 
 - [ ] **Step 5: Verify + build**
 
