@@ -1,6 +1,6 @@
 // apps/swdnd/src/panels/PlayerHome/index.tsx
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   createCharacter, deleteCharacter, getCharacter, getPlayerByToken, loadReference,
   type CharacterDto, type PlayerDto,
@@ -46,7 +46,12 @@ export default function PlayerHome() {
     Promise.all([getPlayerByToken(token), loadReference()])
       .then(async ([me, ref]) => {
         setPlayer(me.player);
-        const dtos = await Promise.all(me.characters.map((c) => getCharacter(c.id)));
+        // allSettled: one failed character fetch (e.g. a just-deleted draft)
+        // shouldn't blank every other loadable row.
+        const results = await Promise.allSettled(me.characters.map((c) => getCharacter(c.id)));
+        const dtos = results
+          .filter((r): r is PromiseFulfilledResult<CharacterDto> => r.status === 'fulfilled')
+          .map((r) => r.value);
         setRows(dtos.map((d) => toRow(d, ref)));
         setError(null);
       })
@@ -89,8 +94,8 @@ export default function PlayerHome() {
               {stepsDone === stepsTotal ? '✓ build complete' : `${stepsDone}/${stepsTotal} steps`}
             </div>
             <div className="ml-auto flex items-center gap-2 text-[11px]">
-              <a className="ht-step" href={`/sheet/${dto.id}?token=${encodeURIComponent(token)}`}>sheet</a>
-              <a className="ht-step" href={`/sheet/${dto.id}/build?token=${encodeURIComponent(token)}`}>build</a>
+              <Link className="ht-step" to={`/sheet/${dto.id}?token=${encodeURIComponent(token)}`}>sheet</Link>
+              <Link className="ht-step" to={`/sheet/${dto.id}/build?token=${encodeURIComponent(token)}`}>build</Link>
               {confirmDelete === dto.id ? (
                 <span>
                   <button type="button" className="ht-step text-red-400" onClick={() => void remove(dto.id)}>confirm ✕</button>

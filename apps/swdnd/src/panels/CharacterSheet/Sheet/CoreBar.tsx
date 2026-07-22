@@ -1,4 +1,5 @@
 // apps/swdnd/src/panels/CharacterSheet/Sheet/CoreBar.tsx
+import { Link, useLocation } from 'react-router-dom';
 import type { CharacterBuild, DerivedSheet, PlayState, ReferenceData } from '../../../lib/rules/types';
 import type { PlayAction } from '../../../lib/playState';
 import { classSummary, remaining } from '../../../lib/sheetView';
@@ -26,6 +27,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 export default function CoreBar({ characterId, build, derived, ref, play, editable, dispatch }: Props) {
   const { force, tech } = derived.casting;
+  const { search } = useLocation(); // carry ?token=… into the builder
   const classLine = classSummary(build, ref) || `Level ${build.levels.length}`;
   const speciesName = ref.species[build.identity.speciesId]?.name;
   return (
@@ -36,7 +38,7 @@ export default function CoreBar({ characterId, build, derived, ref, play, editab
           {classLine} · <span className="capitalize" style={{ color: 'var(--faction)' }}>{build.identity.alignment}</span>
           {speciesName && ` · ${speciesName}`}
         </div>
-        <a href={`/sheet/${characterId}/build`} className="ht-label" style={{ cursor: 'pointer' }}>✎ Edit / Level up ▸</a>
+        <Link to={`/sheet/${characterId}/build${search}`} className="ht-label" style={{ cursor: 'pointer' }}>✎ Edit / Level up ▸</Link>
       </div>
 
       <div className="ht-panel px-3 py-2 text-center">

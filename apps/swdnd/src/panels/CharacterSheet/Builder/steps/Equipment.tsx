@@ -33,7 +33,7 @@ export default function EquipmentStep({ build, ref, editable, dispatch }: Props)
         <b className="text-ht-bright">{build.credits.toLocaleString()} ₡</b>
         {editable && <button type="button" className="ht-step" onClick={() => dispatch({ t: 'setCredits', credits: build.credits + 50 })}>+50</button>}
         <span className="ml-auto text-[10px] text-ht-muted">
-          carried: {build.equipment.map((e) => `${e.ref === '' ? '' : ''}${e.qty > 1 ? `${e.qty}× ` : ''}${ref.weapons[e.ref]?.name ?? ref.armor[e.ref]?.name ?? ref.gear[e.ref]?.name ?? e.ref}`).join(', ') || 'nothing'}
+          carried: {build.equipment.map((e) => `${e.qty > 1 ? `${e.qty}× ` : ''}${ref.weapons[e.ref]?.name ?? ref.armor[e.ref]?.name ?? ref.gear[e.ref]?.name ?? e.ref}`).join(', ') || 'nothing'}
         </span>
       </div>
       {bg?.equipmentProse && (

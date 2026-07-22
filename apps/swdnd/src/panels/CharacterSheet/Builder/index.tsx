@@ -1,6 +1,6 @@
 // apps/swdnd/src/panels/CharacterSheet/Builder/index.tsx
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useBuilder } from '../../../hooks/useBuilder';
 import { factionStyle } from '../../../lib/faction';
 import type { StepKey } from '../../../lib/validation';
@@ -28,7 +28,7 @@ export default function Builder({ characterId }: { characterId: string }) {
   if (!b.canEdit) {
     return (
       <div className="p-6 font-mono text-ht-muted">
-        Read-only link — the builder needs an owner token. <a className="text-ht-accent" href={sheetHref}>◂ view the sheet</a>
+        Read-only link — the builder needs an owner token. <Link className="text-ht-accent" to={sheetHref}>◂ view the sheet</Link>
       </div>
     );
   }
@@ -49,7 +49,8 @@ export default function Builder({ characterId }: { characterId: string }) {
         />
         <span className="text-[10px] text-ht-muted">building level 1</span>
         <span className="ml-auto text-[10px] text-ht-muted">
-          {b.saving ? 'saving…' : 'auto-saved ✓'} · <a className="text-ht-accent" href={sheetHref}>◂ back to sheet</a>
+          {/* Client-side nav keeps the JS context alive so a pending debounced save still flushes. */}
+          {b.saving ? 'saving…' : 'auto-saved ✓'} · <Link className="text-ht-accent" to={sheetHref}>◂ back to sheet</Link>
         </span>
       </div>
 
