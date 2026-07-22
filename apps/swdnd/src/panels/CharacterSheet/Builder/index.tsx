@@ -5,6 +5,8 @@ import { useBuilder } from '../../../hooks/useBuilder';
 import { factionStyle } from '../../../lib/faction';
 import type { StepKey } from '../../../lib/validation';
 import StepRail from './StepRail';
+import SpeciesStep from './steps/Species';
+import BackgroundStep from './steps/Background';
 
 export default function Builder({ characterId }: { characterId: string }) {
   const b = useBuilder(characterId);
@@ -48,8 +50,11 @@ export default function Builder({ characterId }: { characterId: string }) {
       <div className="flex flex-col gap-3 @lg:flex-row">
         <StepRail status={b.status} active={active} houseRuled={b.build.houseRuled ?? []} onSelect={setActive} />
         <div className="min-w-0 flex-1">
-          {/* Step components replace this in Tasks 11–15 */}
-          <div className="ht-panel p-4 text-[11px] text-ht-muted">step: {active} — coming in the next tasks</div>
+          {active === 'species' && <SpeciesStep build={b.build} ref={b.ref} editable={b.canEdit} dispatch={b.dispatch} />}
+          {active === 'background' && <BackgroundStep build={b.build} ref={b.ref} editable={b.canEdit} dispatch={b.dispatch} />}
+          {!['species', 'background'].includes(active) && (
+            <div className="ht-panel p-4 text-[11px] text-ht-muted">step: {active} — coming in the next tasks</div>
+          )}
         </div>
       </div>
     </div>
