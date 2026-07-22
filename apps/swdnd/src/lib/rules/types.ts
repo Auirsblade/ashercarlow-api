@@ -83,6 +83,7 @@ export interface RefClass {
   powercasting: Record<CastType, Progression>;
   powercastingOverride?: Partial<Record<CastType, AbilityKey>>;
   superiorityProgression: number; // 0 when none
+  description: string;
 }
 export interface RefArchetype {
   id: string;
@@ -95,6 +96,8 @@ export interface RefSpecies {
   id: string;
   name: string;
   walkSpeed: number;
+  description: string;
+  abilityIncreases: { fixed: Partial<Record<AbilityKey, number>>; points: number } | null;
 }
 export interface RefArmor {
   id: string;
@@ -102,6 +105,8 @@ export interface RefArmor {
   baseAc: number;
   dexCap: number | null;          // null = no cap (light); 0 = heavy; n = medium cap
   kind: 'light' | 'medium' | 'heavy' | 'shield';
+  price: number | null;
+  description: string;
 }
 export interface RefWeapon {
   id: string;
@@ -110,12 +115,43 @@ export interface RefWeapon {
   properties: Record<string, unknown>;  // sw5e weapon properties (fin, dex, ran, ...)
   ability: AbilityKey | '';
   attackBonus: number;
+  price: number | null;
+  description: string;
 }
 export interface RefPower {
   id: string;
   name: string;
   level: number;                  // 0 = at-will
   castType: CastType;
+  description: string;
+}
+export interface RefBackground {
+  id: string;
+  name: string;
+  description: string;
+  featureName: string | null;
+  skillProse: string | null;
+  toolProse: string | null;
+  equipmentProse: string | null;
+}
+export interface RefFeat {
+  id: string;
+  name: string;
+  description: string;
+  requirements: string | null;
+}
+export interface RefManeuver {
+  id: string;
+  name: string;
+  maneuverType: string;
+  description: string;
+}
+export interface RefGear {
+  id: string;
+  name: string;
+  category: string | null;
+  price: number | null;
+  description: string;
 }
 export interface ReferenceData {
   classes: Record<string, RefClass>;
@@ -124,6 +160,10 @@ export interface ReferenceData {
   armor: Record<string, RefArmor>;
   weapons: Record<string, RefWeapon>;
   powers: Record<string, RefPower>;
+  backgrounds: Record<string, RefBackground>;
+  feats: Record<string, RefFeat>;
+  maneuvers: Record<string, RefManeuver>;
+  gear: Record<string, RefGear>;
 }
 
 // ---- Derived sheet (computed, never stored) ----
