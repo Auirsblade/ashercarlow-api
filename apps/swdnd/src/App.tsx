@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
 import { AuthProvider } from "./lib/auth";
+import { getCharacter } from "./lib/characters";
 import SinglePanel from "./layouts/SinglePanel";
 import SplitView from "./layouts/SplitView";
 import CharacterSheet from "./panels/CharacterSheet";
@@ -34,14 +36,21 @@ function DmPage() {
 }
 
 function PlayPage() {
-  // Foundation: character→campaign association is resolved in the Character
-  // Sheets feature. For now the split view proves both panels compose; the
-  // map uses the characterId as a placeholder room.
   const { characterId = "" } = useParams();
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getCharacter(characterId)
+      .then((c) => alive && setCampaignId(c.campaign_id))
+      .catch(() => alive && setCampaignId(null));
+    return () => {
+      alive = false;
+    };
+  }, [characterId]);
   return (
     <SplitView
       left={<CharacterSheet characterId={characterId} />}
-      right={<Tabletop campaignId={characterId} />}
+      right={campaignId ? <Tabletop campaignId={campaignId} /> : <div className="p-6 text-zinc-500">Loading…</div>}
     />
   );
 }
@@ -64,6 +73,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/sheet/:characterId" element={<SheetPage />} />
+          <Route path="/sheet/:characterId/:mode" element={<SheetPage />} />
           <Route path="/map/:campaignId" element={<MapPage />} />
           <Route path="/dm/:campaignId" element={<DmPage />} />
           <Route path="/play/:characterId" element={<PlayPage />} />
