@@ -80,6 +80,12 @@ export function mapClassRow(row: Row): RefClass {
   const override: Partial<Record<'force' | 'tech', AbilityKey>> = {};
   const fo = asAbility(s.powercasting?.forceOverride); if (fo) override.force = fo;
   const to = asAbility(s.powercasting?.techOverride); if (to) override.tech = to;
+  const adv = Array.isArray(s.advancement) ? s.advancement : [];
+  const asiLevels = adv
+    .filter((a: any) => a?.type === 'AbilityScoreImprovement')
+    .map((a: any) => Number(a.level))
+    .filter((n: number) => Number.isFinite(n) && n > 0)
+    .sort((x: number, y: number) => x - y);
   return {
     id: row.id, name: row.name ?? row.id,
     hitDie: Number(String(s.hitDice ?? 'd6').replace('d', '')) || 6,
@@ -90,6 +96,8 @@ export function mapClassRow(row: Row): RefClass {
     powercastingOverride: Object.keys(override).length ? override : undefined,
     superiorityProgression: Number(s.superiority?.progression ?? 0) || 0,
     description: descriptionOf(s),
+    identifier: typeof s.identifier === 'string' ? s.identifier : '',
+    asiLevels,
   };
 }
 
@@ -103,6 +111,8 @@ export function mapArchetypeRow(row: Row): RefArchetype {
     powercasting: { force: prog(s.powercasting?.force), tech: prog(s.powercasting?.tech) },
     powercastingOverride: Object.keys(override).length ? override : undefined,
     superiorityProgression: Number(s.superiority?.progression ?? 0) || 0,
+    classIdentifier: typeof s.classIdentifier === 'string' ? s.classIdentifier : '',
+    description: descriptionOf(s),
   };
 }
 

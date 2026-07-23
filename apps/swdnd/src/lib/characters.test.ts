@@ -1,7 +1,7 @@
 // apps/swdnd/src/lib/characters.test.ts
 import { test, expect, afterEach } from 'bun:test';
 import {
-  mapClassRow, mapArmorRow, mapPowerRow,
+  mapClassRow, mapArchetypeRow, mapArmorRow, mapPowerRow,
   mapSpeciesRow, mapBackgroundRow, mapFeatRow, mapManeuverRow, mapGearRow,
 } from './characters';
 
@@ -91,4 +91,36 @@ test('mapFeatRow, mapManeuverRow, mapGearRow', () => {
 test('weapon/armor rows now carry price and description', () => {
   const armorRow = { id: 'b', name: 'Beskar', raw_json: JSON.stringify({ system: { armor: { value: 14, type: 'medium', dex: 2 }, price: { value: 2000 }, description: { value: 'Shiny' } } }) };
   expect(mapArmorRow(armorRow)).toMatchObject({ baseAc: 14, price: 2000, description: 'Shiny' });
+});
+
+test('mapClassRow exposes identifier and sorted asiLevels from advancement', () => {
+  const row = {
+    id: 'c1', name: 'Fighter',
+    raw_json: JSON.stringify({ system: {
+      identifier: 'fighter', hitDice: 'd10', saves: ['str', 'con'],
+      advancement: [
+        { type: 'AbilityScoreImprovement', level: 19 },
+        { type: 'HitPoints' },
+        { type: 'AbilityScoreImprovement', level: 4 },
+        { type: 'AbilityScoreImprovement', level: 6 },
+      ],
+    } }),
+  };
+  expect(mapClassRow(row)).toMatchObject({ identifier: 'fighter', asiLevels: [4, 6, 19] });
+});
+
+test('mapClassRow defaults identifier/asiLevels when data is missing', () => {
+  const row = { id: 'c2', name: 'Mystery', raw_json: JSON.stringify({ system: {} }) };
+  expect(mapClassRow(row)).toMatchObject({ identifier: '', asiLevels: [] });
+});
+
+test('mapArchetypeRow exposes classIdentifier and description', () => {
+  const row = {
+    id: 'a1', name: 'Sage Pursuant',
+    raw_json: JSON.stringify({ system: {
+      classIdentifier: 'consular',
+      description: { value: '<p>A sage.</p>' },
+    } }),
+  };
+  expect(mapArchetypeRow(row)).toMatchObject({ classIdentifier: 'consular', description: 'A sage.' });
 });
