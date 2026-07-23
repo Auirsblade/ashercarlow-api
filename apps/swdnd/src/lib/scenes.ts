@@ -14,6 +14,11 @@ export interface TokenDto {
   hp: number | null; max_hp: number | null; conditions_json: string[]; hidden: number;
   image_path: string | null; created_at: string; updated_at: string;
 }
+export interface TemplateDto {
+  id: string; scene_id: string; kind: 'blast' | 'cone' | 'line';
+  q: number; r: number; dir: number; size: number;
+  q2: number | null; r2: number | null; color: string; created_at: string;
+}
 
 const auth = (token?: string | null): Record<string, string> => (token ? { 'X-Player-Token': token } : {});
 
