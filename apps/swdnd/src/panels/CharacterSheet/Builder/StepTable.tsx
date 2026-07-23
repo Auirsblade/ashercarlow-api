@@ -17,13 +17,15 @@ interface Props<T> {
   isSelected: (item: T) => boolean;
   onSelect: (item: T) => void;
   selectLabel?: (item: T) => string;
+  /** Non-null → row is dimmed, reason shown in the detail pane, selection hidden. */
+  disabledReason?: (item: T) => string | null;
   /** Optional strip above the table (counters, filters, unlock toggle). */
   header?: ReactNode;
   editable: boolean;
 }
 
 export default function StepTable<T>({
-  items, columns, idOf, searchText, detail, isSelected, onSelect, selectLabel, header, editable,
+  items, columns, idOf, searchText, detail, isSelected, onSelect, selectLabel, disabledReason, header, editable,
 }: Props<T>) {
   const [query, setQuery] = useState('');
   const [sortKey, setSortKey] = useState(columns[0]?.key ?? '');
@@ -75,8 +77,9 @@ export default function StepTable<T>({
           const id = idOf(item);
           const selected = isSelected(item);
           const open = expanded === id;
+          const reason = disabledReason?.(item) ?? null;
           return (
-            <div key={id} className={selected || open ? 'ht-glow' : 'ht-panel'}>
+            <div key={id} className={`${selected || open ? 'ht-glow' : 'ht-panel'}${reason ? ' opacity-60' : ''}`}>
               <button type="button" className="flex w-full gap-2 px-2 py-1 text-left"
                 onClick={() => setExpanded(open ? null : id)}>
                 {columns.map((c, i) => (
@@ -89,7 +92,8 @@ export default function StepTable<T>({
               {open && (
                 <div className="border-t border-ht-line px-3 py-2">
                   <div className="whitespace-pre-line text-ht-muted">{detail(item)}</div>
-                  {editable && (
+                  {reason && <div className="mt-1 text-yellow-300">⚠ {reason}</div>}
+                  {editable && !reason && (
                     <div className="mt-2 text-right">
                       <button type="button" className="ht-step" onClick={() => onSelect(item)}>
                         {selectLabel ? selectLabel(item) : selected ? '✕ remove' : '✓ select'}
