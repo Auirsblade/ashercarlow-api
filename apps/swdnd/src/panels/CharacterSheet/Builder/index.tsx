@@ -47,7 +47,7 @@ export default function Builder({ characterId }: { characterId: string }) {
           placeholder="character name…"
           onChange={(e) => b.dispatch({ t: 'setName', name: e.target.value })}
         />
-        <span className="text-[10px] text-ht-muted">building level 1</span>
+        <span className="text-[10px] text-ht-muted">building level {Math.max(1, b.build.levels.length)}</span>
         <span className="ml-auto text-[10px] text-ht-muted">
           {/* Client-side nav keeps the JS context alive so a pending debounced save still flushes. */}
           {b.saving ? 'saving…' : 'auto-saved ✓'} · <Link className="text-ht-accent" to={sheetHref}>◂ back to sheet</Link>
