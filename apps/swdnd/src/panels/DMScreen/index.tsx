@@ -1,11 +1,80 @@
+// apps/swdnd/src/panels/DMScreen/index.tsx — DM campaign control surface.
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../../lib/auth';
+import { useDmScreen } from '../../hooks/useDmScreen';
+import PartyRail from './PartyRail';
+import AdminDrawer from './AdminDrawer';
+
+const TABS = ['monsters', 'encounters', 'reference'] as const;
+type Tab = (typeof TABS)[number];
+
 export default function DMScreen({ campaignId }: { campaignId: string }) {
+  const { authed, loading: authLoading } = useAuth();
+  const dm = useDmScreen(campaignId);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [tab, setTab] = useState<Tab>('monsters');
+
+  if (authLoading || dm.loading) return <div className="p-6 font-mono text-ht-muted">Loading…</div>;
+  if (!authed) {
+    return (
+      <div className="p-6 font-mono text-ht-muted">
+        DM login required — this screen needs the admin session cookie.
+      </div>
+    );
+  }
+
   return (
-    <section className="p-6">
-      <h1 className="text-xl font-semibold">DM Screen</h1>
-      <p className="text-zinc-400">Campaign: {campaignId || "—"}</p>
-      <p className="mt-4 text-zinc-500">
-        Coming soon — campaign control surface.
-      </p>
-    </section>
+    <div className="ht-screen @container relative min-h-screen font-mono text-ht-text">
+      <header className="ht-glow m-3 flex flex-wrap items-center gap-3 rounded-md p-3">
+        <div>
+          <div className="ht-name text-sm font-bold">{dm.campaign?.name ?? campaignId}</div>
+          <div className="text-[10px] text-ht-muted">dm screen</div>
+        </div>
+        <div className="ml-auto flex items-center gap-2 text-[11px]">
+          <Link className="ht-step" to={`/map/${campaignId}`}>map</Link>
+          <Link className="ht-step" to="/dm">campaigns</Link>
+          <button type="button" className="ht-step" onClick={() => setDrawerOpen(true)}>admin</button>
+        </div>
+      </header>
+
+      {dm.error && <div className="mx-3 mb-2 text-[11px] text-red-400">{dm.error}</div>}
+
+      <div className="flex flex-col gap-3 p-3 pt-0 @[860px]:flex-row">
+        <aside className="@[860px]:w-[260px] @[860px]:shrink-0">
+          <PartyRail cards={dm.cards} />
+        </aside>
+        <main className="min-w-0 flex-1">
+          <nav className="mb-2 flex gap-1 text-[11px]">
+            {TABS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`ht-step ${tab === t ? 'ht-tile-active' : ''}`}
+                onClick={() => setTab(t)}
+              >
+                {t}
+              </button>
+            ))}
+          </nav>
+          <div className="ht-panel p-4 text-[11px] text-ht-muted">
+            {tab === 'monsters' && 'Monster browser — coming in phase 2.'}
+            {tab === 'encounters' && 'Encounter groups — coming in phase 2.'}
+            {tab === 'reference' && 'Quick reference — coming in phase 2.'}
+          </div>
+        </main>
+      </div>
+
+      {drawerOpen && (
+        <AdminDrawer
+          campaign={dm.campaign}
+          players={dm.players}
+          cards={dm.cards}
+          actions={dm.actions}
+          campaignId={campaignId}
+          onClose={() => setDrawerOpen(false)}
+        />
+      )}
+    </div>
   );
 }
