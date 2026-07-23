@@ -1,4 +1,5 @@
 // apps/backend/src/routes/swdnd/scenes.test.ts
+process.env.SWDND_UPLOADS_DIR = `${process.env.TMPDIR ?? '/tmp'}/swdnd-test-uploads-${Date.now()}`;
 import { beforeAll, describe, expect, it } from 'bun:test';
 import { createApiApp } from '../../lib/openapi';
 import { swdndDb } from '../../db/swdnd';
@@ -68,5 +69,43 @@ describe('swdnd scenes', () => {
     const id = ((await res.json()) as any).id as string;
     expect((await app.request(`/swdnd/scenes/${id}`, json('DELETE'))).status).toBe(200);
     expect((await app.request(`/swdnd/scenes/${id}`)).status).toBe(404);
+  });
+});
+
+describe('scene image upload', () => {
+  let sceneId: string;
+  beforeAll(async () => {
+    const res = await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Uploads' }));
+    sceneId = ((await res.json()) as any).id;
+  });
+
+  const upload = (name: string, type: string, bytes: number, w = 800, h = 600) => {
+    const fd = new FormData();
+    fd.append('file', new File([new Uint8Array(bytes)], name, { type }));
+    fd.append('w', String(w));
+    fd.append('h', String(h));
+    return app.request(`/swdnd/scenes/${sceneId}/image`, { method: 'POST', body: fd });
+  };
+
+  it('accepts a png, stores dimensions, serves it back', async () => {
+    const res = await upload('map.png', 'image/png', 1024);
+    expect(res.status).toBe(200);
+    const s = (await res.json()) as any;
+    expect(s.image_path).toBe(`${sceneId}.png`);
+    expect(s.image_w).toBe(800);
+    expect(s.image_h).toBe(600);
+    const img = await app.request(`/swdnd/uploads/${sceneId}.png`);
+    expect(img.status).toBe(200);
+    expect((await img.arrayBuffer()).byteLength).toBe(1024);
+  });
+
+  it('rejects wrong mime and oversize files', async () => {
+    expect((await upload('map.gif', 'image/gif', 10)).status).toBe(400);
+    expect((await upload('big.png', 'image/png', 10 * 1024 * 1024 + 1)).status).toBe(400);
+  });
+
+  it('serves 404 for unknown or hostile filenames', async () => {
+    expect((await app.request('/swdnd/uploads/nope.png')).status).toBe(404);
+    expect((await app.request('/swdnd/uploads/..%2Fswdnd.sqlite')).status).toBe(404);
   });
 });

@@ -1,4 +1,6 @@
 // apps/backend/src/routes/swdnd/scenes.ts
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
 import { swdndDb } from '../../db/swdnd';
@@ -119,6 +121,28 @@ const activateRoute = createRoute({
   },
 });
 
+const UPLOADS_DIR = () => process.env.SWDND_UPLOADS_DIR ?? './data/uploads/swdnd';
+const MAX_UPLOAD = 10 * 1024 * 1024;
+const EXT_BY_MIME: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+const SAFE_FILE = /^[A-Za-z0-9-]+\.(png|jpg|webp)$/;
+
+const uploadRoute = createRoute({
+  method: 'post', path: '/swdnd/scenes/{id}/image', tags: ['swdnd'],
+  summary: 'Upload the scene’s map image (multipart: file, w, h; DM only)', security: [{ bearerAuth: [] }],
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    200: { description: 'Scene with image', content: { 'application/json': { schema: Scene } } },
+    400: { description: 'Bad upload', content: { 'application/json': { schema: ErrorBody } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+const serveRoute = createRoute({
+  method: 'get', path: '/swdnd/uploads/{file}', tags: ['swdnd'],
+  summary: 'Serve an uploaded map image',
+  request: { params: z.object({ file: z.string() }) },
+  responses: { 200: { description: 'The image' }, 404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } } },
+});
+
 export function registerSceneRoutes(app: OpenAPIHono): void {
   app.openapi(listRoute, (c) => {
     const { id } = c.req.valid('param');
@@ -192,5 +216,42 @@ export function registerSceneRoutes(app: OpenAPIHono): void {
     const updated = getSceneRow(id)!;
     broadcastScene(updated, 'scene:activated');
     return c.json(sceneOut(updated), 200);
+  });
+
+  app.openapi(uploadRoute, async (c) => {
+    const { id } = c.req.valid('param');
+    const row = getSceneRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Scene not found' });
+    const body = await c.req.parseBody();
+    const file = body.file;
+    const w = Number(body.w);
+    const h = Number(body.h);
+    if (!(file instanceof File)) throw new HTTPException(400, { message: 'Missing file' });
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+      throw new HTTPException(400, { message: 'Missing image dimensions (w, h)' });
+    }
+    const ext = EXT_BY_MIME[file.type];
+    if (!ext) throw new HTTPException(400, { message: 'Only png/jpg/webp images are allowed' });
+    if (file.size > MAX_UPLOAD) throw new HTTPException(400, { message: 'Image exceeds 10 MB' });
+
+    mkdirSync(UPLOADS_DIR(), { recursive: true });
+    const filename = `${id}.${ext}`;
+    await Bun.write(join(UPLOADS_DIR(), filename), file);
+    const now = new Date().toISOString();
+    swdndDb.run(
+      'UPDATE scene SET image_path = ?, image_w = ?, image_h = ?, updated_at = ? WHERE id = ?',
+      [filename, Math.round(w), Math.round(h), now, id],
+    );
+    const updated = getSceneRow(id)!;
+    broadcastScene(updated, 'scene:updated');
+    return c.json(sceneOut(updated), 200);
+  });
+
+  app.openapi(serveRoute, async (c) => {
+    const { file } = c.req.valid('param');
+    if (!SAFE_FILE.test(file)) throw new HTTPException(404, { message: 'Not found' });
+    const f = Bun.file(join(UPLOADS_DIR(), file));
+    if (!(await f.exists())) throw new HTTPException(404, { message: 'Not found' });
+    return new Response(f, { headers: { 'Cache-Control': 'public, max-age=31536000, immutable' } });
   });
 }
