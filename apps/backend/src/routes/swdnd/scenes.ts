@@ -139,6 +139,24 @@ const fogRoute = createRoute({
   },
 });
 
+const InitiativeEntry = z.object({ tokenId: z.string(), name: z.string(), roll: z.number() });
+const Initiative = z.object({
+  order: z.array(InitiativeEntry),
+  activeIndex: z.number().int().min(0),
+  round: z.number().int().min(1),
+}).openapi('SwdndInitiative');
+const InitiativeBody = z.object({ initiative: Initiative.nullable() }).openapi('SwdndPatchInitiative');
+
+const initiativeRoute = createRoute({
+  method: 'patch', path: '/swdnd/scenes/{id}/initiative', tags: ['swdnd'],
+  summary: 'Set or clear the scene’s initiative tracker (DM only)', security: [{ bearerAuth: [] }],
+  request: { params: z.object({ id: z.string() }), body: { content: { 'application/json': { schema: InitiativeBody } } } },
+  responses: {
+    200: { description: 'Updated scene', content: { 'application/json': { schema: Scene } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+
 const UPLOADS_DIR = () => process.env.SWDND_UPLOADS_DIR ?? './data/uploads/swdnd';
 const MAX_UPLOAD = 10 * 1024 * 1024;
 const EXT_BY_MIME: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
@@ -248,6 +266,21 @@ export function registerSceneRoutes(app: OpenAPIHono): void {
     for (const k of hide) set.delete(k);
     const now = new Date().toISOString();
     swdndDb.run('UPDATE scene SET fog_json = ?, updated_at = ? WHERE id = ?', [JSON.stringify([...set].sort()), now, id]);
+    const updated = getSceneRow(id)!;
+    broadcastScene(updated, 'scene:updated');
+    return c.json(sceneOut(updated), 200);
+  });
+
+  app.openapi(initiativeRoute, (c) => {
+    const { id } = c.req.valid('param');
+    const { initiative } = c.req.valid('json');
+    const row = getSceneRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Scene not found' });
+    const now = new Date().toISOString();
+    swdndDb.run(
+      'UPDATE scene SET initiative_json = ?, updated_at = ? WHERE id = ?',
+      [initiative === null ? null : JSON.stringify(initiative), now, id],
+    );
     const updated = getSceneRow(id)!;
     broadcastScene(updated, 'scene:updated');
     return c.json(sceneOut(updated), 200);

@@ -148,3 +148,21 @@ describe('fog', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('initiative', () => {
+  it('PATCH /swdnd/scenes/:id/initiative sets and clears the tracker', async () => {
+    const sc = await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Init' }))).json() as any;
+    const init = { order: [{ tokenId: 't1', name: 'A', roll: 18 }, { tokenId: 't2', name: 'B', roll: 11 }], activeIndex: 0, round: 1 };
+    let res = await app.request(`/swdnd/scenes/${sc.id}/initiative`, json('PATCH', { initiative: init }));
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).initiative_json).toEqual(init);
+
+    res = await app.request(`/swdnd/scenes/${sc.id}/initiative`, json('PATCH', { initiative: null }));
+    expect((await res.json() as any).initiative_json).toBeNull();
+  });
+
+  it('404s on unknown scene', async () => {
+    const res = await app.request('/swdnd/scenes/nope/initiative', json('PATCH', { initiative: null }));
+    expect(res.status).toBe(404);
+  });
+});
