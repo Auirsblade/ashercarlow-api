@@ -8,9 +8,9 @@ export default function SplitView({
   right: ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 grid grid-cols-1 md:grid-cols-2 md:divide-x divide-zinc-800">
-      <div className="overflow-auto">{left}</div>
-      <div className="overflow-auto">{right}</div>
+    <div className="grid min-h-screen grid-cols-1 divide-ht-line md:grid-cols-2 md:divide-x">
+      <div className="@container overflow-auto">{left}</div>
+      <div className="@container h-screen overflow-auto">{right}</div>
     </div>
   );
 }
