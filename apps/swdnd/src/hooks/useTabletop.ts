@@ -5,11 +5,12 @@ import { useAuth } from '../lib/auth';
 import { connectCampaign, type CampaignSocket, type WsEnvelope } from '../lib/ws';
 import {
   activateScene, createScene, createToken, deleteScene, deleteToken, listScenes,
-  listTokens, moveToken, patchScene, patchToken, uploadSceneImage, type SceneDto, type TokenDto,
+  listTokens, moveToken, patchFog, patchScene, patchToken, uploadSceneImage, type SceneDto, type TokenDto,
 } from '../lib/scenes';
 import {
   applyMapEvent, confirmMove, emptyMapState, optimisticMove, rollbackMove, type MapState,
 } from '../lib/mapState';
+import { buildVitals, mergePlay, type Vitals } from '../lib/vitals';
 import type { GridConfig } from '../lib/hex';
 
 export interface TabletopState {
@@ -23,6 +24,7 @@ export interface TabletopState {
   playerToken: string | null;
   canMove: (t: TokenDto) => boolean;
   ownCharacterIds: Set<string>;
+  vitals: Record<string, Vitals>;
   actions: {
     move: (tokenId: string, q: number, r: number) => void;
     sendDrag: (tokenId: string, x: number, y: number, done: boolean) => void;
@@ -35,6 +37,7 @@ export interface TabletopState {
     addToken: (body: Partial<TokenDto> & { name: string }) => Promise<void>;
     removeToken: (id: string) => Promise<void>;
     editToken: (id: string, body: Record<string, unknown>) => Promise<void>;
+    commitFog: (reveal: string[], hide: string[]) => Promise<void>;
     reload: () => void;
   };
 }
@@ -49,6 +52,7 @@ export function useTabletop(campaignId: string): TabletopState {
   const [state, setState] = useState<MapState>(emptyMapState());
   const [scenes, setScenes] = useState<SceneDto[]>([]);
   const [ownCharacterIds, setOwnCharacterIds] = useState<Set<string>>(new Set());
+  const [vitals, setVitals] = useState<Record<string, Vitals>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const socket = useRef<CampaignSocket | null>(null);
@@ -86,9 +90,27 @@ export function useTabletop(campaignId: string): TabletopState {
     );
   }, [playerToken]);
 
+  // Load campaign characters + reference once and compute each character's
+  // maxHp; play.hp/conditions then track character:updated events live.
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      import('../lib/characters').then((m) => m.listCharacters(campaignId)),
+      import('../lib/characters').then((m) => m.loadReference()),
+    ])
+      .then(([chars, ref]) => { if (!cancelled) setVitals(buildVitals(chars, ref)); })
+      .catch(() => { /* vitals stay empty; rings for character tokens simply don't render */ });
+    return () => { cancelled = true; };
+  }, [campaignId]);
+
   useEffect(() => {
     const hadOpenedRef = { current: false };
     const sock = connectCampaign(campaignId, (env: WsEnvelope) => {
+      if (env.type === 'character:updated') {
+        const p = env.payload as { characterId?: string; play?: { hp: number; conditions: string[] } };
+        if (p?.characterId && p.play) setVitals((v) => mergePlay(v, p.characterId!, p.play!));
+        return;
+      }
       setState((s) => applyMapEvent(s, env));
     }, (open) => {
       // Events that arrive during a dropped-connection gap are lost; resync
@@ -145,6 +167,7 @@ export function useTabletop(campaignId: string): TabletopState {
     isDm: authed,
     playerToken,
     ownCharacterIds,
+    vitals,
     canMove: (t) => authed || (!!t.character_id && ownCharacterIds.has(t.character_id)),
     actions: {
       move,
@@ -158,6 +181,9 @@ export function useTabletop(campaignId: string): TabletopState {
       addToken: wrap(async (body: Partial<TokenDto> & { name: string }) => { if (state.scene) await createToken(state.scene.id, body); }),
       removeToken: wrap(async (id: string) => { await deleteToken(id); }),
       editToken: wrap(async (id: string, body: Record<string, unknown>) => { await patchToken(id, body); }),
+      commitFog: wrap(async (reveal: string[], hide: string[]) => {
+        if (state.scene) await patchFog(state.scene.id, reveal, hide);
+      }),
       reload,
     },
   };

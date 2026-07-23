@@ -34,6 +34,9 @@ export const deleteToken = (id: string) => api<{ ok: boolean }>(`/swdnd/tokens/$
 export const moveToken = (id: string, q: number, r: number, token?: string | null) =>
   api<TokenDto>(`/swdnd/tokens/${id}/position`, { method: 'PATCH', headers: auth(token), body: JSON.stringify({ q, r }) });
 
+export const patchFog = (id: string, reveal: string[], hide: string[]) =>
+  api<SceneDto>(`/swdnd/scenes/${id}/fog`, { method: 'PATCH', body: JSON.stringify({ reveal, hide }) });
+
 export async function uploadSceneImage(sceneId: string, file: File, w: number, h: number): Promise<SceneDto> {
   const fd = new FormData();
   fd.append('file', file);
