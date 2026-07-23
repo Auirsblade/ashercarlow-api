@@ -2,10 +2,13 @@
 import { useState } from 'react';
 import { useTabletop } from '../../hooks/useTabletop';
 import type { GridConfig } from '../../lib/hex';
+import { nextTurn, prevTurn } from '../../lib/initiative';
 import SceneCanvas from './SceneCanvas';
 import SceneDrawer from './SceneDrawer';
 import GridCalibrator from './GridCalibrator';
 import TokenEditor from './TokenEditor';
+import InitiativeStrip from './InitiativeStrip';
+import InitiativeEditor from './InitiativeEditor';
 
 export default function Tabletop({ campaignId }: { campaignId: string }) {
   const t = useTabletop(campaignId);
@@ -14,6 +17,9 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
   const [newTokenName, setNewTokenName] = useState('');
   const [fogTool, setFogTool] = useState<{ mode: 'reveal' | 'hide'; radius: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tool, setTool] = useState<'move' | 'ruler' | 'ping' | 'blast' | 'cone' | 'line'>('move');
+  const [templateSize, setTemplateSize] = useState(2);
+  const [initEditorOpen, setInitEditorOpen] = useState(false);
 
   if (t.loading) return <div className="ht-screen min-h-full p-6 font-mono text-ht-muted">Loading map…</div>;
 
@@ -32,6 +38,28 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
         {t.scene && (
           <span className="text-[10px] text-ht-muted">
             {t.scene.grid_json.unitsPerHex} {t.scene.grid_json.unitLabel}/hex · {t.tokens.length} tokens
+          </span>
+        )}
+        {t.scene && (
+          <span className="flex flex-wrap items-center gap-1">
+            {([['move', '✥'], ['ruler', '⟋'], ['ping', '◎'], ['blast', '⊚'], ['cone', '◠'], ['line', '⁄']] as const).map(([m, icon]) => (
+              <button
+                key={m} type="button" title={m}
+                className={`ht-step ${tool === m ? 'ht-tile-active' : ''}`}
+                onClick={() => setTool((cur) => (cur === m ? 'move' : m))}
+              >
+                {icon}
+              </button>
+            ))}
+            {(tool === 'blast' || tool === 'cone') && (
+              <select
+                className="border-b border-ht-line bg-transparent text-[10px] text-ht-bright outline-none"
+                value={templateSize}
+                onChange={(e) => setTemplateSize(Number(e.target.value))}
+              >
+                {[1, 2, 3, 4, 6].map((n) => <option key={n} value={n}>{n} hex</option>)}
+              </select>
+            )}
           </span>
         )}
         {t.isDm && (
@@ -98,6 +126,16 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
                     </button>
                   </>
                 )}
+                <button
+                  type="button"
+                  className={`ht-step ${initEditorOpen ? 'ht-tile-active' : ''}`}
+                  onClick={() => setInitEditorOpen((v) => !v)}
+                >
+                  ♞ init
+                </button>
+                <button type="button" className="ht-step" onClick={() => void t.actions.clearAllTemplates()}>
+                  ✕ tpl
+                </button>
               </>
             )}
             <button type="button" className={`ht-step ${drawerOpen ? 'ht-tile-active' : ''}`} onClick={() => setDrawerOpen((v) => !v)}>
@@ -135,6 +173,25 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
           />
         </div>
       )}
+      {t.isDm && initEditorOpen && (
+        <div className="mx-2 mb-2">
+          <InitiativeEditor
+            initiative={t.initiative}
+            tokens={t.tokens}
+            onChange={(init) => void t.actions.setInitiative(init)}
+            onClose={() => setInitEditorOpen(false)}
+          />
+        </div>
+      )}
+      {t.initiative && (
+        <InitiativeStrip
+          initiative={t.initiative}
+          isDm={t.isDm}
+          onNext={() => void t.actions.setInitiative(nextTurn(t.initiative!))}
+          onPrev={() => void t.actions.setInitiative(prevTurn(t.initiative!))}
+          onEnd={() => void t.actions.setInitiative(null)}
+        />
+      )}
 
       <div className="min-h-0 flex-1">
         {t.scene ? (
@@ -152,6 +209,16 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
             fogBrush={t.isDm ? fogTool : null}
             onFogCommit={(reveal, hide) => void t.actions.commitFog(reveal, hide)}
             onSelectToken={setSelectedId}
+            mode={tool}
+            templateSize={templateSize}
+            templates={t.templates}
+            pings={t.pings}
+            rulers={t.rulers}
+            activeTokenId={t.initiative ? t.initiative.order[t.initiative.activeIndex]?.tokenId ?? null : null}
+            onPing={t.actions.sendPing}
+            onRulerFrame={t.actions.sendRuler}
+            onCreateTemplate={(b) => void t.actions.addTemplate(b)}
+            onDeleteTemplate={(id) => void t.actions.removeTemplate(id)}
           />
         ) : (
           <div className="p-6 text-[11px] text-ht-muted">
