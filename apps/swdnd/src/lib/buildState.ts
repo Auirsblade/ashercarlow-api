@@ -2,6 +2,8 @@
 import type {
   AbilityKey, CharacterBuild, DerivedSheet, ReferenceData, SkillKey,
 } from './rules/types';
+import { maxHp } from './rules/combat';
+import { multiclassBlockers } from './multiclass';
 
 export type BuildAction =
   | { t: 'setName'; name: string }
@@ -18,7 +20,10 @@ export type BuildAction =
   | { t: 'setCredits'; credits: number }
   | { t: 'togglePower'; powerId: string }
   | { t: 'toggleManeuver'; maneuverId: string }
-  | { t: 'toggleHouseRule'; step: string };
+  | { t: 'toggleHouseRule'; step: string }
+  | { t: 'addLevel'; classId: string }
+  | { t: 'removeLastLevel' }
+  | { t: 'setLevelHp'; n: number; hp: 'avg' | number };
 
 const clone = (b: CharacterBuild): CharacterBuild => ({
   ...b,
@@ -44,6 +49,12 @@ const clone = (b: CharacterBuild): CharacterBuild => ({
 });
 
 const houseRuled = (b: CharacterBuild, step: string) => (b.houseRuled ?? []).includes(step);
+
+/** Shift play.hp by the maxHp delta since `before`, clamped to 0..newMax (spec §6). */
+function applyHpDelta(b: CharacterBuild, ref: ReferenceData, before: number): void {
+  const after = maxHp(b, ref);
+  b.play.hp = Math.max(0, Math.min(after, b.play.hp + (after - before)));
+}
 
 export function applyBuildAction(
   build: CharacterBuild,
@@ -91,8 +102,10 @@ export function applyBuildAction(
       break;
 
     case 'setClass': {
+      const before = maxHp(build, ref);
       b.levels = [{ n: 1, classId: action.classId, archetypeId: null, hp: 'avg', choices: {} }];
       b.proficiencies.savingThrows = [...(ref.classes[action.classId]?.saves ?? [])];
+      applyHpDelta(b, ref, before);
       break;
     }
 
@@ -170,6 +183,39 @@ export function applyBuildAction(
       if (i >= 0) list.splice(i, 1);
       else list.push(action.step);
       b.houseRuled = list;
+      break;
+    }
+
+    case 'addLevel': {
+      if (b.levels.length >= 20 || !ref.classes[action.classId]) break;
+      if (!houseRuled(b, 'class') && multiclassBlockers(b, ref, action.classId).length > 0) break;
+      const before = maxHp(build, ref);
+      if (b.levels.length === 0) b.proficiencies.savingThrows = [...(ref.classes[action.classId]?.saves ?? [])];
+      b.levels.push({ n: b.levels.length + 1, classId: action.classId, archetypeId: null, hp: 'avg', choices: {} });
+      applyHpDelta(b, ref, before);
+      break;
+    }
+
+    case 'removeLastLevel': {
+      const last = b.levels[b.levels.length - 1];
+      if (!last) break;
+      // Ability-driven max changes move max only: strip this level's increases
+      // FIRST, then measure only the level's own HP contribution (round-trips addLevel).
+      b.abilities.increases = b.abilities.increases.filter((i) => i.ref !== `l${last.n}`);
+      const before = maxHp(b, ref);
+      b.levels.pop();
+      if (b.levels.length === 0) b.proficiencies.savingThrows = [];
+      applyHpDelta(b, ref, before);
+      break;
+    }
+
+    case 'setLevelHp': {
+      const entry = b.levels.find((l) => l.n === action.n);
+      if (!entry || entry.n === 1) break; // level 1 is always max die (engine rule)
+      const die = ref.classes[entry.classId]?.hitDie ?? 6;
+      const before = maxHp(build, ref);
+      entry.hp = action.hp === 'avg' ? 'avg' : Math.min(Math.max(1, Math.round(action.hp)), die);
+      applyHpDelta(b, ref, before);
       break;
     }
   }
