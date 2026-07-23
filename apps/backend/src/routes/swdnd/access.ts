@@ -68,3 +68,23 @@ export function assertTokenMoveAccess(c: Context, token: { character_id: string 
   }
   throw new HTTPException(403, { message: 'Not allowed to move this token' });
 }
+
+/**
+ * WS upgrade auth on a RAW Request (no Hono context): dev mode admits anyone;
+ * otherwise require the admin bearer/cookie or a player token belonging to
+ * this campaign. Closes the foundation's unauthenticated-upgrade deferral.
+ */
+export function canJoinCampaignRoom(req: Request, campaignId: string): boolean {
+  const expected = process.env.ASHERCARLOW_AUTH_TOKEN;
+  if (!expected) return true; // dev mode
+
+  const bearer = req.headers.get('authorization')?.replace('Bearer ', '');
+  if (bearer === expected) return true;
+  const cookies = req.headers.get('cookie') ?? '';
+  const match = cookies.match(/(?:^|;\s*)ashercarlow_auth=([^;]+)/);
+  if (match && decodeURIComponent(match[1]) === expected) return true;
+
+  const token = new URL(req.url).searchParams.get('token') ?? undefined;
+  const player = resolvePlayerByToken(token);
+  return !!player && player.campaign_id === campaignId;
+}

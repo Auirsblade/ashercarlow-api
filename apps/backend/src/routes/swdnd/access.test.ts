@@ -1,5 +1,5 @@
 // apps/backend/src/routes/swdnd/access.test.ts
-import { test, expect, beforeAll } from 'bun:test';
+import { test, expect, beforeAll, describe, it } from 'bun:test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -39,4 +39,38 @@ test('with admin token set, owning player token passes; wrong token 403s', () =>
   expect(() => mod.assertCharacterWriteAccess(reqWith({ authorization: 'Bearer admin-secret' }), { player_id: 'p1' })).not.toThrow();
   expect(() => mod.assertCharacterWriteAccess(reqWith({}), { player_id: 'p1' })).toThrow();
   delete process.env.ASHERCARLOW_AUTH_TOKEN;
+});
+
+describe('canJoinCampaignRoom', () => {
+  const CAMP = 'camp-ws';
+  beforeAll(() => {
+    const now = new Date().toISOString();
+    dbMod.swdndDb.run('INSERT OR REPLACE INTO campaign (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)', [CAMP, 'WS', now, now]);
+    dbMod.swdndDb.run('INSERT OR REPLACE INTO player (id, campaign_id, name, access_token, created_at) VALUES (?, ?, ?, ?, ?)', ['pl-ws', CAMP, 'P', 'ws-token', now]);
+  });
+  const req = (url: string, headers: Record<string, string> = {}) => new Request(url, { headers });
+
+  it('dev mode (no env token) admits anyone', () => {
+    delete process.env.ASHERCARLOW_AUTH_TOKEN;
+    expect(mod.canJoinCampaignRoom(req('http://x/swdnd/ws?campaign=' + CAMP), CAMP)).toBe(true);
+  });
+
+  it('with auth on: valid player token for THAT campaign only', () => {
+    process.env.ASHERCARLOW_AUTH_TOKEN = 'admin-secret';
+    try {
+      expect(mod.canJoinCampaignRoom(req(`http://x/swdnd/ws?campaign=${CAMP}&token=ws-token`), CAMP)).toBe(true);
+      expect(mod.canJoinCampaignRoom(req(`http://x/swdnd/ws?campaign=other&token=ws-token`), 'other')).toBe(false);
+      expect(mod.canJoinCampaignRoom(req(`http://x/swdnd/ws?campaign=${CAMP}&token=wrong`), CAMP)).toBe(false);
+      expect(mod.canJoinCampaignRoom(req(`http://x/swdnd/ws?campaign=${CAMP}`), CAMP)).toBe(false);
+    } finally { delete process.env.ASHERCARLOW_AUTH_TOKEN; }
+  });
+
+  it('with auth on: admin cookie or bearer admits', () => {
+    process.env.ASHERCARLOW_AUTH_TOKEN = 'admin-secret';
+    try {
+      expect(mod.canJoinCampaignRoom(req(`http://x/swdnd/ws?campaign=${CAMP}`, { cookie: 'ashercarlow_auth=admin-secret' }), CAMP)).toBe(true);
+      expect(mod.canJoinCampaignRoom(req(`http://x/swdnd/ws?campaign=${CAMP}`, { authorization: 'Bearer admin-secret' }), CAMP)).toBe(true);
+      expect(mod.canJoinCampaignRoom(req(`http://x/swdnd/ws?campaign=${CAMP}`, { cookie: 'ashercarlow_auth=nope' }), CAMP)).toBe(false);
+    } finally { delete process.env.ASHERCARLOW_AUTH_TOKEN; }
+  });
 });
