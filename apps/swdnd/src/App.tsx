@@ -7,6 +7,7 @@ import SplitView from "./layouts/SplitView";
 import CharacterSheet from "./panels/CharacterSheet";
 import Tabletop from "./panels/Tabletop";
 import DMScreen from "./panels/DMScreen";
+import DmHome from "./panels/DmHome";
 import PlayerHome from "./panels/PlayerHome";
 
 function SheetPage() {
@@ -77,6 +78,7 @@ export default function App() {
           <Route path="/sheet/:characterId" element={<SheetPage />} />
           <Route path="/sheet/:characterId/:mode" element={<SheetPage />} />
           <Route path="/map/:campaignId" element={<MapPage />} />
+          <Route path="/dm" element={<SinglePanel><DmHome /></SinglePanel>} />
           <Route path="/dm/:campaignId" element={<DmPage />} />
           <Route path="/play/:characterId" element={<PlayPage />} />
         </Routes>
