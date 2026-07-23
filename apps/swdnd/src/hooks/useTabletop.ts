@@ -4,15 +4,17 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { connectCampaign, type CampaignSocket, type WsEnvelope } from '../lib/ws';
 import {
-  activateScene, createScene, createToken, deleteScene, deleteToken, listScenes,
-  listTokens, moveToken, patchFog, patchScene, patchToken, uploadSceneImage, type SceneDto, type TokenDto,
+  activateScene, clearTemplates, createScene, createTemplate, createToken, deleteScene, deleteTemplate,
+  deleteToken, listScenes, listTemplates, listTokens, moveToken, patchFog, patchInitiative, patchScene,
+  patchToken, uploadSceneImage, type SceneDto, type TemplateDto, type TokenDto,
 } from '../lib/scenes';
 import {
   applyMapEvent, confirmMove, emptyMapState, optimisticMove, rollbackMove, type MapState,
 } from '../lib/mapState';
 import { applyFogPatch } from '../lib/fog';
 import { addCharacterVitals, applyPendingPlays, buildVitals, mergePlay, type PendingPlays, type Vitals } from '../lib/vitals';
-import type { GridConfig } from '../lib/hex';
+import type { GridConfig, Hex } from '../lib/hex';
+import type { Initiative } from '../lib/initiative';
 import type { ReferenceData } from '../lib/rules/types';
 
 export interface TabletopState {
@@ -27,6 +29,10 @@ export interface TabletopState {
   canMove: (t: TokenDto) => boolean;
   ownCharacterIds: Set<string>;
   vitals: Record<string, Vitals>;
+  templates: TemplateDto[];
+  pings: { id: string; x: number; y: number }[];
+  rulers: Record<string, { a: Hex; b: Hex }>;   // peer id → live remote ruler
+  initiative: Initiative | null;                 // parsed from scene.initiative_json
   actions: {
     move: (tokenId: string, q: number, r: number) => void;
     sendDrag: (tokenId: string, x: number, y: number, done: boolean) => void;
@@ -40,6 +46,12 @@ export interface TabletopState {
     removeToken: (id: string) => Promise<void>;
     editToken: (id: string, body: Record<string, unknown>) => Promise<void>;
     commitFog: (reveal: string[], hide: string[]) => Promise<void>;
+    addTemplate: (body: Record<string, unknown>) => Promise<void>;
+    removeTemplate: (id: string) => Promise<void>;
+    clearAllTemplates: () => Promise<void>;
+    sendPing: (x: number, y: number) => void;
+    sendRuler: (a: Hex, b: Hex, done: boolean) => void;
+    setInitiative: (init: Initiative | null) => Promise<void>;
     reload: () => void;
   };
 }
@@ -64,17 +76,28 @@ export function useTabletop(campaignId: string): TabletopState {
   const pendingPlays = useRef<PendingPlays>({});
   const room = `campaign:${campaignId}`;
 
+  const peerId = useRef<string>(crypto.randomUUID());
+  const pingSeq = useRef(0);
+  const [pings, setPings] = useState<{ id: string; x: number; y: number; at: number }[]>([]);
+  const [rulers, setRulers] = useState<Record<string, { a: Hex; b: Hex }>>({});
+  const lastRuler = useRef(0);
+
   const reload = useCallback(() => {
     setLoading(true);
+    setRulers({});
+    setPings([]);
     listScenes(campaignId)
       .then(async (all) => {
         setScenes(all);
         const active = all.find((s) => s.is_active === 1) ?? null;
-        const tokens = active ? await listTokens(active.id) : [];
+        const [tokens, templates] = active
+          ? await Promise.all([listTokens(active.id), listTemplates(active.id)])
+          : [[], []];
         setState((prev) => ({
           ...emptyMapState(),
           scene: active,
           tokens: Object.fromEntries(tokens.map((t) => [t.id, t])),
+          templates: Object.fromEntries(templates.map((t) => [t.id, t])),
           dragGhosts: prev.dragGhosts,
         }));
         setError(null);
@@ -82,6 +105,16 @@ export function useTabletop(campaignId: string): TabletopState {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false));
   }, [campaignId]);
+
+  // Prune pings ~2s after they land (rendered as short-lived pulses).
+  useEffect(() => {
+    if (pings.length === 0) return;
+    const t = setInterval(() => {
+      const cutoff = Date.now() - 2200;
+      setPings((p) => (p.some((x) => x.at < cutoff) ? p.filter((x) => x.at >= cutoff) : p));
+    }, 500);
+    return () => clearInterval(t);
+  }, [pings.length > 0]);
 
   useEffect(reload, [reload]);
 
@@ -149,6 +182,22 @@ export function useTabletop(campaignId: string): TabletopState {
         });
         return;
       }
+      if (env.type === 'ping') {
+        const p = env.payload as { id: string; x: number; y: number };
+        setPings((cur) => [...cur, { ...p, at: Date.now() }]);
+        return;
+      }
+      if (env.type === 'ruler') {
+        const p = env.payload as { peer: string; a: Hex; b: Hex; done: boolean };
+        setRulers((cur) => {
+          if (p.done) {
+            const { [p.peer]: _gone, ...rest } = cur;
+            return rest;
+          }
+          return { ...cur, [p.peer]: { a: p.a, b: p.b } };
+        });
+        return;
+      }
       setState((s) => applyMapEvent(s, env));
     }, (open) => {
       // Events that arrive during a dropped-connection gap are lost; resync
@@ -192,6 +241,19 @@ export function useTabletop(campaignId: string): TabletopState {
     socket.current?.send({ type: 'token:drag', room, payload: { tokenId, x, y, done } });
   }, [room]);
 
+  const sendPing = useCallback((x: number, y: number) => {
+    const id = `${peerId.current}:${pingSeq.current++}`;
+    setPings((cur) => [...cur, { id, x, y, at: Date.now() }]);
+    socket.current?.send({ type: 'ping', room, payload: { id, x, y } });
+  }, [room]);
+
+  const sendRuler = useCallback((a: Hex, b: Hex, done: boolean) => {
+    const now = Date.now();
+    if (!done && now - lastRuler.current < DRAG_THROTTLE_MS) return;
+    lastRuler.current = now;
+    socket.current?.send({ type: 'ruler', room, payload: { peer: peerId.current, a, b, done } });
+  }, [room]);
+
   const wrap = <A extends unknown[]>(fn: (...a: A) => Promise<unknown>) =>
     async (...a: A) => { try { await fn(...a); setError(null); } catch (e) { setError(e instanceof Error ? e.message : 'Request failed'); } };
 
@@ -206,6 +268,10 @@ export function useTabletop(campaignId: string): TabletopState {
     playerToken,
     ownCharacterIds,
     vitals,
+    templates: Object.values(state.templates),
+    pings,
+    rulers,
+    initiative: (state.scene?.initiative_json as Initiative | null) ?? null,
     canMove: (t) => authed || (!!t.character_id && ownCharacterIds.has(t.character_id)),
     actions: {
       move,
@@ -235,6 +301,24 @@ export function useTabletop(campaignId: string): TabletopState {
         } catch (e) {
           setError(e instanceof Error ? e.message : 'Fog update failed');
           reload(); // resync fog from the server since the optimistic patch may not have landed
+        }
+      },
+      addTemplate: wrap(async (body: Record<string, unknown>) => {
+        if (state.scene) await createTemplate(state.scene.id, body, playerToken);
+      }),
+      removeTemplate: wrap(async (id: string) => { await deleteTemplate(id, playerToken); }),
+      clearAllTemplates: wrap(async () => { if (state.scene) await clearTemplates(state.scene.id); }),
+      sendPing,
+      sendRuler,
+      setInitiative: async (init: Initiative | null) => {
+        // Optimistic like commitFog: the strip must respond instantly to next/prev.
+        setState((s) => (s.scene ? { ...s, scene: { ...s.scene, initiative_json: init } } : s));
+        try {
+          if (state.scene) await patchInitiative(state.scene.id, init);
+          setError(null);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Initiative update failed');
+          reload();
         }
       },
       reload,
