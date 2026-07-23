@@ -1,5 +1,6 @@
 // apps/backend/src/routes/swdnd/scenes.ts
 import { mkdirSync } from 'node:fs';
+import { unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
@@ -239,6 +240,11 @@ export function registerSceneRoutes(app: OpenAPIHono): void {
     mkdirSync(UPLOADS_DIR(), { recursive: true });
     const filename = `${id}.${ext}`;
     await Bun.write(join(UPLOADS_DIR(), filename), file);
+    for (const otherExt of Object.values(EXT_BY_MIME)) {
+      if (otherExt === ext) continue;
+      const stalePath = join(UPLOADS_DIR(), `${id}.${otherExt}`);
+      if (await Bun.file(stalePath).exists()) await unlink(stalePath);
+    }
     const now = new Date().toISOString();
     swdndDb.run(
       'UPDATE scene SET image_path = ?, image_w = ?, image_h = ?, updated_at = ? WHERE id = ?',

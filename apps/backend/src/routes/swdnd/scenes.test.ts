@@ -99,6 +99,22 @@ describe('scene image upload', () => {
     expect((await img.arrayBuffer()).byteLength).toBe(1024);
   });
 
+  it('re-uploading with a different extension replaces the old file', async () => {
+    const first = await upload('map.png', 'image/png', 1024);
+    expect(first.status).toBe(200);
+    const pngPath = `${process.env.SWDND_UPLOADS_DIR}/${sceneId}.png`;
+    expect(await Bun.file(pngPath).exists()).toBe(true);
+
+    const second = await upload('map.webp', 'image/webp', 2048);
+    expect(second.status).toBe(200);
+    const s = (await second.json()) as any;
+    expect(s.image_path).toBe(`${sceneId}.webp`);
+
+    const webpPath = `${process.env.SWDND_UPLOADS_DIR}/${sceneId}.webp`;
+    expect(await Bun.file(webpPath).exists()).toBe(true);
+    expect(await Bun.file(pngPath).exists()).toBe(false);
+  });
+
   it('rejects wrong mime and oversize files', async () => {
     expect((await upload('map.gif', 'image/gif', 10)).status).toBe(400);
     expect((await upload('big.png', 'image/png', 10 * 1024 * 1024 + 1)).status).toBe(400);
