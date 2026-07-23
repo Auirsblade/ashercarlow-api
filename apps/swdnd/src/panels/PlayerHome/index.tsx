@@ -109,7 +109,7 @@ export default function PlayerHome() {
         ))}
       </div>
 
-      <div className="ht-panel mt-3 flex items-center gap-2 p-3">
+      <div className="ht-panel mt-3 flex flex-wrap items-center gap-2 p-3">
         <span className="ht-label">New character</span>
         <input
           className="w-48 border-b border-ht-line bg-transparent px-1 text-ht-bright outline-none"
