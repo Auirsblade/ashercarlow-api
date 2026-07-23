@@ -271,3 +271,26 @@ test('setArchetype stores on the class 3rd-level entry, gated by classIdentifier
   expect(applyBuildAction(low, ref, derived, { t: 'setArchetype', classId: 'fighter', archetypeId: 'tactician' })
     .levels.every((l) => l.archetypeId === null)).toBe(true);
 });
+
+test('ASI actions refuse non-ASI levels', () => {
+  let b = fighterAt(5);
+  b = applyBuildAction(b, ref, derived, { t: 'setAsiChoice', n: 5, choice: 'asi' });
+  expect(b.levels[4].choices).toEqual({}); // fighter level 5 grants no ASI
+  b = applyBuildAction(b, ref, derived, { t: 'allocateAsiPoint', n: 5, ability: 'str', delta: 1 });
+  expect(b.abilities.increases).toEqual([]);
+});
+
+test('setArchetype targets the class 3rd entry under interleaved multiclassing', () => {
+  let b = emptyBuild('x');
+  b.abilities.base.str = 13; b.abilities.base.wis = 13;
+  for (const cid of ['fighter', 'consular', 'fighter', 'fighter']) {
+    b = applyBuildAction(b, ref, derived, { t: 'addLevel', classId: cid });
+  }
+  b = applyBuildAction(b, ref, derived, { t: 'setArchetype', classId: 'fighter', archetypeId: 'tactician' });
+  expect(b.levels.map((l) => l.archetypeId)).toEqual([null, null, null, 'tactician']); // fighter's 3rd entry is n=4
+});
+
+test('setLevelHp on a non-existent level is a no-op', () => {
+  const b = fighterAt(2);
+  expect(applyBuildAction(b, ref, derived, { t: 'setLevelHp', n: 9, hp: 5 })).toEqual(b);
+});

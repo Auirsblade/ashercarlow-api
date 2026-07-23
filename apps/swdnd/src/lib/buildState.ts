@@ -60,6 +60,18 @@ function applyHpDelta(b: CharacterBuild, ref: ReferenceData, before: number): vo
   b.play.hp = Math.max(0, Math.min(after, b.play.hp + (after - before)));
 }
 
+/** The entry's ordinal within its own class (Fighter 1, 2, … regardless of interleaving). */
+function classLevelOrdinal(b: CharacterBuild, n: number): number {
+  const entry = b.levels.find((l) => l.n === n);
+  if (!entry) return 0;
+  let count = 0;
+  for (const l of b.levels) {
+    if (l.classId === entry.classId) count += 1;
+    if (l.n === n) break;
+  }
+  return count;
+}
+
 export function applyBuildAction(
   build: CharacterBuild,
   ref: ReferenceData,
@@ -218,6 +230,7 @@ export function applyBuildAction(
     case 'setAsiChoice': {
       const entry = b.levels.find((l) => l.n === action.n);
       if (!entry) break;
+      if (!(ref.classes[entry.classId]?.asiLevels ?? []).includes(classLevelOrdinal(b, action.n))) break;
       const prev = entry.choices?.asiOrFeat;
       entry.choices = { ...(entry.choices ?? {}) };
       if (action.choice === null) delete entry.choices.asiOrFeat;
@@ -233,6 +246,7 @@ export function applyBuildAction(
     case 'allocateAsiPoint': {
       const entry = b.levels.find((l) => l.n === action.n);
       if (entry?.choices?.asiOrFeat !== 'asi') break;
+      if (!(ref.classes[entry.classId]?.asiLevels ?? []).includes(classLevelOrdinal(b, action.n))) break;
       const asiRef = `l${action.n}`;
       if (action.delta === -1) {
         const idx = b.abilities.increases.findIndex((i) => i.ref === asiRef && i.ability === action.ability);
