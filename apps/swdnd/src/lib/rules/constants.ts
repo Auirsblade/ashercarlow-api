@@ -76,3 +76,14 @@ export const SUPERIORITY_DIE_SIZE = [
 export const MANEUVERS_KNOWN = [
   0, 1, 2, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 17, 19, 20, 21, 22, 23, 24,
 ];
+
+/**
+ * Multiclass primary abilities keyed by class identifier slug (RefClass.identifier).
+ * Source: sw5eapi.azurewebsites.net/api/class → primaryAbility (pinned 2026-07-22;
+ * sw5e.com's PHB pages were down — re-verify the either-of-two-abilities nuance
+ * when the site recovers; the 'class' house-rule unlock covers any discrepancy).
+ */
+export const MULTICLASS_PRIMARY: Record<string, AbilityKey> = {
+  berserker: 'str', consular: 'wis', engineer: 'int', fighter: 'str', guardian: 'str',
+  monk: 'dex', operative: 'dex', scholar: 'int', scout: 'dex', sentinel: 'dex',
+};

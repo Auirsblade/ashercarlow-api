@@ -84,6 +84,10 @@ export interface RefClass {
   powercastingOverride?: Partial<Record<CastType, AbilityKey>>;
   superiorityProgression: number; // 0 when none
   description: string;
+  /** sw5e slug (system.identifier, e.g. 'fighter') linking archetypes to classes. */
+  identifier: string;
+  /** CLASS levels that grant an ASI (from advancement), e.g. [4, 6, 8, 12, 14, 16, 19]. */
+  asiLevels: number[];
 }
 export interface RefArchetype {
   id: string;
@@ -91,6 +95,9 @@ export interface RefArchetype {
   powercasting: Record<CastType, Progression>;
   powercastingOverride?: Partial<Record<CastType, AbilityKey>>;
   superiorityProgression: number;
+  /** Matches RefClass.identifier of the parent class (system.classIdentifier). */
+  classIdentifier: string;
+  description: string;
 }
 export interface RefSpecies {
   id: string;

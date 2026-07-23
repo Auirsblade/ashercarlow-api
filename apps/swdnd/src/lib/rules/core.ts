@@ -45,3 +45,15 @@ export function classesTaken(build: CharacterBuild): ClassTaken[] {
   }
   return order.map((id) => map.get(id)!);
 }
+
+/** The entry's ordinal within its own class (Fighter 1, 2, … regardless of interleaving). */
+export function classLevelOrdinal(build: CharacterBuild, n: number): number {
+  const entry = build.levels.find((l) => l.n === n);
+  if (!entry) return 0;
+  let count = 0;
+  for (const l of build.levels) {
+    if (l.classId === entry.classId) count += 1;
+    if (l.n === n) break;
+  }
+  return count;
+}

@@ -1,5 +1,6 @@
 // apps/swdnd/src/lib/validation.ts
 import type { CharacterBuild, DerivedSheet, ReferenceData } from './rules/types';
+import { classesTaken, classLevelOrdinal } from './rules/core';
 
 export type StepKey =
   | 'species' | 'background' | 'class' | 'abilities'
@@ -44,7 +45,32 @@ export function stepStatus(
 
   const classId = build.levels[0]?.classId;
   const cls = classId ? ref.classes[classId] : undefined;
-  const classInfo = classId ? info('done', cls?.name ?? classId) : info('untouched', '—');
+  const taken = classesTaken(build);
+  let classInfo: StepInfo;
+  if (build.levels.length === 0) classInfo = info('untouched', '—');
+  else {
+    const problems: string[] = [];
+    for (const lvl of build.levels) {
+      const classLevel = classLevelOrdinal(build, lvl.n);
+      if (!(ref.classes[lvl.classId]?.asiLevels ?? []).includes(classLevel)) continue;
+      const choice = lvl.choices?.asiOrFeat;
+      if (choice === 'asi') {
+        const spent = build.abilities.increases
+          .filter((i) => i.ref === `l${lvl.n}`)
+          .reduce((s, i) => s + i.amount, 0);
+        if (spent < 2) problems.push(`L${lvl.n} ASI · ${2 - spent} pt${2 - spent === 1 ? '' : 's'} left`);
+      } else if (choice !== 'feat') {
+        problems.push(`L${lvl.n} ASI/feat pending`);
+      }
+    }
+    for (const t of taken) {
+      if (t.levels >= 3 && !t.archetypeId) {
+        problems.push(`${ref.classes[t.classId]?.name ?? t.classId} archetype pending`);
+      }
+    }
+    const summary = taken.map((t) => `${ref.classes[t.classId]?.name ?? t.classId} ${t.levels}`).join(' / ');
+    classInfo = problems.length ? info('attention', problems[0]) : info('done', summary);
+  }
 
   const touchedAbilities = Object.values(build.abilities.base).some((v) => v !== 10);
   const abilitiesInfo = touchedAbilities ? info('done', 'set') : info('untouched', '—');
@@ -58,8 +84,14 @@ export function stepStatus(
         ? info('attention', `${haveSkills}/${needSkills}`)
         : info('done', `${haveSkills}/${needSkills || haveSkills}`);
 
-  const featId = build.levels[0]?.choices?.featId as string | undefined;
-  const featsInfo = info('done', featId ? (ref.feats[featId]?.name ?? String(featId)) : 'optional');
+  const featSlots = build.levels.filter((l) => l.n !== 1 && l.choices?.asiOrFeat === 'feat');
+  const emptySlots = featSlots.filter((l) => !l.choices?.featId).length;
+  const l1FeatId = build.levels[0]?.choices?.featId as string | undefined;
+  const featsInfo = emptySlots > 0
+    ? info('attention', `${emptySlots} slot${emptySlots === 1 ? '' : 's'} empty`)
+    : featSlots.length > 0
+      ? info('done', `${featSlots.length + (l1FeatId ? 1 : 0)} feat${featSlots.length + (l1FeatId ? 1 : 0) === 1 ? '' : 's'}`)
+      : info('done', l1FeatId ? (ref.feats[l1FeatId]?.name ?? String(l1FeatId)) : 'optional');
 
   const equipmentInfo =
     build.equipment.length > 0 || build.credits > 0

@@ -2,7 +2,7 @@
 import { test, expect } from 'bun:test';
 import { emptyBuild } from './types';
 import {
-  abilityModifier, totalLevel, proficiencyBonus, totalAbilityScores, classesTaken,
+  abilityModifier, totalLevel, proficiencyBonus, totalAbilityScores, classesTaken, classLevelOrdinal,
 } from './core';
 
 test('abilityModifier uses floor((score-10)/2)', () => {
@@ -44,4 +44,18 @@ test('classesTaken groups level entries by class with first archetype', () => {
     { classId: 'consular', archetypeId: 'niman', levels: 2 },
     { classId: 'guardian', archetypeId: null, levels: 1 },
   ]);
+});
+
+test('classLevelOrdinal counts within the entry class across interleaving', () => {
+  const b = emptyBuild('x');
+  b.levels = [
+    { n: 1, classId: 'fighter', archetypeId: null, hp: 'avg' },
+    { n: 2, classId: 'consular', archetypeId: null, hp: 'avg' },
+    { n: 3, classId: 'fighter', archetypeId: null, hp: 'avg' },
+    { n: 4, classId: 'fighter', archetypeId: null, hp: 'avg' },
+  ];
+  expect(classLevelOrdinal(b, 1)).toBe(1);
+  expect(classLevelOrdinal(b, 2)).toBe(1);
+  expect(classLevelOrdinal(b, 4)).toBe(3);
+  expect(classLevelOrdinal(b, 9)).toBe(0);
 });

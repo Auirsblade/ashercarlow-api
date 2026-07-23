@@ -2,6 +2,9 @@
 import type {
   AbilityKey, CharacterBuild, DerivedSheet, ReferenceData, SkillKey,
 } from './rules/types';
+import { maxHp } from './rules/combat';
+import { classLevelOrdinal, totalAbilityScores } from './rules/core';
+import { multiclassBlockers } from './multiclass';
 
 export type BuildAction =
   | { t: 'setName'; name: string }
@@ -11,14 +14,20 @@ export type BuildAction =
   | { t: 'setClass'; classId: string }
   | { t: 'setBaseAbilities'; base: Record<AbilityKey, number> }
   | { t: 'toggleSkill'; skill: SkillKey }
-  | { t: 'setFeat'; featId: string | null }
   | { t: 'addEquipment'; ref: string }
   | { t: 'removeEquipment'; ref: string }
   | { t: 'toggleEquipped'; ref: string }
   | { t: 'setCredits'; credits: number }
   | { t: 'togglePower'; powerId: string }
   | { t: 'toggleManeuver'; maneuverId: string }
-  | { t: 'toggleHouseRule'; step: string };
+  | { t: 'toggleHouseRule'; step: string }
+  | { t: 'addLevel'; classId: string }
+  | { t: 'removeLastLevel' }
+  | { t: 'setLevelHp'; n: number; hp: 'avg' | number }
+  | { t: 'setAsiChoice'; n: number; choice: 'asi' | 'feat' | null }
+  | { t: 'allocateAsiPoint'; n: number; ability: AbilityKey; delta: 1 | -1 }
+  | { t: 'setFeatForLevel'; n: number; featId: string | null }
+  | { t: 'setArchetype'; classId: string; archetypeId: string | null };
 
 const clone = (b: CharacterBuild): CharacterBuild => ({
   ...b,
@@ -44,6 +53,12 @@ const clone = (b: CharacterBuild): CharacterBuild => ({
 });
 
 const houseRuled = (b: CharacterBuild, step: string) => (b.houseRuled ?? []).includes(step);
+
+/** Shift play.hp by the maxHp delta since `before`, clamped to 0..newMax (spec §6). */
+function applyHpDelta(b: CharacterBuild, ref: ReferenceData, before: number): void {
+  const after = maxHp(b, ref);
+  b.play.hp = Math.max(0, Math.min(after, b.play.hp + (after - before)));
+}
 
 export function applyBuildAction(
   build: CharacterBuild,
@@ -91,8 +106,10 @@ export function applyBuildAction(
       break;
 
     case 'setClass': {
+      const before = maxHp(build, ref);
       b.levels = [{ n: 1, classId: action.classId, archetypeId: null, hp: 'avg', choices: {} }];
       b.proficiencies.savingThrows = [...(ref.classes[action.classId]?.saves ?? [])];
+      applyHpDelta(b, ref, before);
       break;
     }
 
@@ -104,14 +121,6 @@ export function applyBuildAction(
       const i = b.proficiencies.skills.indexOf(action.skill);
       if (i >= 0) b.proficiencies.skills.splice(i, 1);
       else b.proficiencies.skills.push(action.skill);
-      break;
-    }
-
-    case 'setFeat': {
-      if (b.levels.length === 0) break;
-      // Feat-sourced increases are Phase 4 (ASI feats); Phase 3 records the pick.
-      if (action.featId == null) delete b.levels[0].choices!.featId;
-      else b.levels[0].choices = { ...(b.levels[0].choices ?? {}), featId: action.featId };
       break;
     }
 
@@ -170,6 +179,104 @@ export function applyBuildAction(
       if (i >= 0) list.splice(i, 1);
       else list.push(action.step);
       b.houseRuled = list;
+      break;
+    }
+
+    case 'addLevel': {
+      if (b.levels.length >= 20 || !ref.classes[action.classId]) break;
+      if (!houseRuled(b, 'class') && multiclassBlockers(b, ref, action.classId).length > 0) break;
+      const before = maxHp(build, ref);
+      if (b.levels.length === 0) b.proficiencies.savingThrows = [...(ref.classes[action.classId]?.saves ?? [])];
+      b.levels.push({ n: b.levels.length + 1, classId: action.classId, archetypeId: null, hp: 'avg', choices: {} });
+      applyHpDelta(b, ref, before);
+      break;
+    }
+
+    case 'removeLastLevel': {
+      const last = b.levels[b.levels.length - 1];
+      if (!last) break;
+      // Ability-driven max changes move max only: strip this level's increases
+      // FIRST, then measure only the level's own HP contribution (round-trips addLevel).
+      b.abilities.increases = b.abilities.increases.filter((i) => i.ref !== `l${last.n}`);
+      const before = maxHp(b, ref);
+      b.levels.pop();
+      if (b.levels.length === 0) b.proficiencies.savingThrows = [];
+      applyHpDelta(b, ref, before);
+      break;
+    }
+
+    case 'setLevelHp': {
+      const entry = b.levels.find((l) => l.n === action.n);
+      if (!entry || entry.n === 1) break; // level 1 is always max die (engine rule)
+      const die = ref.classes[entry.classId]?.hitDie ?? 6;
+      const before = maxHp(build, ref);
+      entry.hp = action.hp === 'avg' ? 'avg' : Math.min(Math.max(1, Math.round(action.hp)), die);
+      applyHpDelta(b, ref, before);
+      break;
+    }
+
+    case 'setAsiChoice': {
+      const entry = b.levels.find((l) => l.n === action.n);
+      if (!entry) break;
+      if (!(ref.classes[entry.classId]?.asiLevels ?? []).includes(classLevelOrdinal(b, action.n))) break;
+      const prev = entry.choices?.asiOrFeat;
+      entry.choices = { ...(entry.choices ?? {}) };
+      if (action.choice === null) delete entry.choices.asiOrFeat;
+      else entry.choices.asiOrFeat = action.choice;
+      // Switching elections clears the other election's grants (spec §2).
+      if (prev === 'asi' && action.choice !== 'asi') {
+        b.abilities.increases = b.abilities.increases.filter((i) => i.ref !== `l${action.n}`);
+      }
+      if (prev === 'feat' && action.choice !== 'feat') delete entry.choices.featId;
+      break;
+    }
+
+    case 'allocateAsiPoint': {
+      const entry = b.levels.find((l) => l.n === action.n);
+      if (entry?.choices?.asiOrFeat !== 'asi') break;
+      if (!(ref.classes[entry.classId]?.asiLevels ?? []).includes(classLevelOrdinal(b, action.n))) break;
+      const asiRef = `l${action.n}`;
+      if (action.delta === -1) {
+        const idx = b.abilities.increases.findIndex((i) => i.ref === asiRef && i.ability === action.ability);
+        if (idx >= 0) b.abilities.increases.splice(idx, 1);
+        break;
+      }
+      const spent = b.abilities.increases.filter((i) => i.ref === asiRef).reduce((s, i) => s + i.amount, 0);
+      if (spent >= 2) break;                                    // ASI budget is 2 points
+      if (totalAbilityScores(b)[action.ability] >= 20) break;   // sw5e hard cap
+      b.abilities.increases.push({ source: 'asi', ref: asiRef, ability: action.ability, amount: 1 });
+      break;
+    }
+
+    case 'setFeatForLevel': {
+      const entry = b.levels.find((l) => l.n === action.n);
+      if (!entry) break;
+      // L1's feat is the optional Phase 3 slot; other levels need a 'feat' election.
+      if (action.n !== 1 && entry.choices?.asiOrFeat !== 'feat') break;
+      entry.choices = { ...(entry.choices ?? {}) };
+      if (action.featId == null) delete entry.choices.featId;
+      else entry.choices.featId = action.featId;
+      break;
+    }
+
+    case 'setArchetype': {
+      // The archetype lives on the entry where the class reaches level 3
+      // (the engine's classesTaken reads the first non-null per class).
+      let classLevel = 0;
+      let target: (typeof b.levels)[number] | undefined;
+      for (const l of b.levels) {
+        if (l.classId !== action.classId) continue;
+        classLevel += 1;
+        if (classLevel === 3) { target = l; break; }
+      }
+      if (!target) break;
+      if (action.archetypeId != null) {
+        const arch = ref.archetypes[action.archetypeId];
+        if (!arch) break;
+        if (!houseRuled(b, 'class') && arch.classIdentifier !== ref.classes[action.classId]?.identifier) break;
+      }
+      for (const l of b.levels) if (l.classId === action.classId) l.archetypeId = null;
+      target.archetypeId = action.archetypeId;
       break;
     }
   }
