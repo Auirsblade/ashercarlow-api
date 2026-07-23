@@ -9,7 +9,7 @@ const initials = (name: string) =>
   name.split(/\s+/).map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
 
 export default function TokenGlyph({
-  token, grid, ghost, draggable, at, vitals, showHp, dimmed,
+  token, grid, ghost, draggable, at, vitals, showHp, dimmed, active,
 }: {
   token: TokenDto;
   grid: GridConfig;
@@ -21,6 +21,8 @@ export default function TokenGlyph({
   showHp: boolean;
   /** DM view of a hidden token. */
   dimmed?: boolean;
+  /** This token's turn is currently active in the initiative order. */
+  active?: boolean;
 }) {
   const pos = at ?? hexToPixel({ q: token.q, r: token.r }, grid);
   const radius = grid.hexSize * 0.72 * token.scale;
@@ -38,6 +40,11 @@ export default function TokenGlyph({
         stroke={token.color} strokeWidth={grid.hexSize * 0.08}
         strokeDasharray={dimmed ? '4 3' : undefined}
       />
+      {active && (
+        <circle r={radius * 1.5} fill="none" stroke="#4dd0e1" strokeWidth={grid.hexSize * 0.06} pointerEvents="none">
+          <animate attributeName="stroke-opacity" values="0.9;0.25;0.9" dur="1.6s" repeatCount="indefinite" />
+        </circle>
+      )}
       {fraction != null && (
         <path
           d={hpArcPath(radius * 1.08, fraction)}
