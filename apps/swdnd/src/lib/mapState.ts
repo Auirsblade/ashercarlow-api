@@ -1,10 +1,11 @@
 // apps/swdnd/src/lib/mapState.ts — pure reducers merging WS events + optimistic moves.
 import type { WsEnvelope } from './ws';
-import type { SceneDto, TokenDto } from './scenes';
+import type { SceneDto, TemplateDto, TokenDto } from './scenes';
 
 export interface MapState {
   scene: SceneDto | null;
   tokens: Record<string, TokenDto>;
+  templates: Record<string, TemplateDto>;
   /**
    * tokenId → in-flight optimistic move; token:updated echoes are held off
    * while an entry is set. `seq` increments per token on every optimistic
@@ -19,7 +20,7 @@ export interface MapState {
 }
 
 export const emptyMapState = (): MapState => ({
-  scene: null, tokens: {}, pendingMoves: {}, dragGhosts: {}, staleScene: false,
+  scene: null, tokens: {}, templates: {}, pendingMoves: {}, dragGhosts: {}, staleScene: false,
 });
 
 export function optimisticMove(
@@ -87,6 +88,20 @@ export function applyMapEvent(s: MapState, env: WsEnvelope): MapState {
     case 'scene:activated':
     case 'scene:deleted':
       return { ...s, staleScene: true };
+    case 'template:created': {
+      const tpl = env.payload as TemplateDto;
+      return { ...s, templates: { ...s.templates, [tpl.id]: tpl } };
+    }
+    case 'template:deleted': {
+      const { id } = env.payload as { id: string };
+      const { [id]: _gone, ...templates } = s.templates;
+      return { ...s, templates };
+    }
+    case 'template:cleared': {
+      const { sceneId } = env.payload as { sceneId: string };
+      if (!s.scene || s.scene.id !== sceneId) return s;
+      return { ...s, templates: {} };
+    }
     default:
       return s;
   }
