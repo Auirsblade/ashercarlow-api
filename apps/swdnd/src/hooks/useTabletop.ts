@@ -10,8 +10,9 @@ import {
 import {
   applyMapEvent, confirmMove, emptyMapState, optimisticMove, rollbackMove, type MapState,
 } from '../lib/mapState';
-import { buildVitals, mergePlay, type Vitals } from '../lib/vitals';
+import { addCharacterVitals, applyPendingPlays, buildVitals, mergePlay, type PendingPlays, type Vitals } from '../lib/vitals';
 import type { GridConfig } from '../lib/hex';
+import type { ReferenceData } from '../lib/rules/types';
 
 export interface TabletopState {
   loading: boolean;
@@ -57,6 +58,9 @@ export function useTabletop(campaignId: string): TabletopState {
   const [error, setError] = useState<string | null>(null);
   const socket = useRef<CampaignSocket | null>(null);
   const lastDrag = useRef(0);
+  const refData = useRef<ReferenceData | null>(null);
+  const vitalsLoaded = useRef(false);
+  const pendingPlays = useRef<PendingPlays>({});
   const room = `campaign:${campaignId}`;
 
   const reload = useCallback(() => {
@@ -94,11 +98,19 @@ export function useTabletop(campaignId: string): TabletopState {
   // maxHp; play.hp/conditions then track character:updated events live.
   useEffect(() => {
     let cancelled = false;
+    vitalsLoaded.current = false;
+    pendingPlays.current = {};
     Promise.all([
       import('../lib/characters').then((m) => m.listCharacters(campaignId)),
       import('../lib/characters').then((m) => m.loadReference()),
     ])
-      .then(([chars, ref]) => { if (!cancelled) setVitals(buildVitals(chars, ref)); })
+      .then(([chars, ref]) => {
+        if (cancelled) return;
+        refData.current = ref;
+        vitalsLoaded.current = true;
+        setVitals(applyPendingPlays(buildVitals(chars, ref), pendingPlays.current));
+        pendingPlays.current = {};
+      })
       .catch(() => { /* vitals stay empty; rings for character tokens simply don't render */ });
     return () => { cancelled = true; };
   }, [campaignId]);
@@ -108,7 +120,32 @@ export function useTabletop(campaignId: string): TabletopState {
     const sock = connectCampaign(campaignId, (env: WsEnvelope) => {
       if (env.type === 'character:updated') {
         const p = env.payload as { characterId?: string; play?: { hp: number; conditions: string[] } };
-        if (p?.characterId && p.play) setVitals((v) => mergePlay(v, p.characterId!, p.play!));
+        const id = p?.characterId;
+        const play = p?.play;
+        if (!id || !play) return;
+        if (!vitalsLoaded.current) {
+          // Loader hasn't resolved yet; buffer so the eventual buildVitals() doesn't
+          // clobber this update with a stale snapshot.
+          pendingPlays.current[id] = play;
+          return;
+        }
+        setVitals((v) => {
+          if (v[id]) return mergePlay(v, id, play);
+          // Unknown id: character created after load. Fetch its full DTO and adopt
+          // it into the map; leave state untouched until that resolves.
+          const ref = refData.current;
+          if (ref) {
+            import('../lib/characters')
+              .then((m) => m.getCharacter(id))
+              .then((character) => {
+                const r = refData.current;
+                if (!r) return;
+                setVitals((v2) => mergePlay(addCharacterVitals(v2, character, r), id, play));
+              })
+              .catch(() => { /* character not found (e.g. deleted); stay a silent no-op */ });
+          }
+          return v;
+        });
         return;
       }
       setState((s) => applyMapEvent(s, env));

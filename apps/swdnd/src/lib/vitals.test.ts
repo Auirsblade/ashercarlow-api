@@ -1,6 +1,6 @@
 // apps/swdnd/src/lib/vitals.test.ts
 import { describe, expect, it } from 'bun:test';
-import { mergePlay, tokenVitals, type Vitals } from './vitals';
+import { applyPendingPlays, mergePlay, tokenVitals, type PendingPlays, type Vitals } from './vitals';
 import type { TokenDto } from './scenes';
 
 const baseToken = (over: Partial<TokenDto>): TokenDto => ({
@@ -21,6 +21,31 @@ describe('mergePlay', () => {
   it('ignores unknown characters', () => {
     const v: Record<string, Vitals> = {};
     expect(mergePlay(v, 'nope', { hp: 1, conditions: [] })).toBe(v);
+  });
+});
+
+describe('applyPendingPlays', () => {
+  it('overlays hp/conditions onto known ids', () => {
+    const v: Record<string, Vitals> = {
+      c1: { hp: 10, maxHp: 24, conditions: [] },
+      c2: { hp: 5, maxHp: 12, conditions: ['prone'] },
+    };
+    const pending: PendingPlays = { c1: { hp: 3, conditions: ['stunned'] } };
+    const next = applyPendingPlays(v, pending);
+    expect(next.c1).toEqual({ hp: 3, maxHp: 24, conditions: ['stunned'] });
+    expect(next.c2).toEqual({ hp: 5, maxHp: 12, conditions: ['prone'] });
+  });
+
+  it('ignores unknown ids', () => {
+    const v: Record<string, Vitals> = { c1: { hp: 10, maxHp: 24, conditions: [] } };
+    const pending: PendingPlays = { nope: { hp: 1, conditions: [] } };
+    const next = applyPendingPlays(v, pending);
+    expect(next).toEqual(v);
+  });
+
+  it('empty pending is identity', () => {
+    const v: Record<string, Vitals> = { c1: { hp: 10, maxHp: 24, conditions: [] } };
+    expect(applyPendingPlays(v, {})).toBe(v);
   });
 });
 

@@ -6,6 +6,7 @@ import { computeSheet } from './rules';
 
 export interface Vitals { hp: number; maxHp: number; conditions: string[] }
 export interface TokenVitals { hp: number | null; maxHp: number | null; conditions: string[] }
+export type PendingPlays = Record<string, { hp: number; conditions: string[] }>;
 
 /** Initial snapshot: computeSheet gives maxHp; play gives current hp + conditions. */
 export function buildVitals(characters: CharacterDto[], ref: ReferenceData): Record<string, Vitals> {
@@ -34,6 +35,22 @@ export function mergePlay(
   const cur = vitals[characterId];
   if (!cur) return vitals;
   return { ...vitals, [characterId]: { ...cur, hp: play.hp, conditions: [...play.conditions] } };
+}
+
+/** Overlay buffered play payloads (recorded while the load was in flight) onto a freshly built vitals map. Unknown ids are no-ops. */
+export function applyPendingPlays(vitals: Record<string, Vitals>, pending: PendingPlays): Record<string, Vitals> {
+  let out = vitals;
+  for (const [id, play] of Object.entries(pending)) out = mergePlay(out, id, play);
+  return out;
+}
+
+/** Add (or refresh) a single character's vitals from a full DTO — used when a character:updated event names an id not yet in the map. */
+export function addCharacterVitals(
+  vitals: Record<string, Vitals>,
+  character: CharacterDto,
+  ref: ReferenceData,
+): Record<string, Vitals> {
+  return { ...vitals, ...buildVitals([character], ref) };
 }
 
 /** Which hp/conditions a token displays: sheet-derived for character tokens, own columns for NPCs. */
