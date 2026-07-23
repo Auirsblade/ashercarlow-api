@@ -5,6 +5,7 @@ import { registerContentRoutes } from './content';
 import { registerCampaignRoutes } from './campaigns';
 import { registerCharacterRoutes } from './characters';
 import { registerPlayerRoutes } from './players';
+import { registerSceneRoutes } from './scenes';
 
 /** Paths whose mutations run their own (player-or-admin) access check, so the
  * blanket admin-only gate must not pre-empt them.
@@ -32,4 +33,5 @@ export function registerSwdndRoutes(app: OpenAPIHono): void {
   registerCampaignRoutes(app);
   registerCharacterRoutes(app);
   registerPlayerRoutes(app);
+  registerSceneRoutes(app);
 }

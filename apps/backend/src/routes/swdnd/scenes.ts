@@ -1,0 +1,196 @@
+// apps/backend/src/routes/swdnd/scenes.ts
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { HTTPException } from 'hono/http-exception';
+import { swdndDb } from '../../db/swdnd';
+import { publishToRoom, roomForCampaign } from '../../lib/swdnd-realtime';
+
+const Grid = z.object({
+  orientation: z.enum(['flat', 'pointy']),
+  hexSize: z.number().positive(),
+  originX: z.number(),
+  originY: z.number(),
+  unitsPerHex: z.number().positive(),
+  unitLabel: z.string(),
+}).openapi('SwdndGrid');
+
+export const DEFAULT_GRID = {
+  orientation: 'pointy', hexSize: 32, originX: 0, originY: 0, unitsPerHex: 5, unitLabel: 'ft',
+} as const;
+
+const Scene = z.object({
+  id: z.string(),
+  campaign_id: z.string(),
+  name: z.string(),
+  image_path: z.string().nullable(),
+  image_w: z.number().nullable(),
+  image_h: z.number().nullable(),
+  grid_json: Grid,
+  fog_json: z.array(z.string()),
+  initiative_json: z.unknown().nullable(),
+  is_active: z.number(),
+  sort: z.number(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).openapi('SwdndScene');
+
+interface SceneRow {
+  id: string; campaign_id: string; name: string;
+  image_path: string | null; image_w: number | null; image_h: number | null;
+  grid_json: string; fog_json: string; initiative_json: string | null;
+  is_active: number; sort: number; created_at: string; updated_at: string;
+}
+
+const ErrorBody = z.object({ message: z.string() });
+const PostBody = z.object({ name: z.string().min(1) }).openapi('SwdndPostScene');
+const PatchBody = z.object({
+  name: z.string().min(1).optional(),
+  grid: Grid.optional(),
+  sort: z.number().optional(),
+}).openapi('SwdndPatchScene');
+
+/** Parse a DB row's JSON columns into the API shape. */
+export function sceneOut(row: SceneRow) {
+  return {
+    ...row,
+    grid_json: JSON.parse(row.grid_json || '{}'),
+    fog_json: JSON.parse(row.fog_json || '[]'),
+    initiative_json: row.initiative_json ? JSON.parse(row.initiative_json) : null,
+  };
+}
+
+export function getSceneRow(id: string): SceneRow | null {
+  return swdndDb.query<SceneRow, [string]>('SELECT * FROM scene WHERE id = ?').get(id) ?? null;
+}
+
+function broadcastScene(row: SceneRow, type: string): void {
+  const room = roomForCampaign(row.campaign_id);
+  publishToRoom(room, { type, room, payload: sceneOut(row) });
+}
+
+const listRoute = createRoute({
+  method: 'get', path: '/swdnd/campaigns/{id}/scenes', tags: ['swdnd'],
+  summary: 'List a campaign’s scenes',
+  request: { params: z.object({ id: z.string() }) },
+  responses: { 200: { description: 'Scenes', content: { 'application/json': { schema: z.array(Scene) } } } },
+});
+const createSceneRoute = createRoute({
+  method: 'post', path: '/swdnd/campaigns/{id}/scenes', tags: ['swdnd'],
+  summary: 'Create a scene (DM only)', security: [{ bearerAuth: [] }],
+  request: { params: z.object({ id: z.string() }), body: { content: { 'application/json': { schema: PostBody } } } },
+  responses: {
+    201: { description: 'Created', content: { 'application/json': { schema: Scene } } },
+    404: { description: 'No campaign', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+const getRoute = createRoute({
+  method: 'get', path: '/swdnd/scenes/{id}', tags: ['swdnd'],
+  summary: 'Get one scene',
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    200: { description: 'Scene', content: { 'application/json': { schema: Scene } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+const patchRoute = createRoute({
+  method: 'patch', path: '/swdnd/scenes/{id}', tags: ['swdnd'],
+  summary: 'Update a scene’s name/grid/sort (DM only)', security: [{ bearerAuth: [] }],
+  request: { params: z.object({ id: z.string() }), body: { content: { 'application/json': { schema: PatchBody } } } },
+  responses: {
+    200: { description: 'Updated', content: { 'application/json': { schema: Scene } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+const deleteRoute = createRoute({
+  method: 'delete', path: '/swdnd/scenes/{id}', tags: ['swdnd'],
+  summary: 'Delete a scene (DM only)', security: [{ bearerAuth: [] }],
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    200: { description: 'Deleted', content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+const activateRoute = createRoute({
+  method: 'post', path: '/swdnd/scenes/{id}/activate', tags: ['swdnd'],
+  summary: 'Make this the campaign’s active scene (DM only)', security: [{ bearerAuth: [] }],
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    200: { description: 'Activated', content: { 'application/json': { schema: Scene } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+
+export function registerSceneRoutes(app: OpenAPIHono): void {
+  app.openapi(listRoute, (c) => {
+    const { id } = c.req.valid('param');
+    const rows = swdndDb
+      .query<SceneRow, [string]>('SELECT * FROM scene WHERE campaign_id = ? ORDER BY sort, created_at')
+      .all(id);
+    return c.json(rows.map(sceneOut), 200);
+  });
+
+  app.openapi(createSceneRoute, (c) => {
+    const { id: campaignId } = c.req.valid('param');
+    const { name } = c.req.valid('json');
+    const campaign = swdndDb.query<{ id: string }, [string]>('SELECT id FROM campaign WHERE id = ?').get(campaignId);
+    if (!campaign) throw new HTTPException(404, { message: 'Campaign not found' });
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    swdndDb.run(
+      'INSERT INTO scene (id, campaign_id, name, grid_json, fog_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, campaignId, name, JSON.stringify(DEFAULT_GRID), '[]', now, now],
+    );
+    const row = getSceneRow(id)!;
+    broadcastScene(row, 'scene:updated');
+    return c.json(sceneOut(row), 201);
+  });
+
+  app.openapi(getRoute, (c) => {
+    const row = getSceneRow(c.req.valid('param').id);
+    if (!row) throw new HTTPException(404, { message: 'Scene not found' });
+    return c.json(sceneOut(row), 200);
+  });
+
+  app.openapi(patchRoute, (c) => {
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const row = getSceneRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Scene not found' });
+    const now = new Date().toISOString();
+    swdndDb.run(
+      'UPDATE scene SET name = ?, grid_json = ?, sort = ?, updated_at = ? WHERE id = ?',
+      [
+        body.name ?? row.name,
+        body.grid ? JSON.stringify(body.grid) : row.grid_json,
+        body.sort ?? row.sort,
+        now, id,
+      ],
+    );
+    const updated = getSceneRow(id)!;
+    broadcastScene(updated, 'scene:updated');
+    return c.json(sceneOut(updated), 200);
+  });
+
+  app.openapi(deleteRoute, (c) => {
+    const { id } = c.req.valid('param');
+    const row = getSceneRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Scene not found' });
+    swdndDb.run('DELETE FROM scene WHERE id = ?', [id]);
+    const room = roomForCampaign(row.campaign_id);
+    publishToRoom(room, { type: 'scene:deleted', room, payload: { id } });
+    return c.json({ ok: true }, 200);
+  });
+
+  app.openapi(activateRoute, (c) => {
+    const { id } = c.req.valid('param');
+    const row = getSceneRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Scene not found' });
+    const now = new Date().toISOString();
+    swdndDb.transaction(() => {
+      swdndDb.run('UPDATE scene SET is_active = 0 WHERE campaign_id = ?', [row.campaign_id]);
+      swdndDb.run('UPDATE scene SET is_active = 1, updated_at = ? WHERE id = ?', [now, id]);
+    })();
+    const updated = getSceneRow(id)!;
+    broadcastScene(updated, 'scene:activated');
+    return c.json(sceneOut(updated), 200);
+  });
+}
