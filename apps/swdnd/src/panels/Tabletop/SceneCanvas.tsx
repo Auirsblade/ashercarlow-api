@@ -71,7 +71,9 @@ export default function SceneCanvas({
   const [fogStroke, setFogStroke] = useState<Set<string> | null>(null);
   const fogStrokeRef = useRef<Set<string>>(new Set());
   const [rulerDrag, setRulerDrag] = useState<{ a: Hex; b: Hex } | null>(null);
-  const [tplDrag, setTplDrag] = useState<{ kind: 'cone' | 'line'; origin: Hex; x: number; y: number } | null>(null);
+  const [tplDrag, setTplDrag] = useState<{
+    kind: 'cone' | 'line'; origin: Hex; x: number; y: number; startClientX: number; startClientY: number;
+  } | null>(null);
 
   const hexes = useMemo(() => gridHexes(scene), [scene]);
   const mapPoint = (e: { clientX: number; clientY: number }) => {
@@ -110,7 +112,10 @@ export default function SceneCanvas({
     }
     if (mode === 'cone' || mode === 'line') {
       const p = mapPoint(e);
-      setTplDrag({ kind: mode, origin: pixelToHex(p.x, p.y, g), x: p.x, y: p.y });
+      setTplDrag({
+        kind: mode, origin: pixelToHex(p.x, p.y, g), x: p.x, y: p.y,
+        startClientX: e.clientX, startClientY: e.clientY,
+      });
       return;
     }
     const tokenEl = (e.target as Element).closest('[data-token-id]');
@@ -189,9 +194,15 @@ export default function SceneCanvas({
     }
     if (tplDrag) {
       const p = mapPoint(e);
+      const tplMoved = Math.hypot(e.clientX - tplDrag.startClientX, e.clientY - tplDrag.startClientY) > 4;
       if (tplDrag.kind === 'cone') {
-        const dir = dirFromPoint(tplDrag.origin, p.x, p.y, g);
-        onCreateTemplate({ kind: 'cone', q: tplDrag.origin.q, r: tplDrag.origin.r, dir, size: templateSize });
+        // A stationary click has no meaningful direction — dirFromPoint would
+        // fall back to dir 0, which would persist a bogus dir-0 cone at every
+        // tap. Require the same 4px movement threshold used for token drags.
+        if (tplMoved) {
+          const dir = dirFromPoint(tplDrag.origin, p.x, p.y, g);
+          onCreateTemplate({ kind: 'cone', q: tplDrag.origin.q, r: tplDrag.origin.r, dir, size: templateSize });
+        }
       } else {
         const end = pixelToHex(p.x, p.y, g);
         if (end.q !== tplDrag.origin.q || end.r !== tplDrag.origin.r) {

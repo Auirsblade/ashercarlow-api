@@ -83,6 +83,17 @@ export function applyMapEvent(s: MapState, env: WsEnvelope): MapState {
     case 'scene:updated': {
       const scene = env.payload as SceneDto;
       if (!s.scene || scene.id !== s.scene.id) return s;
+      // Guard against out-of-order echoes: two quick DM PATCHes can have their
+      // scene:updated broadcasts arrive out of order, and applying the older
+      // one unconditionally would revert the newer state (e.g. an initiative
+      // turn flip or a fog reveal). ISO 8601 UTC timestamps from a single
+      // server sort lexicographically the same as chronologically, so a
+      // plain string compare is enough. Optimistic local paths (commitFog,
+      // setInitiative) mutate `s.scene` directly without bumping
+      // updated_at, so their genuine echo always carries the same
+      // updated_at already stored locally — apply on `>=`, not `>`, so that
+      // echo still lands (it's a no-op overwrite, but must not be dropped).
+      if (scene.updated_at < s.scene.updated_at) return s;
       return { ...s, scene };
     }
     case 'scene:activated':

@@ -115,6 +115,40 @@ test('scene:updated replaces the scene when ids match; scene:activated flags a r
   expect(s.staleScene).toBe(true);
 });
 
+test('scene:updated drops an out-of-order echo whose updated_at is older than the stored scene', () => {
+  let s: MapState = {
+    ...emptyMapState(),
+    scene: { id: 's1', name: 'B (newer)', updated_at: '2026-01-01T00:00:02.000Z' } as any,
+  };
+  // Echo for an earlier PATCH ("A") arrives after the newer one has already landed.
+  s = applyMapEvent(s, {
+    type: 'scene:updated', room: 'x',
+    payload: { id: 's1', name: 'A (older)', updated_at: '2026-01-01T00:00:01.000Z' },
+  });
+  expect((s.scene as any).name).toBe('B (newer)');
+});
+
+test('scene:updated applies when updated_at is equal to (or newer than) the stored scene', () => {
+  let s: MapState = {
+    ...emptyMapState(),
+    scene: { id: 's1', name: 'Old', updated_at: '2026-01-01T00:00:01.000Z' } as any,
+  };
+  // Equal timestamp: this is the genuine echo of the local optimistic write
+  // (commitFog/setInitiative mutate scene locally without bumping updated_at),
+  // so it must still apply.
+  s = applyMapEvent(s, {
+    type: 'scene:updated', room: 'x',
+    payload: { id: 's1', name: 'Equal', updated_at: '2026-01-01T00:00:01.000Z' },
+  });
+  expect((s.scene as any).name).toBe('Equal');
+  // Strictly newer: a later PATCH.
+  s = applyMapEvent(s, {
+    type: 'scene:updated', room: 'x',
+    payload: { id: 's1', name: 'Newer', updated_at: '2026-01-01T00:00:02.000Z' },
+  });
+  expect((s.scene as any).name).toBe('Newer');
+});
+
 describe('template events', () => {
   it('template:created adds and template:deleted removes', () => {
     const tpl = { id: 'T1', scene_id: 'S', kind: 'blast', q: 0, r: 0, dir: 0, size: 1, q2: null, r2: null, color: '#fff', created_at: '' };

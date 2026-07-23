@@ -79,7 +79,7 @@ export function useTabletop(campaignId: string): TabletopState {
   const peerId = useRef<string>(crypto.randomUUID());
   const pingSeq = useRef(0);
   const [pings, setPings] = useState<{ id: string; x: number; y: number; at: number }[]>([]);
-  const [rulers, setRulers] = useState<Record<string, { a: Hex; b: Hex }>>({});
+  const [rulers, setRulers] = useState<Record<string, { a: Hex; b: Hex; at: number }>>({});
   const lastRuler = useRef(0);
 
   const reload = useCallback(() => {
@@ -106,15 +106,28 @@ export function useTabletop(campaignId: string): TabletopState {
       .finally(() => setLoading(false));
   }, [campaignId]);
 
-  // Prune pings ~2s after they land (rendered as short-lived pulses).
+  // Prune pings ~2s after they land (rendered as short-lived pulses), and
+  // drop remote ruler entries that have gone stale (~5s) — a peer that
+  // disconnects mid-drag never sends the `done:true` frame that would
+  // otherwise clear its ruler, so it would linger forever. Active drags
+  // refresh `at` on every throttled frame (80ms), well under the cutoff.
+  const hasRulers = Object.keys(rulers).length > 0;
   useEffect(() => {
-    if (pings.length === 0) return;
+    if (pings.length === 0 && !hasRulers) return;
     const t = setInterval(() => {
       const cutoff = Date.now() - 2200;
       setPings((p) => (p.some((x) => x.at < cutoff) ? p.filter((x) => x.at >= cutoff) : p));
+      const rulerCutoff = Date.now() - 5000;
+      setRulers((cur) => {
+        const stale = Object.entries(cur).filter(([, v]) => v.at < rulerCutoff).map(([k]) => k);
+        if (stale.length === 0) return cur;
+        const next = { ...cur };
+        for (const k of stale) delete next[k];
+        return next;
+      });
     }, 500);
     return () => clearInterval(t);
-  }, [pings.length > 0]);
+  }, [pings.length > 0, hasRulers]);
 
   useEffect(reload, [reload]);
 
@@ -194,7 +207,7 @@ export function useTabletop(campaignId: string): TabletopState {
             const { [p.peer]: _gone, ...rest } = cur;
             return rest;
           }
-          return { ...cur, [p.peer]: { a: p.a, b: p.b } };
+          return { ...cur, [p.peer]: { a: p.a, b: p.b, at: Date.now() } };
         });
         return;
       }
@@ -270,7 +283,7 @@ export function useTabletop(campaignId: string): TabletopState {
     vitals,
     templates: Object.values(state.templates),
     pings,
-    rulers,
+    rulers: Object.fromEntries(Object.entries(rulers).map(([k, { a, b }]) => [k, { a, b }])),
     initiative: (state.scene?.initiative_json as Initiative | null) ?? null,
     canMove: (t) => authed || (!!t.character_id && ownCharacterIds.has(t.character_id)),
     actions: {
