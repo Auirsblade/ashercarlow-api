@@ -5,12 +5,15 @@ import { useAuth } from '../lib/auth';
 import { connectCampaign, type CampaignSocket, type WsEnvelope } from '../lib/ws';
 import {
   activateScene, createScene, createToken, deleteScene, deleteToken, listScenes,
-  listTokens, moveToken, patchScene, patchToken, uploadSceneImage, type SceneDto, type TokenDto,
+  listTokens, moveToken, patchFog, patchScene, patchToken, uploadSceneImage, type SceneDto, type TokenDto,
 } from '../lib/scenes';
 import {
   applyMapEvent, confirmMove, emptyMapState, optimisticMove, rollbackMove, type MapState,
 } from '../lib/mapState';
+import { applyFogPatch } from '../lib/fog';
+import { addCharacterVitals, applyPendingPlays, buildVitals, mergePlay, type PendingPlays, type Vitals } from '../lib/vitals';
 import type { GridConfig } from '../lib/hex';
+import type { ReferenceData } from '../lib/rules/types';
 
 export interface TabletopState {
   loading: boolean;
@@ -23,6 +26,7 @@ export interface TabletopState {
   playerToken: string | null;
   canMove: (t: TokenDto) => boolean;
   ownCharacterIds: Set<string>;
+  vitals: Record<string, Vitals>;
   actions: {
     move: (tokenId: string, q: number, r: number) => void;
     sendDrag: (tokenId: string, x: number, y: number, done: boolean) => void;
@@ -35,6 +39,7 @@ export interface TabletopState {
     addToken: (body: Partial<TokenDto> & { name: string }) => Promise<void>;
     removeToken: (id: string) => Promise<void>;
     editToken: (id: string, body: Record<string, unknown>) => Promise<void>;
+    commitFog: (reveal: string[], hide: string[]) => Promise<void>;
     reload: () => void;
   };
 }
@@ -49,10 +54,14 @@ export function useTabletop(campaignId: string): TabletopState {
   const [state, setState] = useState<MapState>(emptyMapState());
   const [scenes, setScenes] = useState<SceneDto[]>([]);
   const [ownCharacterIds, setOwnCharacterIds] = useState<Set<string>>(new Set());
+  const [vitals, setVitals] = useState<Record<string, Vitals>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const socket = useRef<CampaignSocket | null>(null);
   const lastDrag = useRef(0);
+  const refData = useRef<ReferenceData | null>(null);
+  const vitalsLoaded = useRef(false);
+  const pendingPlays = useRef<PendingPlays>({});
   const room = `campaign:${campaignId}`;
 
   const reload = useCallback(() => {
@@ -86,9 +95,60 @@ export function useTabletop(campaignId: string): TabletopState {
     );
   }, [playerToken]);
 
+  // Load campaign characters + reference once and compute each character's
+  // maxHp; play.hp/conditions then track character:updated events live.
+  useEffect(() => {
+    let cancelled = false;
+    vitalsLoaded.current = false;
+    pendingPlays.current = {};
+    Promise.all([
+      import('../lib/characters').then((m) => m.listCharacters(campaignId)),
+      import('../lib/characters').then((m) => m.loadReference()),
+    ])
+      .then(([chars, ref]) => {
+        if (cancelled) return;
+        refData.current = ref;
+        vitalsLoaded.current = true;
+        setVitals(applyPendingPlays(buildVitals(chars, ref), pendingPlays.current));
+        pendingPlays.current = {};
+      })
+      .catch(() => { /* vitals stay empty; rings for character tokens simply don't render */ });
+    return () => { cancelled = true; };
+  }, [campaignId]);
+
   useEffect(() => {
     const hadOpenedRef = { current: false };
     const sock = connectCampaign(campaignId, (env: WsEnvelope) => {
+      if (env.type === 'character:updated') {
+        const p = env.payload as { characterId?: string; play?: { hp: number; conditions: string[] } };
+        const id = p?.characterId;
+        const play = p?.play;
+        if (!id || !play) return;
+        if (!vitalsLoaded.current) {
+          // Loader hasn't resolved yet; buffer so the eventual buildVitals() doesn't
+          // clobber this update with a stale snapshot.
+          pendingPlays.current[id] = play;
+          return;
+        }
+        setVitals((v) => {
+          if (v[id]) return mergePlay(v, id, play);
+          // Unknown id: character created after load. Fetch its full DTO and adopt
+          // it into the map; leave state untouched until that resolves.
+          const ref = refData.current;
+          if (ref) {
+            import('../lib/characters')
+              .then((m) => m.getCharacter(id))
+              .then((character) => {
+                const r = refData.current;
+                if (!r) return;
+                setVitals((v2) => mergePlay(addCharacterVitals(v2, character, r), id, play));
+              })
+              .catch(() => { /* character not found (e.g. deleted); stay a silent no-op */ });
+          }
+          return v;
+        });
+        return;
+      }
       setState((s) => applyMapEvent(s, env));
     }, (open) => {
       // Events that arrive during a dropped-connection gap are lost; resync
@@ -145,6 +205,7 @@ export function useTabletop(campaignId: string): TabletopState {
     isDm: authed,
     playerToken,
     ownCharacterIds,
+    vitals,
     canMove: (t) => authed || (!!t.character_id && ownCharacterIds.has(t.character_id)),
     actions: {
       move,
@@ -158,6 +219,24 @@ export function useTabletop(campaignId: string): TabletopState {
       addToken: wrap(async (body: Partial<TokenDto> & { name: string }) => { if (state.scene) await createToken(state.scene.id, body); }),
       removeToken: wrap(async (id: string) => { await deleteToken(id); }),
       editToken: wrap(async (id: string, body: Record<string, unknown>) => { await patchToken(id, body); }),
+      commitFog: async (reveal: string[], hide: string[]) => {
+        const scene = state.scene;
+        if (!scene) return;
+        // Apply the patch locally first so painted fog doesn't flicker back
+        // to its pre-stroke state for the round-trip window before the
+        // scene:updated echo arrives — the echo then overwrites with the
+        // identical server result (applyFogPatch is idempotent).
+        setState((s) => (s.scene
+          ? { ...s, scene: { ...s.scene, fog_json: applyFogPatch(s.scene.fog_json, { reveal, hide }) } }
+          : s));
+        try {
+          await patchFog(scene.id, reveal, hide);
+          setError(null);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Fog update failed');
+          reload(); // resync fog from the server since the optimistic patch may not have landed
+        }
+      },
       reload,
     },
   };

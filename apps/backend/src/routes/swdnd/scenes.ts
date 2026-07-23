@@ -123,6 +123,22 @@ const activateRoute = createRoute({
   },
 });
 
+const HEX_KEY = /^-?\d+,-?\d+$/;
+const FogBody = z.object({
+  reveal: z.array(z.string().regex(HEX_KEY)),
+  hide: z.array(z.string().regex(HEX_KEY)),
+}).openapi('SwdndFogPatch');
+
+const fogRoute = createRoute({
+  method: 'patch', path: '/swdnd/scenes/{id}/fog', tags: ['swdnd'],
+  summary: 'Reveal/hide fog-of-war hexes (DM only)', security: [{ bearerAuth: [] }],
+  request: { params: z.object({ id: z.string() }), body: { content: { 'application/json': { schema: FogBody } } } },
+  responses: {
+    200: { description: 'Updated scene', content: { 'application/json': { schema: Scene } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+
 const UPLOADS_DIR = () => process.env.SWDND_UPLOADS_DIR ?? './data/uploads/swdnd';
 const MAX_UPLOAD = 10 * 1024 * 1024;
 const EXT_BY_MIME: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
@@ -218,6 +234,22 @@ export function registerSceneRoutes(app: OpenAPIHono): void {
     })();
     const updated = getSceneRow(id)!;
     broadcastScene(updated, 'scene:activated');
+    return c.json(sceneOut(updated), 200);
+  });
+
+  app.openapi(fogRoute, (c) => {
+    const { id } = c.req.valid('param');
+    const { reveal, hide } = c.req.valid('json');
+    const row = getSceneRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Scene not found' });
+    // Same semantics as the client's lib/fog.ts: hide wins ties, dedupe, sort.
+    const set = new Set<string>(JSON.parse(row.fog_json || '[]') as string[]);
+    for (const k of reveal) set.add(k);
+    for (const k of hide) set.delete(k);
+    const now = new Date().toISOString();
+    swdndDb.run('UPDATE scene SET fog_json = ?, updated_at = ? WHERE id = ?', [JSON.stringify([...set].sort()), now, id]);
+    const updated = getSceneRow(id)!;
+    broadcastScene(updated, 'scene:updated');
     return c.json(sceneOut(updated), 200);
   });
 

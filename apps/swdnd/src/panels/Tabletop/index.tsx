@@ -5,16 +5,20 @@ import type { GridConfig } from '../../lib/hex';
 import SceneCanvas from './SceneCanvas';
 import SceneDrawer from './SceneDrawer';
 import GridCalibrator from './GridCalibrator';
+import TokenEditor from './TokenEditor';
 
 export default function Tabletop({ campaignId }: { campaignId: string }) {
   const t = useTabletop(campaignId);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [calibrating, setCalibrating] = useState(false);
   const [newTokenName, setNewTokenName] = useState('');
+  const [fogTool, setFogTool] = useState<{ mode: 'reveal' | 'hide'; radius: number } | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (t.loading) return <div className="ht-screen min-h-full p-6 font-mono text-ht-muted">Loading map…</div>;
 
   const grid = t.scene?.grid_json;
+  const selected = t.tokens.find((tok) => tok.id === selectedId) ?? null;
 
   return (
     <div className="@container ht-screen flex h-screen min-h-full flex-col font-mono text-ht-text">
@@ -48,6 +52,52 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
                 <button type="button" className={`ht-step ${calibrating ? 'ht-tile-active' : ''}`} onClick={() => setCalibrating((v) => !v)}>
                   ⬡ grid
                 </button>
+                <button
+                  type="button"
+                  className={`ht-step ${fogTool ? 'ht-tile-active' : ''}`}
+                  onClick={() => setFogTool((v) => (v ? null : { mode: 'reveal', radius: 1 }))}
+                >
+                  ☁ fog
+                </button>
+                {fogTool && (
+                  <>
+                    <button
+                      type="button"
+                      className={`ht-step ${fogTool.mode === 'reveal' ? 'ht-tile-active' : ''}`}
+                      onClick={() => setFogTool((v) => (v ? { ...v, mode: 'reveal' } : v))}
+                    >
+                      reveal
+                    </button>
+                    <button
+                      type="button"
+                      className={`ht-step ${fogTool.mode === 'hide' ? 'ht-tile-active' : ''}`}
+                      onClick={() => setFogTool((v) => (v ? { ...v, mode: 'hide' } : v))}
+                    >
+                      erase
+                    </button>
+                    <button
+                      type="button"
+                      className={`ht-step ${fogTool.radius === 0 ? 'ht-tile-active' : ''}`}
+                      onClick={() => setFogTool((v) => (v ? { ...v, radius: 0 } : v))}
+                    >
+                      1
+                    </button>
+                    <button
+                      type="button"
+                      className={`ht-step ${fogTool.radius === 1 ? 'ht-tile-active' : ''}`}
+                      onClick={() => setFogTool((v) => (v ? { ...v, radius: 1 } : v))}
+                    >
+                      7
+                    </button>
+                    <button
+                      type="button"
+                      className={`ht-step ${fogTool.radius === 2 ? 'ht-tile-active' : ''}`}
+                      onClick={() => setFogTool((v) => (v ? { ...v, radius: 2 } : v))}
+                    >
+                      19
+                    </button>
+                  </>
+                )}
               </>
             )}
             <button type="button" className={`ht-step ${drawerOpen ? 'ht-tile-active' : ''}`} onClick={() => setDrawerOpen((v) => !v)}>
@@ -75,6 +125,16 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
           <GridCalibrator grid={grid} onChange={(g: GridConfig) => void t.actions.setGrid(t.scene!.id, g)} />
         </div>
       )}
+      {t.isDm && selected && (
+        <div className="mx-2 mb-2">
+          <TokenEditor
+            token={selected}
+            onEdit={(id, body) => void t.actions.editToken(id, body)}
+            onDelete={(id) => void t.actions.removeToken(id)}
+            onClose={() => setSelectedId(null)}
+          />
+        </div>
+      )}
 
       <div className="min-h-0 flex-1">
         {t.scene ? (
@@ -86,6 +146,12 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
             onMove={t.actions.move}
             onDragFrame={t.actions.sendDrag}
             calibrating={calibrating}
+            isDm={t.isDm}
+            ownCharacterIds={t.ownCharacterIds}
+            vitals={t.vitals}
+            fogBrush={t.isDm ? fogTool : null}
+            onFogCommit={(reveal, hide) => void t.actions.commitFog(reveal, hide)}
+            onSelectToken={setSelectedId}
           />
         ) : (
           <div className="p-6 text-[11px] text-ht-muted">

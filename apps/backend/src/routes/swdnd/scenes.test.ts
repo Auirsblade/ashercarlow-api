@@ -125,3 +125,26 @@ describe('scene image upload', () => {
     expect((await app.request('/swdnd/uploads/..%2Fswdnd.sqlite')).status).toBe(404);
   });
 });
+
+describe('fog', () => {
+  it('PATCH /swdnd/scenes/:id/fog merges reveal and hide batches', async () => {
+    const sc = await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Foggy' }))).json() as any;
+    let res = await app.request(`/swdnd/scenes/${sc.id}/fog`, json('PATCH', { reveal: ['0,0', '1,0', '1,0'], hide: [] }));
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).fog_json).toEqual(['0,0', '1,0']);
+
+    res = await app.request(`/swdnd/scenes/${sc.id}/fog`, json('PATCH', { reveal: ['2,-1'], hide: ['0,0'] }));
+    expect((await res.json() as any).fog_json).toEqual(['1,0', '2,-1']);
+  });
+
+  it('rejects malformed hex keys', async () => {
+    const sc = await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Bad fog' }))).json() as any;
+    const res = await app.request(`/swdnd/scenes/${sc.id}/fog`, json('PATCH', { reveal: ['not-a-key'], hide: [] }));
+    expect(res.status).toBe(400);
+  });
+
+  it('404s on unknown scene', async () => {
+    const res = await app.request('/swdnd/scenes/nope/fog', json('PATCH', { reveal: [], hide: [] }));
+    expect(res.status).toBe(404);
+  });
+});
