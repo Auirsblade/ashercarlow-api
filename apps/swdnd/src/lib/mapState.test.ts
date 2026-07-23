@@ -1,4 +1,4 @@
-import { test, expect } from 'bun:test';
+import { describe, it, test, expect } from 'bun:test';
 import { applyMapEvent, confirmMove, emptyMapState, optimisticMove, rollbackMove, type MapState } from './mapState';
 import type { TokenDto } from './scenes';
 
@@ -113,4 +113,58 @@ test('scene:updated replaces the scene when ids match; scene:activated flags a r
   expect((s.scene as any).name).toBe('New'); // different scene ignored
   s = applyMapEvent(s, { type: 'scene:activated', room: 'x', payload: { id: 's2' } });
   expect(s.staleScene).toBe(true);
+});
+
+test('scene:updated drops an out-of-order echo whose updated_at is older than the stored scene', () => {
+  let s: MapState = {
+    ...emptyMapState(),
+    scene: { id: 's1', name: 'B (newer)', updated_at: '2026-01-01T00:00:02.000Z' } as any,
+  };
+  // Echo for an earlier PATCH ("A") arrives after the newer one has already landed.
+  s = applyMapEvent(s, {
+    type: 'scene:updated', room: 'x',
+    payload: { id: 's1', name: 'A (older)', updated_at: '2026-01-01T00:00:01.000Z' },
+  });
+  expect((s.scene as any).name).toBe('B (newer)');
+});
+
+test('scene:updated applies when updated_at is equal to (or newer than) the stored scene', () => {
+  let s: MapState = {
+    ...emptyMapState(),
+    scene: { id: 's1', name: 'Old', updated_at: '2026-01-01T00:00:01.000Z' } as any,
+  };
+  // Equal timestamp: this is the genuine echo of the local optimistic write
+  // (commitFog/setInitiative mutate scene locally without bumping updated_at),
+  // so it must still apply.
+  s = applyMapEvent(s, {
+    type: 'scene:updated', room: 'x',
+    payload: { id: 's1', name: 'Equal', updated_at: '2026-01-01T00:00:01.000Z' },
+  });
+  expect((s.scene as any).name).toBe('Equal');
+  // Strictly newer: a later PATCH.
+  s = applyMapEvent(s, {
+    type: 'scene:updated', room: 'x',
+    payload: { id: 's1', name: 'Newer', updated_at: '2026-01-01T00:00:02.000Z' },
+  });
+  expect((s.scene as any).name).toBe('Newer');
+});
+
+describe('template events', () => {
+  it('template:created adds and template:deleted removes', () => {
+    const tpl = { id: 'T1', scene_id: 'S', kind: 'blast', q: 0, r: 0, dir: 0, size: 1, q2: null, r2: null, color: '#fff', created_at: '' };
+    let s = applyMapEvent(emptyMapState(), { type: 'template:created', room: 'x', payload: tpl });
+    expect(s.templates.T1).toEqual(tpl);
+    s = applyMapEvent(s, { type: 'template:deleted', room: 'x', payload: { id: 'T1' } });
+    expect(s.templates.T1).toBeUndefined();
+  });
+
+  it('template:cleared empties only for the matching scene', () => {
+    const tpl = { id: 'T1', scene_id: 'S', kind: 'blast', q: 0, r: 0, dir: 0, size: 1, q2: null, r2: null, color: '#fff', created_at: '' };
+    let s = applyMapEvent(emptyMapState(), { type: 'template:created', room: 'x', payload: tpl });
+    s = { ...s, scene: { id: 'S' } as unknown as import('./scenes').SceneDto };
+    const other = applyMapEvent(s, { type: 'template:cleared', room: 'x', payload: { sceneId: 'OTHER' } });
+    expect(Object.keys(other.templates).length).toBe(1);
+    const cleared = applyMapEvent(s, { type: 'template:cleared', room: 'x', payload: { sceneId: 'S' } });
+    expect(cleared.templates).toEqual({});
+  });
 });

@@ -6,6 +6,7 @@ import { registerCampaignRoutes } from './campaigns';
 import { registerCharacterRoutes } from './characters';
 import { registerPlayerRoutes } from './players';
 import { registerSceneRoutes } from './scenes';
+import { registerTemplateRoutes } from './templates';
 import { registerTokenRoutes } from './tokens';
 
 /** Paths whose mutations run their own (player-or-admin) access check, so the
@@ -21,8 +22,10 @@ function selfGated(path: string): boolean {
   return (
     path.startsWith('/swdnd/characters') ||
     path.startsWith('/swdnd/tokens') || // position PATCH does its own player check; token PATCH/DELETE assertAdmin in-handler
+    path.startsWith('/swdnd/templates') || // member-gated delete in-handler
     path.endsWith('/characters') ||
-    path.endsWith('/players')
+    path.endsWith('/players') ||
+    path.endsWith('/templates') // member-gated create; clear-all asserts admin in-handler
   );
 }
 
@@ -40,5 +43,6 @@ export function registerSwdndRoutes(app: OpenAPIHono): void {
   registerCharacterRoutes(app);
   registerPlayerRoutes(app);
   registerSceneRoutes(app);
+  registerTemplateRoutes(app);
   registerTokenRoutes(app);
 }

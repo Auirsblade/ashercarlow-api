@@ -70,6 +70,18 @@ export function assertTokenMoveAccess(c: Context, token: { character_id: string 
 }
 
 /**
+ * Any authed member of the campaign: admin (bearer/cookie) or a player token
+ * belonging to that campaign. Dev mode (env token unset) passes everything.
+ */
+export function assertCampaignMember(c: Context, campaignId: string): void {
+  if (!process.env.ASHERCARLOW_AUTH_TOKEN) return;
+  if (isAdmin(c)) return;
+  const player = resolvePlayerByToken(playerTokenFrom(c));
+  if (player && player.campaign_id === campaignId) return;
+  throw new HTTPException(403, { message: 'Not a member of this campaign' });
+}
+
+/**
  * WS upgrade auth on a RAW Request (no Hono context): dev mode admits anyone;
  * otherwise require the admin bearer/cookie or a player token belonging to
  * this campaign. Closes the foundation's unauthenticated-upgrade deferral.

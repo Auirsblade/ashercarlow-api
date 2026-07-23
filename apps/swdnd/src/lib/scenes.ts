@@ -14,6 +14,11 @@ export interface TokenDto {
   hp: number | null; max_hp: number | null; conditions_json: string[]; hidden: number;
   image_path: string | null; created_at: string; updated_at: string;
 }
+export interface TemplateDto {
+  id: string; scene_id: string; kind: 'blast' | 'cone' | 'line';
+  q: number; r: number; dir: number; size: number;
+  q2: number | null; r2: number | null; color: string; created_at: string;
+}
 
 const auth = (token?: string | null): Record<string, string> => (token ? { 'X-Player-Token': token } : {});
 
@@ -36,6 +41,16 @@ export const moveToken = (id: string, q: number, r: number, token?: string | nul
 
 export const patchFog = (id: string, reveal: string[], hide: string[]) =>
   api<SceneDto>(`/swdnd/scenes/${id}/fog`, { method: 'PATCH', body: JSON.stringify({ reveal, hide }) });
+
+export const listTemplates = (sceneId: string) => api<TemplateDto[]>(`/swdnd/scenes/${sceneId}/templates`);
+export const createTemplate = (sceneId: string, body: Record<string, unknown>, token?: string | null) =>
+  api<TemplateDto>(`/swdnd/scenes/${sceneId}/templates`, { method: 'POST', headers: auth(token), body: JSON.stringify(body) });
+export const deleteTemplate = (id: string, token?: string | null) =>
+  api<{ ok: boolean }>(`/swdnd/templates/${id}`, { method: 'DELETE', headers: auth(token) });
+export const clearTemplates = (sceneId: string) =>
+  api<{ ok: boolean }>(`/swdnd/scenes/${sceneId}/templates`, { method: 'DELETE' });
+export const patchInitiative = (sceneId: string, initiative: unknown | null) =>
+  api<SceneDto>(`/swdnd/scenes/${sceneId}/initiative`, { method: 'PATCH', body: JSON.stringify({ initiative }) });
 
 export async function uploadSceneImage(sceneId: string, file: File, w: number, h: number): Promise<SceneDto> {
   const fd = new FormData();
