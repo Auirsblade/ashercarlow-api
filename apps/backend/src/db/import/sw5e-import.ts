@@ -67,6 +67,10 @@ function run(): void {
     );
   })();
 
+  // Fold the WAL back into the main file so the .sqlite is a single self-contained
+  // artifact (the Docker image bakes this file in via a single-file COPY).
+  swdndDb.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+
   console.log(`[sw5e-import] imported ${total} records into swdnd.sqlite`);
 }
 
