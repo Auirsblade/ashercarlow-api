@@ -23,7 +23,7 @@ export default function FeatsStep({ build, ref, editable, dispatch }: Props) {
       idOf={(f) => f.id}
       searchText={(f) => `${f.name} ${f.requirements ?? ''}`}
       isSelected={(f) => f.id === chosen}
-      onSelect={(f) => dispatch({ t: 'setFeat', featId: f.id === chosen ? null : f.id })}
+      onSelect={(f) => dispatch({ t: 'setFeatForLevel', n: 1, featId: f.id === chosen ? null : f.id })}
       selectLabel={(f) => (f.id === chosen ? '✕ clear feat' : '✓ take feat')}
       detail={(f) => f.description || 'No description in the source data.'}
       editable={editable}

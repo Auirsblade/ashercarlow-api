@@ -3,6 +3,7 @@ import type {
   AbilityKey, CharacterBuild, DerivedSheet, ReferenceData, SkillKey,
 } from './rules/types';
 import { maxHp } from './rules/combat';
+import { totalAbilityScores } from './rules/core';
 import { multiclassBlockers } from './multiclass';
 
 export type BuildAction =
@@ -13,7 +14,6 @@ export type BuildAction =
   | { t: 'setClass'; classId: string }
   | { t: 'setBaseAbilities'; base: Record<AbilityKey, number> }
   | { t: 'toggleSkill'; skill: SkillKey }
-  | { t: 'setFeat'; featId: string | null }
   | { t: 'addEquipment'; ref: string }
   | { t: 'removeEquipment'; ref: string }
   | { t: 'toggleEquipped'; ref: string }
@@ -23,7 +23,11 @@ export type BuildAction =
   | { t: 'toggleHouseRule'; step: string }
   | { t: 'addLevel'; classId: string }
   | { t: 'removeLastLevel' }
-  | { t: 'setLevelHp'; n: number; hp: 'avg' | number };
+  | { t: 'setLevelHp'; n: number; hp: 'avg' | number }
+  | { t: 'setAsiChoice'; n: number; choice: 'asi' | 'feat' | null }
+  | { t: 'allocateAsiPoint'; n: number; ability: AbilityKey; delta: 1 | -1 }
+  | { t: 'setFeatForLevel'; n: number; featId: string | null }
+  | { t: 'setArchetype'; classId: string; archetypeId: string | null };
 
 const clone = (b: CharacterBuild): CharacterBuild => ({
   ...b,
@@ -120,14 +124,6 @@ export function applyBuildAction(
       break;
     }
 
-    case 'setFeat': {
-      if (b.levels.length === 0) break;
-      // Feat-sourced increases are Phase 4 (ASI feats); Phase 3 records the pick.
-      if (action.featId == null) delete b.levels[0].choices!.featId;
-      else b.levels[0].choices = { ...(b.levels[0].choices ?? {}), featId: action.featId };
-      break;
-    }
-
     case 'addEquipment': {
       const existing = b.equipment.find((e) => e.ref === action.ref);
       if (existing) existing.qty += 1;
@@ -216,6 +212,69 @@ export function applyBuildAction(
       const before = maxHp(build, ref);
       entry.hp = action.hp === 'avg' ? 'avg' : Math.min(Math.max(1, Math.round(action.hp)), die);
       applyHpDelta(b, ref, before);
+      break;
+    }
+
+    case 'setAsiChoice': {
+      const entry = b.levels.find((l) => l.n === action.n);
+      if (!entry) break;
+      const prev = entry.choices?.asiOrFeat;
+      entry.choices = { ...(entry.choices ?? {}) };
+      if (action.choice === null) delete entry.choices.asiOrFeat;
+      else entry.choices.asiOrFeat = action.choice;
+      // Switching elections clears the other election's grants (spec §2).
+      if (prev === 'asi' && action.choice !== 'asi') {
+        b.abilities.increases = b.abilities.increases.filter((i) => i.ref !== `l${action.n}`);
+      }
+      if (prev === 'feat' && action.choice !== 'feat') delete entry.choices.featId;
+      break;
+    }
+
+    case 'allocateAsiPoint': {
+      const entry = b.levels.find((l) => l.n === action.n);
+      if (entry?.choices?.asiOrFeat !== 'asi') break;
+      const asiRef = `l${action.n}`;
+      if (action.delta === -1) {
+        const idx = b.abilities.increases.findIndex((i) => i.ref === asiRef && i.ability === action.ability);
+        if (idx >= 0) b.abilities.increases.splice(idx, 1);
+        break;
+      }
+      const spent = b.abilities.increases.filter((i) => i.ref === asiRef).reduce((s, i) => s + i.amount, 0);
+      if (spent >= 2) break;                                    // ASI budget is 2 points
+      if (totalAbilityScores(b)[action.ability] >= 20) break;   // sw5e hard cap
+      b.abilities.increases.push({ source: 'asi', ref: asiRef, ability: action.ability, amount: 1 });
+      break;
+    }
+
+    case 'setFeatForLevel': {
+      const entry = b.levels.find((l) => l.n === action.n);
+      if (!entry) break;
+      // L1's feat is the optional Phase 3 slot; other levels need a 'feat' election.
+      if (action.n !== 1 && entry.choices?.asiOrFeat !== 'feat') break;
+      entry.choices = { ...(entry.choices ?? {}) };
+      if (action.featId == null) delete entry.choices.featId;
+      else entry.choices.featId = action.featId;
+      break;
+    }
+
+    case 'setArchetype': {
+      // The archetype lives on the entry where the class reaches level 3
+      // (the engine's classesTaken reads the first non-null per class).
+      let classLevel = 0;
+      let target: (typeof b.levels)[number] | undefined;
+      for (const l of b.levels) {
+        if (l.classId !== action.classId) continue;
+        classLevel += 1;
+        if (classLevel === 3) { target = l; break; }
+      }
+      if (!target) break;
+      if (action.archetypeId != null) {
+        const arch = ref.archetypes[action.archetypeId];
+        if (!arch) break;
+        if (!houseRuled(b, 'class') && arch.classIdentifier !== ref.classes[action.classId]?.identifier) break;
+      }
+      for (const l of b.levels) if (l.classId === action.classId) l.archetypeId = null;
+      target.archetypeId = action.archetypeId;
       break;
     }
   }

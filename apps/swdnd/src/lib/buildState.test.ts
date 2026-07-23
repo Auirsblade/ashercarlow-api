@@ -22,9 +22,17 @@ const human: RefSpecies = {
   id: 'human', name: 'Human', walkSpeed: 30, description: '',
   abilityIncreases: { fixed: {}, points: 4 },
 };
+const sage = {
+  id: 'sage', name: 'Sage', classIdentifier: 'consular',
+  powercasting: { force: 'none', tech: 'none' }, superiorityProgression: 0, description: '',
+};
+const tactician = {
+  id: 'tactician', name: 'Tactician', classIdentifier: 'fighter',
+  powercasting: { force: 'none', tech: 'none' }, superiorityProgression: 0, description: '',
+};
 const ref = {
   classes: { consular, fighter }, species: { zabrak, human },
-  archetypes: {}, armor: {}, weapons: {},
+  archetypes: { sage, tactician }, armor: {}, weapons: {},
   powers: {
     push: { id: 'push', name: 'Push', level: 0, castType: 'force', description: '' },
     heal: { id: 'heal', name: 'Heal', level: 1, castType: 'force', description: '' },
@@ -74,7 +82,7 @@ test('toggleSkill / setFeat / equipment / credits', () => {
   b = applyBuildAction(b, ref, derived, { t: 'toggleSkill', skill: 'lor' });
   expect(b.proficiencies.skills).toEqual([]);
   b = applyBuildAction(b, ref, derived, { t: 'setClass', classId: 'consular' });
-  b = applyBuildAction(b, ref, derived, { t: 'setFeat', featId: 'f1' });
+  b = applyBuildAction(b, ref, derived, { t: 'setFeatForLevel', n: 1, featId: 'f1' });
   expect(b.levels[0].choices).toEqual({ featId: 'f1' });
   b = applyBuildAction(b, ref, derived, { t: 'addEquipment', ref: 'saber' });
   b = applyBuildAction(b, ref, derived, { t: 'addEquipment', ref: 'saber' });
@@ -185,4 +193,81 @@ test('hp delta clamps to 0..newMax (damaged character keeps damage)', () => {
 test('setClass also fills hp to max on a fresh build', () => {
   const b = applyBuildAction(emptyBuild('x'), ref, derived, { t: 'setClass', classId: 'consular' });
   expect(b.play.hp).toBe(6);
+});
+
+const fighterAt = (levels: number, base: Partial<Record<'str' | 'con', number>> = {}) => {
+  let b = emptyBuild('x');
+  Object.assign(b.abilities.base, base);
+  for (let i = 0; i < levels; i++) b = applyBuildAction(b, ref, derived, { t: 'addLevel', classId: 'fighter' });
+  return b;
+};
+
+test('setAsiChoice stores the election; switching clears the other grant', () => {
+  let b = fighterAt(4);
+  b = applyBuildAction(b, ref, derived, { t: 'setAsiChoice', n: 4, choice: 'asi' });
+  expect(b.levels[3].choices).toEqual({ asiOrFeat: 'asi' });
+  b = applyBuildAction(b, ref, derived, { t: 'allocateAsiPoint', n: 4, ability: 'str', delta: 1 });
+  expect(b.abilities.increases).toContainEqual({ source: 'asi', ref: 'l4', ability: 'str', amount: 1 });
+  // switch to feat → ASI increases for l4 are wiped
+  b = applyBuildAction(b, ref, derived, { t: 'setAsiChoice', n: 4, choice: 'feat' });
+  expect(b.abilities.increases.filter((i) => i.ref === 'l4')).toEqual([]);
+  b = applyBuildAction(b, ref, derived, { t: 'setFeatForLevel', n: 4, featId: 'f1' });
+  expect(b.levels[3].choices).toEqual({ asiOrFeat: 'feat', featId: 'f1' });
+  // switch back to asi → feat slot is wiped
+  b = applyBuildAction(b, ref, derived, { t: 'setAsiChoice', n: 4, choice: 'asi' });
+  expect(b.levels[3].choices).toEqual({ asiOrFeat: 'asi' });
+  // clear election entirely
+  b = applyBuildAction(b, ref, derived, { t: 'setAsiChoice', n: 4, choice: null });
+  expect(b.levels[3].choices).toEqual({});
+});
+
+test('allocateAsiPoint: budget of 2, cap 20, requires an asi election, removable', () => {
+  let b = fighterAt(4, { str: 18 });
+  expect(applyBuildAction(b, ref, derived, { t: 'allocateAsiPoint', n: 4, ability: 'str', delta: 1 })
+    .abilities.increases).toEqual([]); // no election yet
+  b = applyBuildAction(b, ref, derived, { t: 'setAsiChoice', n: 4, choice: 'asi' });
+  b = applyBuildAction(b, ref, derived, { t: 'allocateAsiPoint', n: 4, ability: 'str', delta: 1 });
+  b = applyBuildAction(b, ref, derived, { t: 'allocateAsiPoint', n: 4, ability: 'str', delta: 1 }); // str 20
+  const capped = applyBuildAction(b, ref, derived, { t: 'allocateAsiPoint', n: 4, ability: 'con', delta: 1 });
+  expect(capped.abilities.increases.filter((i) => i.ref === 'l4')).toHaveLength(2); // budget spent
+  const over = applyBuildAction(
+    applyBuildAction(b, ref, derived, { t: 'allocateAsiPoint', n: 4, ability: 'str', delta: -1 }),
+    ref, derived, { t: 'allocateAsiPoint', n: 4, ability: 'str', delta: 1 },
+  );
+  expect(over.abilities.increases.filter((i) => i.ref === 'l4' && i.ability === 'str')).toHaveLength(2);
+  // at str 20, another str point is refused even with budget
+  let atCap = fighterAt(4, { str: 20 });
+  atCap = applyBuildAction(atCap, ref, derived, { t: 'setAsiChoice', n: 4, choice: 'asi' });
+  atCap = applyBuildAction(atCap, ref, derived, { t: 'allocateAsiPoint', n: 4, ability: 'str', delta: 1 });
+  expect(atCap.abilities.increases).toEqual([]);
+});
+
+test('setFeatForLevel: L1 is always allowed, other levels need a feat election', () => {
+  let b = fighterAt(2);
+  b = applyBuildAction(b, ref, derived, { t: 'setFeatForLevel', n: 1, featId: 'f1' });
+  expect(b.levels[0].choices).toEqual({ featId: 'f1' });
+  b = applyBuildAction(b, ref, derived, { t: 'setFeatForLevel', n: 1, featId: null });
+  expect(b.levels[0].choices).toEqual({});
+  expect(applyBuildAction(b, ref, derived, { t: 'setFeatForLevel', n: 2, featId: 'f1' })
+    .levels[1].choices).toEqual({}); // L2 has no feat election
+});
+
+test('setArchetype stores on the class 3rd-level entry, gated by classIdentifier', () => {
+  let b = fighterAt(3);
+  // wrong-class archetype refused while locked
+  expect(applyBuildAction(b, ref, derived, { t: 'setArchetype', classId: 'fighter', archetypeId: 'sage' })
+    .levels[2].archetypeId).toBeNull();
+  b = applyBuildAction(b, ref, derived, { t: 'setArchetype', classId: 'fighter', archetypeId: 'tactician' });
+  expect(b.levels.map((l) => l.archetypeId)).toEqual([null, null, 'tactician']);
+  // house rule opens cross-class archetypes
+  let hr = applyBuildAction(b, ref, derived, { t: 'toggleHouseRule', step: 'class' });
+  hr = applyBuildAction(hr, ref, derived, { t: 'setArchetype', classId: 'fighter', archetypeId: 'sage' });
+  expect(hr.levels[2].archetypeId).toBe('sage');
+  // clearing
+  b = applyBuildAction(b, ref, derived, { t: 'setArchetype', classId: 'fighter', archetypeId: null });
+  expect(b.levels[2].archetypeId).toBeNull();
+  // under 3 class levels → no-op
+  const low = fighterAt(2);
+  expect(applyBuildAction(low, ref, derived, { t: 'setArchetype', classId: 'fighter', archetypeId: 'tactician' })
+    .levels.every((l) => l.archetypeId === null)).toBe(true);
 });
