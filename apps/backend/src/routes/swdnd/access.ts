@@ -49,3 +49,22 @@ export function assertAdmin(c: Context): void {
   if (!process.env.ASHERCARLOW_AUTH_TOKEN) return;
   if (!isAdmin(c)) throw new HTTPException(403, { message: 'Admin only' });
 }
+
+/**
+ * Throw 403 unless the requester may move this token: dev mode, the admin, or
+ * the player owning the token's linked character.
+ */
+export function assertTokenMoveAccess(c: Context, token: { character_id: string | null }): void {
+  if (!process.env.ASHERCARLOW_AUTH_TOKEN) return; // dev mode
+  if (isAdmin(c)) return;
+  if (token.character_id) {
+    const player = resolvePlayerByToken(playerTokenFrom(c));
+    if (player) {
+      const owner = swdndDb
+        .query<{ player_id: string | null }, [string]>('SELECT player_id FROM character WHERE id = ?')
+        .get(token.character_id);
+      if (owner?.player_id && owner.player_id === player.id) return;
+    }
+  }
+  throw new HTTPException(403, { message: 'Not allowed to move this token' });
+}

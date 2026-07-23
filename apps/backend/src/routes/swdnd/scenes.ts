@@ -5,6 +5,7 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
 import { swdndDb } from '../../db/swdnd';
 import { publishToRoom, roomForCampaign } from '../../lib/swdnd-realtime';
+import { seedCharacterTokens } from './tokens';
 
 const Grid = z.object({
   orientation: z.enum(['flat', 'pointy']),
@@ -163,6 +164,7 @@ export function registerSceneRoutes(app: OpenAPIHono): void {
       'INSERT INTO scene (id, campaign_id, name, grid_json, fog_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [id, campaignId, name, JSON.stringify(DEFAULT_GRID), '[]', now, now],
     );
+    seedCharacterTokens(id, campaignId);
     const row = getSceneRow(id)!;
     broadcastScene(row, 'scene:updated');
     return c.json(sceneOut(row), 201);
