@@ -46,6 +46,15 @@ export function getPlayerByToken(token: string) {
     `/swdnd/players/me?token=${encodeURIComponent(token)}`,
   );
 }
+export function listPlayers(campaignId: string) {
+  return api<PlayerDto[]>(`/swdnd/campaigns/${campaignId}/players`);
+}
+export function renamePlayer(id: string, name: string) {
+  return api<PlayerDto>(`/swdnd/players/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+}
+export function deletePlayer(id: string) {
+  return api<{ ok: boolean }>(`/swdnd/players/${id}`, { method: 'DELETE' });
+}
 
 // ---- Reference loader + row mappers (Foundry raw_json -> engine view types) ----
 interface Row { id: string; name?: string | null; raw_json: string; [k: string]: unknown }
