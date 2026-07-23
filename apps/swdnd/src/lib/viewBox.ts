@@ -21,15 +21,36 @@ export function zoomViewBox(
   };
 }
 
+/**
+ * Uniform scale the svg applies under the default `preserveAspectRatio`
+ * (`xMidYMid meet`): the viewBox is scaled by the SAME factor on both axes
+ * (the one that fits the smaller dimension) and centered, leaving letterbox
+ * (or pillarbox) margins on the other axis.
+ */
+export function viewScale(rect: { width: number; height: number }, vb: ViewBox): number {
+  return Math.min(rect.width / vb.w, rect.height / vb.h);
+}
+
 /** Screen px (relative to the svg's bounding rect) → map coordinates. */
 export function clientToMap(
-  vb: ViewBox, rect: { left: number; top: number; width: number; height: number },
+  rect: { left: number; top: number; width: number; height: number }, vb: ViewBox,
   clientX: number, clientY: number,
 ): Pt {
+  const s = viewScale(rect, vb);
+  const ox = (rect.width - vb.w * s) / 2;
+  const oy = (rect.height - vb.h * s) / 2;
   return {
-    x: vb.x + ((clientX - rect.left) / rect.width) * vb.w,
-    y: vb.y + ((clientY - rect.top) / rect.height) * vb.h,
+    x: vb.x + (clientX - rect.left - ox) / s,
+    y: vb.y + (clientY - rect.top - oy) / s,
   };
+}
+
+/** Screen-px delta → map-space delta, same letterbox-aware scale as clientToMap. */
+export function clientDeltaToMap(
+  rect: { width: number; height: number }, vb: ViewBox, dx: number, dy: number,
+): { dx: number; dy: number } {
+  const s = viewScale(rect, vb);
+  return { dx: dx / s, dy: dy / s };
 }
 
 /** A viewBox framing a w×h image with proportional padding. */

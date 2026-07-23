@@ -5,8 +5,13 @@ import type { SceneDto, TokenDto } from './scenes';
 export interface MapState {
   scene: SceneDto | null;
   tokens: Record<string, TokenDto>;
-  /** tokenId → in-flight optimistic move; token:updated echoes are held off while set. */
-  pendingMoves: Record<string, { q: number; r: number }>;
+  /**
+   * tokenId → in-flight optimistic move; token:updated echoes are held off
+   * while an entry is set. `seq` increments per token on every optimistic
+   * move so a confirm/rollback for a superseded move (e.g. two quick moves
+   * on the same token) is a no-op rather than clobbering the newer one.
+   */
+  pendingMoves: Record<string, { q: number; r: number; seq: number }>;
   /** Remote drag previews, map-image pixel space. */
   dragGhosts: Record<string, { x: number; y: number }>;
   /** Set when the active scene changed server-side → the hook reloads. */
@@ -17,25 +22,37 @@ export const emptyMapState = (): MapState => ({
   scene: null, tokens: {}, pendingMoves: {}, dragGhosts: {}, staleScene: false,
 });
 
-export function optimisticMove(s: MapState, tokenId: string, q: number, r: number): MapState {
+export function optimisticMove(
+  s: MapState, tokenId: string, q: number, r: number,
+): { state: MapState; seq: number } {
   const tok = s.tokens[tokenId];
-  if (!tok) return s;
+  if (!tok) return { state: s, seq: s.pendingMoves[tokenId]?.seq ?? 0 };
+  const seq = (s.pendingMoves[tokenId]?.seq ?? 0) + 1;
   return {
-    ...s,
-    tokens: { ...s.tokens, [tokenId]: { ...tok, q, r } },
-    pendingMoves: { ...s.pendingMoves, [tokenId]: { q, r } },
+    state: {
+      ...s,
+      tokens: { ...s.tokens, [tokenId]: { ...tok, q, r } },
+      pendingMoves: { ...s.pendingMoves, [tokenId]: { q, r, seq } },
+    },
+    seq,
   };
 }
 
-export function confirmMove(s: MapState, tokenId: string): MapState {
+/** No-op if `seq` has since been superseded by a newer optimistic move on the same token. */
+export function confirmMove(s: MapState, tokenId: string, seq: number): MapState {
+  if (s.pendingMoves[tokenId]?.seq !== seq) return s;
   const { [tokenId]: _done, ...rest } = s.pendingMoves;
   return { ...s, pendingMoves: rest };
 }
 
-export function rollbackMove(s: MapState, tokenId: string, q: number, r: number): MapState {
+/** No-op (does not revert position or clear the guard) if `seq` has been superseded. */
+export function rollbackMove(s: MapState, tokenId: string, seq: number, q: number, r: number): MapState {
+  if (s.pendingMoves[tokenId]?.seq !== seq) return s;
   const tok = s.tokens[tokenId];
+  const { [tokenId]: _done, ...rest } = s.pendingMoves;
   return {
-    ...confirmMove(s, tokenId),
+    ...s,
+    pendingMoves: rest,
     tokens: tok ? { ...s.tokens, [tokenId]: { ...tok, q, r } } : s.tokens,
   };
 }

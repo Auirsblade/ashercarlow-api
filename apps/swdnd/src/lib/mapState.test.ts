@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { applyMapEvent, emptyMapState, optimisticMove, type MapState } from './mapState';
+import { applyMapEvent, confirmMove, emptyMapState, optimisticMove, rollbackMove, type MapState } from './mapState';
 import type { TokenDto } from './scenes';
 
 const t = (id: string, q = 0, r = 0): TokenDto => ({
@@ -21,7 +21,8 @@ test('token:created / token:updated / token:deleted merge into state', () => {
 test('token:updated is ignored while that token has a pending optimistic move (echo guard)', () => {
   let s = emptyMapState();
   s = applyMapEvent(s, { type: 'token:created', room: 'x', payload: t('a') });
-  s = optimisticMove(s, 'a', 5, 5);
+  const { state } = optimisticMove(s, 'a', 5, 5);
+  s = state;
   expect(s.tokens.a.q).toBe(5);
   expect(s.pendingMoves.a).toBeDefined();
   // stale echo of an older position must not clobber the optimistic value
@@ -31,6 +32,69 @@ test('token:updated is ignored while that token has a pending optimistic move (e
   s = { ...s, pendingMoves: {} };
   s = applyMapEvent(s, { type: 'token:updated', room: 'x', payload: t('a', 2, 2) });
   expect(s.tokens.a.q).toBe(2);
+});
+
+test('optimisticMove assigns an incrementing seq per token', () => {
+  let s = emptyMapState();
+  s = applyMapEvent(s, { type: 'token:created', room: 'x', payload: t('a') });
+  const moveA = optimisticMove(s, 'a', 1, 1);
+  s = moveA.state;
+  expect(s.pendingMoves.a).toEqual({ q: 1, r: 1, seq: moveA.seq });
+  const moveB = optimisticMove(s, 'a', 2, 2);
+  s = moveB.state;
+  expect(s.pendingMoves.a).toEqual({ q: 2, r: 2, seq: moveB.seq });
+  expect(moveB.seq).toBeGreaterThan(moveA.seq);
+});
+
+test('confirmMove of a superseded (older) seq is a no-op; the newer pending entry survives', () => {
+  let s = emptyMapState();
+  s = applyMapEvent(s, { type: 'token:created', room: 'x', payload: t('a') });
+  const moveA = optimisticMove(s, 'a', 1, 1);
+  s = moveA.state;
+  const moveB = optimisticMove(s, 'a', 2, 2);
+  s = moveB.state;
+
+  // REST confirm for the OLDER move A arrives after B was already issued optimistically.
+  s = confirmMove(s, 'a', moveA.seq);
+  expect(s.pendingMoves.a).toBeDefined(); // guard for B must still be up
+  expect(s.tokens.a.q).toBe(2);
+
+  // The WS echo for A's move (position 1,1) must still be dropped by the guard.
+  s = applyMapEvent(s, { type: 'token:updated', room: 'x', payload: t('a', 1, 1) });
+  expect(s.tokens.a.q).toBe(2);
+
+  // Confirming B clears the guard.
+  s = confirmMove(s, 'a', moveB.seq);
+  expect(s.pendingMoves.a).toBeUndefined();
+
+  // Later updates apply normally again.
+  s = applyMapEvent(s, { type: 'token:updated', room: 'x', payload: t('a', 3, 3) });
+  expect(s.tokens.a.q).toBe(3);
+});
+
+test('rollbackMove of a superseded (older) seq is a no-op — does not revert the newer optimistic position', () => {
+  let s = emptyMapState();
+  s = applyMapEvent(s, { type: 'token:created', room: 'x', payload: t('a') });
+  const moveA = optimisticMove(s, 'a', 1, 1);
+  s = moveA.state;
+  const moveB = optimisticMove(s, 'a', 2, 2);
+  s = moveB.state;
+
+  // REST for A failed and tries to roll back to the pre-A position (0,0) — but B has since
+  // been optimistically applied, so this must be a no-op.
+  s = rollbackMove(s, 'a', moveA.seq, 0, 0);
+  expect(s.tokens.a.q).toBe(2);
+  expect(s.pendingMoves.a).toEqual({ q: 2, r: 2, seq: moveB.seq });
+});
+
+test('rollbackMove of the current (latest) seq reverts position and clears the guard', () => {
+  let s = emptyMapState();
+  s = applyMapEvent(s, { type: 'token:created', room: 'x', payload: t('a') });
+  const moveA = optimisticMove(s, 'a', 5, 5);
+  s = moveA.state;
+  s = rollbackMove(s, 'a', moveA.seq, 0, 0);
+  expect(s.tokens.a.q).toBe(0);
+  expect(s.pendingMoves.a).toBeUndefined();
 });
 
 test('token:drag ephemeral ghosts set and clear', () => {

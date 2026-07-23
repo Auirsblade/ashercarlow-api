@@ -1,8 +1,8 @@
 // apps/swdnd/src/panels/Tabletop/SceneCanvas.tsx
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { API_BASE } from '../../lib/api';
 import { hexBlast, hexCorners, hexToPixel, pixelToHex, type Hex } from '../../lib/hex';
-import { clientToMap, fitViewBox, panViewBox, zoomViewBox, type ViewBox } from '../../lib/viewBox';
+import { clientDeltaToMap, clientToMap, fitViewBox, panViewBox, zoomViewBox, type ViewBox } from '../../lib/viewBox';
 import type { SceneDto, TokenDto } from '../../lib/scenes';
 import TokenGlyph from './TokenGlyph';
 
@@ -40,13 +40,22 @@ export default function SceneCanvas({ scene, tokens, dragGhosts, canMove, onMove
   const hexes = useMemo(() => gridHexes(scene), [scene]);
   const mapPoint = (e: { clientX: number; clientY: number }) => {
     const rect = svgRef.current!.getBoundingClientRect();
-    return clientToMap(vb, rect, e.clientX, e.clientY);
+    return clientToMap(rect, vb, e.clientX, e.clientY);
   };
 
-  const onWheel = (e: ReactWheelEvent<SVGSVGElement>) => {
-    e.preventDefault();
-    setVb((cur) => zoomViewBox(cur, mapPoint(e), e.deltaY > 0 ? 1.12 : 1 / 1.12));
-  };
+  // Native (non-passive) wheel listener: React's onWheel is passive, so
+  // preventDefault() there is a no-op and the surrounding pane scrolls too.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      setVb((cur) => zoomViewBox(cur, clientToMap(rect, cur, e.clientX, e.clientY), e.deltaY > 0 ? 1.12 : 1 / 1.12));
+    };
+    svg.addEventListener('wheel', handleWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', handleWheel);
+  }, []);
 
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -68,8 +77,9 @@ export default function SceneCanvas({ scene, tokens, dragGhosts, canMove, onMove
       onDragFrame(drag.tokenId, p.x, p.y, false);
     } else if (pan.current) {
       const rect = svgRef.current!.getBoundingClientRect();
-      const dx = ((pan.current.startX - e.clientX) / rect.width) * pan.current.vb.w;
-      const dy = ((pan.current.startY - e.clientY) / rect.height) * pan.current.vb.h;
+      const { dx, dy } = clientDeltaToMap(
+        rect, pan.current.vb, pan.current.startX - e.clientX, pan.current.startY - e.clientY,
+      );
       setVb(panViewBox(pan.current.vb, dx, dy));
     }
   };
@@ -90,7 +100,6 @@ export default function SceneCanvas({ scene, tokens, dragGhosts, canMove, onMove
       ref={svgRef}
       viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
       className="h-full w-full touch-none select-none"
-      onWheel={onWheel}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}

@@ -87,12 +87,21 @@ export function useTabletop(campaignId: string): TabletopState {
   }, [playerToken]);
 
   useEffect(() => {
+    const hadOpenedRef = { current: false };
     const sock = connectCampaign(campaignId, (env: WsEnvelope) => {
       setState((s) => applyMapEvent(s, env));
-    }, undefined, playerToken);
+    }, (open) => {
+      // Events that arrive during a dropped-connection gap are lost; resync
+      // the whole snapshot on every reconnect after the initial open (the
+      // initial load already fetches state, so skip reloading for it).
+      if (open) {
+        if (hadOpenedRef.current) reload();
+        hadOpenedRef.current = true;
+      }
+    }, playerToken);
     socket.current = sock;
     return () => sock.close();
-  }, [campaignId, playerToken]);
+  }, [campaignId, playerToken, reload]);
 
   // scene:activated / scene:deleted → refetch the whole snapshot.
   useEffect(() => {
@@ -101,15 +110,18 @@ export function useTabletop(campaignId: string): TabletopState {
 
   const move = useCallback((tokenId: string, q: number, r: number) => {
     let prev: { q: number; r: number } | null = null;
+    let seq = 0;
     setState((s) => {
       prev = s.tokens[tokenId] ? { q: s.tokens[tokenId].q, r: s.tokens[tokenId].r } : null;
-      return optimisticMove(s, tokenId, q, r);
+      const result = optimisticMove(s, tokenId, q, r);
+      seq = result.seq;
+      return result.state;
     });
     moveToken(tokenId, q, r, playerToken)
-      .then(() => setState((s) => confirmMove(s, tokenId)))
+      .then(() => setState((s) => confirmMove(s, tokenId, seq)))
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : 'Move failed');
-        setState((s) => (prev ? rollbackMove(s, tokenId, prev.q, prev.r) : confirmMove(s, tokenId)));
+        setState((s) => (prev ? rollbackMove(s, tokenId, seq, prev.q, prev.r) : confirmMove(s, tokenId, seq)));
       });
   }, [playerToken]);
 
