@@ -3,7 +3,7 @@ import type {
   AbilityKey, CharacterBuild, DerivedSheet, ReferenceData, SkillKey,
 } from './rules/types';
 import { maxHp } from './rules/combat';
-import { totalAbilityScores } from './rules/core';
+import { classLevelOrdinal, totalAbilityScores } from './rules/core';
 import { multiclassBlockers } from './multiclass';
 
 export type BuildAction =
@@ -58,18 +58,6 @@ const houseRuled = (b: CharacterBuild, step: string) => (b.houseRuled ?? []).inc
 function applyHpDelta(b: CharacterBuild, ref: ReferenceData, before: number): void {
   const after = maxHp(b, ref);
   b.play.hp = Math.max(0, Math.min(after, b.play.hp + (after - before)));
-}
-
-/** The entry's ordinal within its own class (Fighter 1, 2, … regardless of interleaving). */
-function classLevelOrdinal(b: CharacterBuild, n: number): number {
-  const entry = b.levels.find((l) => l.n === n);
-  if (!entry) return 0;
-  let count = 0;
-  for (const l of b.levels) {
-    if (l.classId === entry.classId) count += 1;
-    if (l.n === n) break;
-  }
-  return count;
 }
 
 export function applyBuildAction(

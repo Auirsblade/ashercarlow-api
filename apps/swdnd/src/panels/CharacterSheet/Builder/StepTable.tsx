@@ -89,6 +89,9 @@ export default function StepTable<T>({
                   </span>
                 ))}
               </button>
+              {!open && reason && (
+                <div className="px-2 pb-1 text-[9px] text-yellow-300/80">⚠ {reason}</div>
+              )}
               {open && (
                 <div className="border-t border-ht-line px-3 py-2">
                   <div className="whitespace-pre-line text-ht-muted">{detail(item)}</div>

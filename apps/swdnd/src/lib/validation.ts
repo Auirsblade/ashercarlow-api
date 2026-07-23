@@ -1,6 +1,6 @@
 // apps/swdnd/src/lib/validation.ts
 import type { CharacterBuild, DerivedSheet, ReferenceData } from './rules/types';
-import { classesTaken } from './rules/core';
+import { classesTaken, classLevelOrdinal } from './rules/core';
 
 export type StepKey =
   | 'species' | 'background' | 'class' | 'abilities'
@@ -50,10 +50,8 @@ export function stepStatus(
   if (build.levels.length === 0) classInfo = info('untouched', '—');
   else {
     const problems: string[] = [];
-    const ordinals = new Map<string, number>();
     for (const lvl of build.levels) {
-      const classLevel = (ordinals.get(lvl.classId) ?? 0) + 1;
-      ordinals.set(lvl.classId, classLevel);
+      const classLevel = classLevelOrdinal(build, lvl.n);
       if (!(ref.classes[lvl.classId]?.asiLevels ?? []).includes(classLevel)) continue;
       const choice = lvl.choices?.asiOrFeat;
       if (choice === 'asi') {

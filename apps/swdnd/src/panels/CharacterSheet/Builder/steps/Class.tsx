@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { BuildAction } from '../../../../lib/buildState';
 import { multiclassBlockers } from '../../../../lib/multiclass';
 import { ABILITIES } from '../../../../lib/rules/constants';
-import { classesTaken } from '../../../../lib/rules/core';
+import { classesTaken, classLevelOrdinal, totalAbilityScores } from '../../../../lib/rules/core';
 import type {
   CharacterBuild, LevelEntry, ReferenceData, RefClass,
 } from '../../../../lib/rules/types';
@@ -21,16 +21,6 @@ interface Props {
   ref: ReferenceData;
   editable: boolean;
   dispatch: (a: BuildAction) => void;
-}
-
-/** The entry's ordinal within its own class (Consular 1, 2, … regardless of interleaving). */
-function classLevelOf(build: CharacterBuild, entry: LevelEntry): number {
-  let count = 0;
-  for (const l of build.levels) {
-    if (l.classId === entry.classId) count += 1;
-    if (l.n === entry.n) break;
-  }
-  return count;
 }
 
 function HpControl({ entry, die, editable, dispatch }: {
@@ -99,6 +89,7 @@ function AsiRow({ build, ref, entry, editable, dispatch }: {
           </span>
           {ABILITIES.map((a) => {
             const pts = allocated.filter((i) => i.ability === a).reduce((s, i) => s + i.amount, 0);
+            const capped = totalAbilityScores(build)[a] >= 20;
             return (
               <span key={a} className="flex items-center gap-0.5">
                 <span className={pts > 0 ? 'text-ht-bright' : 'text-ht-muted'}>
@@ -106,7 +97,8 @@ function AsiRow({ build, ref, entry, editable, dispatch }: {
                 </span>
                 {editable && (
                   <>
-                    <button type="button" className="ht-step px-1"
+                    <button type="button" disabled={capped || spent >= 2}
+                      className={`ht-step px-1 ${capped || spent >= 2 ? 'opacity-40' : ''}`}
                       onClick={() => dispatch({ t: 'allocateAsiPoint', n: entry.n, ability: a, delta: 1 })}>+</button>
                     <button type="button" className="ht-step px-1"
                       onClick={() => dispatch({ t: 'allocateAsiPoint', n: entry.n, ability: a, delta: -1 })}>−</button>
@@ -137,7 +129,7 @@ export default function ClassStep({ build, ref, editable, dispatch }: Props) {
   const houseRuleHeader = (
     <div className="ht-panel flex flex-wrap items-center gap-2 p-2 text-[10px] text-ht-muted">
       <span>Multiclassing needs 13+ in the primary ability of both classes.</span>
-      <button type="button" className={`ht-step ml-auto ${houseRuled ? 'ht-tile-active' : ''}`}
+      <button type="button" disabled={!editable} className={`ht-step ml-auto ${houseRuled ? 'ht-tile-active' : ''}`}
         onClick={() => dispatch({ t: 'toggleHouseRule', step: 'class' })}>
         ⌂ house rule {houseRuled ? 'on' : 'off'}
       </button>
@@ -228,7 +220,7 @@ export default function ClassStep({ build, ref, editable, dispatch }: Props) {
             </div>
             <div className="mt-1 flex flex-col gap-1">
               {build.levels.filter((l) => l.classId === t.classId).map((entry) => {
-                const classLevel = classLevelOf(build, entry);
+                const classLevel = classLevelOrdinal(build, entry.n);
                 const isAsi = (cls?.asiLevels ?? []).includes(classLevel);
                 return (
                   <div key={entry.n} className="border-t border-ht-line pt-1">
