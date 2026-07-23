@@ -102,8 +102,16 @@ export default function SceneCanvas({
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (fogBrush && fogStroke) {
       const p = mapPoint(e);
-      for (const k of brushKeys(pixelToHex(p.x, p.y, g), fogBrush.radius)) fogStrokeRef.current.add(k);
-      setFogStroke(new Set(fogStrokeRef.current));
+      let added = false;
+      for (const k of brushKeys(pixelToHex(p.x, p.y, g), fogBrush.radius)) {
+        if (!fogStrokeRef.current.has(k)) {
+          fogStrokeRef.current.add(k);
+          added = true;
+        }
+      }
+      // Only re-render when the stroke actually grew — most pointermoves
+      // during a stroke land on hexes already painted.
+      if (added) setFogStroke(new Set(fogStrokeRef.current));
       return;
     }
     if (drag) {
@@ -210,6 +218,12 @@ export default function SceneCanvas({
       </g>
       <g>
         {tokens.map((t) => {
+          // Own tokens render a second time in the above-fog group below (so
+          // players always see their own token at full strength, never
+          // dimmed by fog over their own hex); skip them here or they'd
+          // stack two semi-transparent copies and read as more saturated.
+          const ownToken = !!t.character_id && ownCharacterIds.has(t.character_id);
+          if (!isDm && fogOn && ownToken) return null;
           const vis = tokenVisibility(t, { isDm, revealed: effectiveRevealed, ownCharacterIds });
           if (!vis.visible) return null;
           return renderToken(t, vis.dimmed);
@@ -235,7 +249,11 @@ export default function SceneCanvas({
         );
       })()}
       {!isDm && fogOn && (
-        <g pointerEvents="none">
+        // This is now the ONLY copy of the player's own token (excluded from
+        // the main group above), so it must stay pointer-interactive — no
+        // pointerEvents="none" here — or drag/tap targeting via
+        // closest('[data-token-id]') in onPointerDown would miss it.
+        <g>
           {tokens
             .filter((t) => !!t.character_id && ownCharacterIds.has(t.character_id))
             .map((t) => {

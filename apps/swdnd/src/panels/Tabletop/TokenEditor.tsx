@@ -1,7 +1,9 @@
 // apps/swdnd/src/panels/Tabletop/TokenEditor.tsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { TokenDto } from '../../lib/scenes';
 import { conditionColor } from '../../lib/rings';
+
+const hpDraftValue = (v: number | null): string => (v == null ? '' : String(v));
 
 export default function TokenEditor({
   token, onEdit, onDelete, onClose,
@@ -14,6 +16,32 @@ export default function TokenEditor({
   const [newCondition, setNewCondition] = useState('');
   const [confirming, setConfirming] = useState(false);
   const isCharacter = !!token.character_id;
+
+  // hp/max_hp are buffered locally and only PATCHed on blur/Enter — committing
+  // per keystroke lets a stale token:updated echo land mid-typing and clobber
+  // digits under latency. Reset the buffer only when the selected token
+  // changes (this component stays mounted across selection changes), not on
+  // every echoed prop update.
+  const [hpDraft, setHpDraft] = useState(() => hpDraftValue(token.hp));
+  const [maxHpDraft, setMaxHpDraft] = useState(() => hpDraftValue(token.max_hp));
+  useEffect(() => {
+    setHpDraft(hpDraftValue(token.hp));
+    setMaxHpDraft(hpDraftValue(token.max_hp));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token.id]);
+
+  const commitHp = () => {
+    if (hpDraft === '') { onEdit(token.id, { hp: null }); return; }
+    const n = Number(hpDraft);
+    if (Number.isNaN(n)) return;
+    onEdit(token.id, { hp: n });
+  };
+  const commitMaxHp = () => {
+    if (maxHpDraft === '') { onEdit(token.id, { max_hp: null }); return; }
+    const n = Number(maxHpDraft);
+    if (Number.isNaN(n)) return;
+    onEdit(token.id, { max_hp: n });
+  };
 
   const addCondition = () => {
     const c = newCondition.trim();
@@ -34,14 +62,18 @@ export default function TokenEditor({
             hp
             <input
               className="w-12 border-b border-ht-line bg-transparent px-1 text-ht-bright outline-none"
-              type="number" value={token.hp ?? ''}
-              onChange={(e) => onEdit(token.id, { hp: e.target.value === '' ? null : Number(e.target.value) })}
+              type="number" value={hpDraft}
+              onChange={(e) => setHpDraft(e.target.value)}
+              onBlur={commitHp}
+              onKeyDown={(e) => e.key === 'Enter' && commitHp()}
             />
             /
             <input
               className="w-12 border-b border-ht-line bg-transparent px-1 text-ht-bright outline-none"
-              type="number" value={token.max_hp ?? ''}
-              onChange={(e) => onEdit(token.id, { max_hp: e.target.value === '' ? null : Number(e.target.value) })}
+              type="number" value={maxHpDraft}
+              onChange={(e) => setMaxHpDraft(e.target.value)}
+              onBlur={commitMaxHp}
+              onKeyDown={(e) => e.key === 'Enter' && commitMaxHp()}
             />
           </label>
           <span className="flex items-center gap-1">

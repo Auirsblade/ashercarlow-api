@@ -10,6 +10,7 @@ import {
 import {
   applyMapEvent, confirmMove, emptyMapState, optimisticMove, rollbackMove, type MapState,
 } from '../lib/mapState';
+import { applyFogPatch } from '../lib/fog';
 import { addCharacterVitals, applyPendingPlays, buildVitals, mergePlay, type PendingPlays, type Vitals } from '../lib/vitals';
 import type { GridConfig } from '../lib/hex';
 import type { ReferenceData } from '../lib/rules/types';
@@ -218,9 +219,24 @@ export function useTabletop(campaignId: string): TabletopState {
       addToken: wrap(async (body: Partial<TokenDto> & { name: string }) => { if (state.scene) await createToken(state.scene.id, body); }),
       removeToken: wrap(async (id: string) => { await deleteToken(id); }),
       editToken: wrap(async (id: string, body: Record<string, unknown>) => { await patchToken(id, body); }),
-      commitFog: wrap(async (reveal: string[], hide: string[]) => {
-        if (state.scene) await patchFog(state.scene.id, reveal, hide);
-      }),
+      commitFog: async (reveal: string[], hide: string[]) => {
+        const scene = state.scene;
+        if (!scene) return;
+        // Apply the patch locally first so painted fog doesn't flicker back
+        // to its pre-stroke state for the round-trip window before the
+        // scene:updated echo arrives — the echo then overwrites with the
+        // identical server result (applyFogPatch is idempotent).
+        setState((s) => (s.scene
+          ? { ...s, scene: { ...s.scene, fog_json: applyFogPatch(s.scene.fog_json, { reveal, hide }) } }
+          : s));
+        try {
+          await patchFog(scene.id, reveal, hide);
+          setError(null);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Fog update failed');
+          reload(); // resync fog from the server since the optimistic patch may not have landed
+        }
+      },
       reload,
     },
   };
