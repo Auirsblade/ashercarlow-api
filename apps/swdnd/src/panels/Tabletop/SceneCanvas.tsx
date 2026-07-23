@@ -1,12 +1,13 @@
 // apps/swdnd/src/panels/Tabletop/SceneCanvas.tsx
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { API_BASE } from '../../lib/api';
-import { hexBlast, hexCorners, hexToPixel, pixelToHex, type Hex } from '../../lib/hex';
+import { hexBlast, hexCorners, hexDistance, hexLine, hexToPixel, pixelToHex, type Hex } from '../../lib/hex';
 import { clientDeltaToMap, clientToMap, fitViewBox, panViewBox, zoomViewBox, type ViewBox } from '../../lib/viewBox';
-import type { SceneDto, TokenDto } from '../../lib/scenes';
+import type { SceneDto, TemplateDto, TokenDto } from '../../lib/scenes';
 import { applyFogPatch, brushKeys, fogActive, toFogSet } from '../../lib/fog';
 import { tokenVisibility, showHpRing } from '../../lib/visibility';
 import { tokenVitals, type Vitals } from '../../lib/vitals';
+import { dirFromPoint, templateHexes } from '../../lib/templates';
 import TokenGlyph from './TokenGlyph';
 
 interface Props {
@@ -26,6 +27,17 @@ interface Props {
   onFogCommit: (reveal: string[], hide: string[]) => void;
   /** DM tap on a token (no drag) selects it for editing. */
   onSelectToken: (tokenId: string | null) => void;
+  /** Active interaction tool. 'move' = phase-1/2 behavior. */
+  mode: 'move' | 'ruler' | 'ping' | 'blast' | 'cone' | 'line';
+  templateSize: number;
+  templates: TemplateDto[];
+  pings: { id: string; x: number; y: number }[];
+  rulers: Record<string, { a: Hex; b: Hex }>;
+  activeTokenId: string | null;
+  onPing: (x: number, y: number) => void;
+  onRulerFrame: (a: Hex, b: Hex, done: boolean) => void;
+  onCreateTemplate: (body: Record<string, unknown>) => void;
+  onDeleteTemplate: (id: string) => void;
 }
 
 /** Grid polygons covering the image area (plus one hex of margin). */
@@ -44,6 +56,8 @@ function gridHexes(scene: SceneDto): Hex[] {
 export default function SceneCanvas({
   scene, tokens, dragGhosts, canMove, onMove, onDragFrame, calibrating,
   isDm, ownCharacterIds, vitals, fogBrush, onFogCommit, onSelectToken,
+  mode, templateSize, templates, pings, rulers, activeTokenId,
+  onPing, onRulerFrame, onCreateTemplate, onDeleteTemplate,
 }: Props) {
   const g = scene.grid_json;
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -51,9 +65,13 @@ export default function SceneCanvas({
   const [drag, setDrag] = useState<{
     tokenId: string; x: number; y: number; startClientX: number; startClientY: number; startHex: Hex;
   } | null>(null);
-  const pan = useRef<{ startX: number; startY: number; vb: ViewBox; startClientX: number; startClientY: number } | null>(null);
+  const pan = useRef<{
+    startX: number; startY: number; vb: ViewBox; startClientX: number; startClientY: number; templateId: string | null;
+  } | null>(null);
   const [fogStroke, setFogStroke] = useState<Set<string> | null>(null);
   const fogStrokeRef = useRef<Set<string>>(new Set());
+  const [rulerDrag, setRulerDrag] = useState<{ a: Hex; b: Hex } | null>(null);
+  const [tplDrag, setTplDrag] = useState<{ kind: 'cone' | 'line'; origin: Hex; x: number; y: number } | null>(null);
 
   const hexes = useMemo(() => gridHexes(scene), [scene]);
   const mapPoint = (e: { clientX: number; clientY: number }) => {
@@ -84,6 +102,17 @@ export default function SceneCanvas({
       setFogStroke(new Set(keys));
       return; // fog tool swallows the gesture — no drag, no pan
     }
+    if (mode === 'ruler') {
+      const p = mapPoint(e);
+      const a = pixelToHex(p.x, p.y, g);
+      setRulerDrag({ a, b: a });
+      return;
+    }
+    if (mode === 'cone' || mode === 'line') {
+      const p = mapPoint(e);
+      setTplDrag({ kind: mode, origin: pixelToHex(p.x, p.y, g), x: p.x, y: p.y });
+      return;
+    }
     const tokenEl = (e.target as Element).closest('[data-token-id]');
     const tokenId = tokenEl?.getAttribute('data-token-id');
     const token = tokens.find((t) => t.id === tokenId);
@@ -95,7 +124,11 @@ export default function SceneCanvas({
         startHex: { q: token.q, r: token.r },
       });
     } else {
-      pan.current = { startX: e.clientX, startY: e.clientY, vb, startClientX: e.clientX, startClientY: e.clientY };
+      const tplEl = (e.target as Element).closest('[data-template-id]');
+      pan.current = {
+        startX: e.clientX, startY: e.clientY, vb, startClientX: e.clientX, startClientY: e.clientY,
+        templateId: tplEl?.getAttribute('data-template-id') ?? null,
+      };
     }
   };
 
@@ -112,6 +145,20 @@ export default function SceneCanvas({
       // Only re-render when the stroke actually grew — most pointermoves
       // during a stroke land on hexes already painted.
       if (added) setFogStroke(new Set(fogStrokeRef.current));
+      return;
+    }
+    if (rulerDrag) {
+      const p = mapPoint(e);
+      const b = pixelToHex(p.x, p.y, g);
+      if (b.q !== rulerDrag.b.q || b.r !== rulerDrag.b.r) {
+        setRulerDrag({ a: rulerDrag.a, b });
+        onRulerFrame(rulerDrag.a, b, false);
+      }
+      return;
+    }
+    if (tplDrag) {
+      const p = mapPoint(e);
+      setTplDrag({ ...tplDrag, x: p.x, y: p.y });
       return;
     }
     if (drag) {
@@ -135,6 +182,25 @@ export default function SceneCanvas({
       setFogStroke(null);
       return;
     }
+    if (rulerDrag) {
+      onRulerFrame(rulerDrag.a, rulerDrag.b, true);
+      setRulerDrag(null);
+      return;
+    }
+    if (tplDrag) {
+      const p = mapPoint(e);
+      if (tplDrag.kind === 'cone') {
+        const dir = dirFromPoint(tplDrag.origin, p.x, p.y, g);
+        onCreateTemplate({ kind: 'cone', q: tplDrag.origin.q, r: tplDrag.origin.r, dir, size: templateSize });
+      } else {
+        const end = pixelToHex(p.x, p.y, g);
+        if (end.q !== tplDrag.origin.q || end.r !== tplDrag.origin.r) {
+          onCreateTemplate({ kind: 'line', q: tplDrag.origin.q, r: tplDrag.origin.r, q2: end.q, r2: end.r });
+        }
+      }
+      setTplDrag(null);
+      return;
+    }
     if (drag) {
       const p = mapPoint(e);
       const moved = Math.hypot(e.clientX - drag.startClientX, e.clientY - drag.startClientY) > 4;
@@ -148,7 +214,19 @@ export default function SceneCanvas({
       setDrag(null);
     } else if (pan.current) {
       const movedPan = Math.hypot(e.clientX - pan.current.startClientX, e.clientY - pan.current.startClientY) > 4;
-      if (!movedPan && isDm) onSelectToken(null);
+      if (!movedPan) {
+        const p = mapPoint(e);
+        if (mode === 'ping') {
+          onPing(p.x, p.y);
+        } else if (mode === 'blast') {
+          const hex = pixelToHex(p.x, p.y, g);
+          onCreateTemplate({ kind: 'blast', q: hex.q, r: hex.r, size: templateSize });
+        } else if (pan.current.templateId) {
+          onDeleteTemplate(pan.current.templateId); // any member; server enforces
+        } else if (isDm) {
+          onSelectToken(null);
+        }
+      }
     }
     pan.current = null;
   };
@@ -177,6 +255,7 @@ export default function SceneCanvas({
         vitals={tokenVitals(t, vitals)}
         showHp={showHpRing(t, isDm)}
         dimmed={dimmed}
+        active={t.id === activeTokenId}
       />
     );
   };
@@ -215,6 +294,57 @@ export default function SceneCanvas({
             strokeWidth={calibrating ? 1.5 : 1}
           />
         ))}
+      </g>
+      <g>
+        {templates.map((t) => {
+          const cells = templateHexes(t);
+          const o = hexToPixel({ q: t.q, r: t.r }, g);
+          return (
+            <g key={t.id}>
+              <g pointerEvents="none">
+                {cells.map((hex) => (
+                  <polygon
+                    key={`${t.id}:${hex.q},${hex.r}`}
+                    points={hexCorners(hex, g).map((p) => `${p.x},${p.y}`).join(' ')}
+                    fill={t.color} fillOpacity={0.22}
+                    stroke={t.color} strokeOpacity={0.6} strokeWidth={1}
+                  />
+                ))}
+              </g>
+              {/* origin marker = the delete handle (tap in move mode removes) */}
+              <circle
+                data-template-id={t.id}
+                cx={o.x} cy={o.y} r={g.hexSize * 0.22}
+                fill={t.color} fillOpacity={0.9} stroke="#05070a" strokeWidth={1}
+                style={{ cursor: 'pointer' }}
+              />
+            </g>
+          );
+        })}
+        {/* in-flight cone/line preview, dashed */}
+        {tplDrag && (() => {
+          const preview: TemplateDto = {
+            id: '__preview', scene_id: scene.id, kind: tplDrag.kind,
+            q: tplDrag.origin.q, r: tplDrag.origin.r,
+            dir: tplDrag.kind === 'cone' ? dirFromPoint(tplDrag.origin, tplDrag.x, tplDrag.y, g) : 0,
+            size: templateSize,
+            q2: tplDrag.kind === 'line' ? pixelToHex(tplDrag.x, tplDrag.y, g).q : null,
+            r2: tplDrag.kind === 'line' ? pixelToHex(tplDrag.x, tplDrag.y, g).r : null,
+            color: '#c792ea', created_at: '',
+          };
+          return (
+            <g pointerEvents="none">
+              {templateHexes(preview).map((hex) => (
+                <polygon
+                  key={`pv:${hex.q},${hex.r}`}
+                  points={hexCorners(hex, g).map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill="#c792ea" fillOpacity={0.12}
+                  stroke="#c792ea" strokeOpacity={0.7} strokeWidth={1} strokeDasharray="4 3"
+                />
+              ))}
+            </g>
+          );
+        })()}
       </g>
       <g>
         {tokens.map((t) => {
@@ -263,6 +393,47 @@ export default function SceneCanvas({
             })}
         </g>
       )}
+      <g pointerEvents="none">
+        {/* rulers: local drag + remote peers */}
+        {[
+          ...(rulerDrag ? [{ key: '__local', ...rulerDrag }] : []),
+          ...Object.entries(rulers).map(([peer, rl]) => ({ key: peer, ...rl })),
+        ].map(({ key, a, b }) => {
+          const pa = hexToPixel(a, g);
+          const pb = hexToPixel(b, g);
+          const cells = hexLine(a, b);
+          const dist = hexDistance(a, b) * g.unitsPerHex;
+          return (
+            <g key={`ruler-${key}`}>
+              {cells.map((hex) => (
+                <polygon
+                  key={`rl:${key}:${hex.q},${hex.r}`}
+                  points={hexCorners(hex, g).map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill="#4dd0e1" fillOpacity={0.15} stroke="#4dd0e1" strokeOpacity={0.5} strokeWidth={1}
+                />
+              ))}
+              <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="#4dd0e1" strokeWidth={1.5} strokeDasharray="6 4" />
+              <text
+                x={(pa.x + pb.x) / 2} y={(pa.y + pb.y) / 2 - g.hexSize * 0.4}
+                textAnchor="middle" fill="#e6f7ff" fontFamily="monospace" fontSize={g.hexSize * 0.45}
+                stroke="#05070a" strokeWidth={3} paintOrder="stroke"
+              >
+                {dist} {g.unitLabel}
+              </text>
+            </g>
+          );
+        })}
+        {/* pings: expanding double-pulse */}
+        {pings.map((p) => (
+          <g key={p.id}>
+            <circle cx={p.x} cy={p.y} r={g.hexSize * 0.3} fill="none" stroke="#ffcb6b" strokeWidth={2}>
+              <animate attributeName="r" from={g.hexSize * 0.3} to={g.hexSize * 2.2} dur="1s" repeatCount="2" />
+              <animate attributeName="stroke-opacity" from="1" to="0" dur="1s" repeatCount="2" />
+            </circle>
+            <circle cx={p.x} cy={p.y} r={g.hexSize * 0.16} fill="#ffcb6b" />
+          </g>
+        ))}
+      </g>
     </svg>
   );
 }
