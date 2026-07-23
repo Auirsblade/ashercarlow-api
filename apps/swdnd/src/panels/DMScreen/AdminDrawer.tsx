@@ -23,8 +23,14 @@ export default function AdminDrawer({ campaign, players, cards, actions, campaig
 
   const copyInvite = async (p: PlayerDto) => {
     const link = `${window.location.origin}/player?token=${encodeURIComponent(p.access_token)}`;
-    await navigator.clipboard.writeText(link);
-    setCopied(p.id);
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(p.id);
+    } catch {
+      // No clipboard (insecure origin): show the link so the DM can copy manually.
+      window.prompt('Copy the invite link:', link);
+      return;
+    }
     setTimeout(() => setCopied((cur) => (cur === p.id ? null : cur)), 1500);
   };
   const addPlayer = async () => {
