@@ -92,6 +92,48 @@ describe('seedContentFromImage', () => {
     live.close();
   });
 
+  it('seeds a long-lived volume whose table has legacy columns the seed no longer has', () => {
+    const driftSeed = join(dir, 'drift-seed.sqlite');
+    const driftLive = join(dir, 'drift-live.sqlite');
+
+    // Seed built from current code: 5-column classes.
+    const seed = makeDb(driftSeed);
+    seed
+      .prepare(
+        "INSERT INTO classes (id, name, content_source, content_type, raw_json) VALUES ('guardian', 'Guardian', NULL, NULL, '{}')",
+      )
+      .run();
+    seed
+      .prepare(
+        'INSERT INTO data_version (id, source_repo, commit_hash, imported_at) VALUES (1, ?, ?, ?)',
+      )
+      .run('sw5e-foundry/sw5e', 'ccc', new Date().toISOString());
+    seed.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    seed.close();
+
+    // Live volume predates commit 4098c5e: classes still has caster_type/caster_ratio,
+    // so it has 7 columns while the seed has 5. Create it before ensureReferenceTables
+    // so the CREATE IF NOT EXISTS leaves the legacy shape intact (as on the real volume).
+    const live = openDatabase(driftLive);
+    runMigrations(live, CORE, MIGRATIONS_DIR);
+    live.exec(
+      'CREATE TABLE classes (id TEXT PRIMARY KEY, name TEXT, content_source TEXT, content_type TEXT, raw_json TEXT NOT NULL, caster_type TEXT, caster_ratio REAL)',
+    );
+    ensureReferenceTables(live);
+
+    // Must not throw despite the 7-vs-5 column mismatch.
+    seedContentFromImage(live, driftSeed);
+
+    const row = live
+      .query<{ name: string; caster_type: string | null }, []>(
+        "SELECT name, caster_type FROM classes WHERE id = 'guardian'",
+      )
+      .get();
+    expect(row?.name).toBe('Guardian');
+    expect(row?.caster_type).toBeNull(); // legacy column simply left NULL
+    live.close();
+  });
+
   it('does nothing when no seed path is configured', () => {
     const live = makeDb(join(dir, 'nopath.sqlite'));
     seedContentFromImage(live, undefined);

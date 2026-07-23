@@ -10,6 +10,14 @@ import { REFERENCE_TABLES } from './reference';
  */
 const CONTENT_TABLES = [...REFERENCE_TABLES.map((t) => t.table), 'data_version'];
 
+/** Column names of a table in the given schema (`main` or the attached `seed`). */
+function columnNames(db: Database, schema: string, table: string): string[] {
+  return db
+    .query<{ name: string }, []>(`PRAGMA ${schema}.table_info(${table})`)
+    .all()
+    .map((r) => r.name);
+}
+
 /**
  * Merge the baked-in sw5e reference content (see Dockerfile) into a live database.
  *
@@ -48,7 +56,18 @@ export function seedContentFromImage(
 
     db.transaction(() => {
       for (const table of CONTENT_TABLES) {
-        db.exec(`INSERT OR REPLACE INTO main.${table} SELECT * FROM seed.${table}`);
+        // Copy only columns present in BOTH databases, by name. A long-lived volume can
+        // carry legacy columns the current seed no longer has (e.g. classes/archetypes
+        // once had caster_type/caster_ratio), so a positional `SELECT *` would supply the
+        // wrong number of values. Matching by name tolerates drift in either direction.
+        const seedCols = columnNames(db, 'seed', table);
+        const liveCols = new Set(columnNames(db, 'main', table));
+        const shared = seedCols.filter((c) => liveCols.has(c));
+        if (shared.length === 0) continue;
+        const cols = shared.map((c) => `"${c}"`).join(', ');
+        db.exec(
+          `INSERT OR REPLACE INTO main.${table} (${cols}) SELECT ${cols} FROM seed.${table}`,
+        );
       }
     })();
 

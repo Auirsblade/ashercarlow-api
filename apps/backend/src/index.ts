@@ -2,6 +2,7 @@ import { createApiApp } from './lib/openapi';
 import { serveStaticSpa } from './lib/static';
 import { LOGIN_HTML } from './lib/login-page';
 import { swdndWebsocket, setRealtimeServer, roomForCampaign, type WsData } from './lib/swdnd-realtime';
+import { canJoinCampaignRoom } from './routes/swdnd/access';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -36,14 +37,12 @@ const server = Bun.serve({
     const pathname = new URL(req.url).pathname;
 
     // swdnd realtime upgrade (api host). room = campaign.
-    // SECURITY NOTE: this upgrade is intentionally UNAUTHENTICATED in the
-    // foundation. REST + SQLite remain the source of truth, so this only exposes
-    // read/relay of live campaign events. Before any feature broadcasts private
-    // player/character data over WS, gate this on the player access_token (or an
-    // Origin/cookie check). See the Tabletop & Map feature spec.
     if (host === 'api.ashercarlow.com' && pathname === '/swdnd/ws') {
       const campaign = new URL(req.url).searchParams.get('campaign');
       if (!campaign) return new Response('Missing campaign', { status: 400 });
+      if (!canJoinCampaignRoom(req, campaign)) {
+        return new Response('Unauthorized', { status: 401 });
+      }
       const upgraded = server.upgrade<WsData>(req, {
         data: { room: roomForCampaign(campaign) },
       });

@@ -64,20 +64,25 @@ export function useCharacterSheet(characterId: string): SheetState {
   useEffect(() => {
     const campaignId = dto?.campaign_id;
     if (!campaignId) return;
-    const sock = connectCampaign(campaignId, (env) => {
-      if (env.type !== 'character:updated') return;
-      // While a local edit is pending (debounce timer armed), skip incoming
-      // merges: our own earlier echo — or a concurrent writer — must not
-      // clobber the newer local state. Once our PATCH fires, its echo matches
-      // local state and merging is idempotent (last-write-wins).
-      if (saveTimer.current) return;
-      const payload = env.payload as { characterId?: string; play?: PlayState } | undefined;
-      if (payload?.characterId === characterId && payload.play) {
-        setPlay(payload.play);
-      }
-    });
+    const sock = connectCampaign(
+      campaignId,
+      (env) => {
+        if (env.type !== 'character:updated') return;
+        // While a local edit is pending (debounce timer armed), skip incoming
+        // merges: our own earlier echo — or a concurrent writer — must not
+        // clobber the newer local state. Once our PATCH fires, its echo matches
+        // local state and merging is idempotent (last-write-wins).
+        if (saveTimer.current) return;
+        const payload = env.payload as { characterId?: string; play?: PlayState } | undefined;
+        if (payload?.characterId === characterId && payload.play) {
+          setPlay(payload.play);
+        }
+      },
+      undefined,
+      token,
+    );
     return () => sock.close();
-  }, [dto?.campaign_id, characterId]);
+  }, [dto?.campaign_id, characterId, token]);
 
   const canEdit = resolveCanEdit({ admin: authed, token });
 

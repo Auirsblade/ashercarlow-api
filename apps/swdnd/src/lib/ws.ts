@@ -20,6 +20,7 @@ export function connectCampaign(
   campaignId: string,
   onMessage: (env: WsEnvelope) => void,
   onStatus?: (open: boolean) => void,
+  token?: string | null,
 ): CampaignSocket {
   let ws: WebSocket | null = null;
   let closed = false;
@@ -27,7 +28,7 @@ export function connectCampaign(
 
   const open = () => {
     ws = new WebSocket(
-      `${wsBase()}/swdnd/ws?campaign=${encodeURIComponent(campaignId)}`,
+      `${wsBase()}/swdnd/ws?campaign=${encodeURIComponent(campaignId)}${token ? `&token=${encodeURIComponent(token)}` : ''}`,
     );
     ws.onopen = () => {
       retry = 0;
