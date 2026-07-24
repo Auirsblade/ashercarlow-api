@@ -68,7 +68,7 @@ export default function Sheet({ characterId }: { characterId: string }) {
           ⚠ {s.error} — changes may not be saved
         </div>
       )}
-      <CoreBar characterId={characterId} build={s.build} derived={s.derived} ref={s.ref} play={s.play} editable={s.canEdit} dispatch={s.dispatch} />
+      <CoreBar characterId={characterId} build={s.build} derived={s.derived} ref={s.ref} play={s.play} editable={s.canEdit} dispatch={s.dispatch} campaignId={s.dto?.campaign_id ?? null} />
 
       {/* Wide: 3 columns */}
       <div className="mt-3 hidden gap-3 @lg:grid @lg:grid-cols-3">

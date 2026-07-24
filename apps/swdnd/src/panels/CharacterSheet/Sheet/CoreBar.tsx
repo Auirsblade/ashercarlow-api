@@ -1,5 +1,6 @@
 // apps/swdnd/src/panels/CharacterSheet/Sheet/CoreBar.tsx
 import { Link, useLocation } from 'react-router-dom';
+import { PanelLink } from '../../../components/split';
 import type { CharacterBuild, DerivedSheet, PlayState, ReferenceData } from '../../../lib/rules/types';
 import type { PlayAction } from '../../../lib/playState';
 import { classSummary, remaining } from '../../../lib/sheetView';
@@ -14,6 +15,7 @@ interface Props {
   play: PlayState;
   editable: boolean;
   dispatch: (a: PlayAction) => void;
+  campaignId: string | null;
 }
 
 const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
@@ -27,7 +29,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-export default function CoreBar({ characterId, build, derived, ref, play, editable, dispatch }: Props) {
+export default function CoreBar({ characterId, build, derived, ref, play, editable, dispatch, campaignId }: Props) {
   const { force, tech } = derived.casting;
   const { search } = useLocation(); // carry ?token=… into the builder
   const classLine = classSummary(build, ref) || `Level ${build.levels.length}`;
@@ -41,6 +43,16 @@ export default function CoreBar({ characterId, build, derived, ref, play, editab
           {speciesName && ` · ${speciesName}`}
         </div>
         <Link to={`/sheet/${characterId}/build${search}`} className="ht-label" style={{ cursor: 'pointer' }}>✎ Edit / Level up ▸</Link>
+        {campaignId && (
+          <PanelLink
+            to={{ kind: 'map', id: campaignId }}
+            current={{ kind: 'sheet', id: characterId }}
+            className="ht-label block"
+            title="open the campaign map (alt-click: beside the sheet)"
+          >
+            ⬡ Map ▸
+          </PanelLink>
+        )}
       </div>
 
       <div className="ht-panel px-3 py-2 text-center">

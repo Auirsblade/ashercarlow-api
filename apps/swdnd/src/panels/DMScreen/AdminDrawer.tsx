@@ -1,6 +1,6 @@
 // apps/swdnd/src/panels/DMScreen/AdminDrawer.tsx — campaign admin in a drawer.
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { PanelLink } from '../../components/split';
 import type { CampaignDto } from '../../lib/campaigns';
 import type { PlayerDto } from '../../lib/characters';
 import type { PartyCard } from '../../lib/partyCards';
@@ -57,7 +57,7 @@ export default function AdminDrawer({ campaign, players, cards, actions, campaig
               className="w-full border-b border-ht-line bg-transparent px-1 text-ht-bright outline-none"
             />
           )}
-          <Link className="ht-step mt-2 inline-block text-[11px]" to={`/map/${campaignId}`}>open map</Link>
+          <PanelLink to={{ kind: 'map', id: campaignId }} current={{ kind: 'dm', id: campaignId }} className="ht-step mt-2 inline-block text-[11px]">open map</PanelLink>
         </section>
 
         <section>
@@ -118,7 +118,7 @@ export default function AdminDrawer({ campaign, players, cards, actions, campaig
               <div key={c.id} className="flex items-center gap-2 text-[11px]">
                 <span className="text-ht-bright">{c.name}</span>
                 <span className="text-[10px] text-ht-muted">{c.classLine}</span>
-                <Link className="ht-step ml-auto" to={`/sheet/${c.id}`}>sheet</Link>
+                <PanelLink to={{ kind: 'sheet', id: c.id }} current={{ kind: 'dm', id: campaignId }} className="ht-step ml-auto">sheet</PanelLink>
               </div>
             ))}
           </div>
