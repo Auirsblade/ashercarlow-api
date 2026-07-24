@@ -1,5 +1,6 @@
 // apps/swdnd/src/panels/Tabletop/TokenEditor.tsx
 import { useEffect, useState } from 'react';
+import { PanelLink } from '../../components/split';
 import type { TokenDto } from '../../lib/scenes';
 import { conditionColor } from '../../lib/rings';
 import TokenImageControls from './TokenImageControls';
@@ -7,9 +8,10 @@ import TokenImageControls from './TokenImageControls';
 const hpDraftValue = (v: number | null): string => (v == null ? '' : String(v));
 
 export default function TokenEditor({
-  token, onEdit, onDelete, onImageUpload, onImageClear, onClose,
+  token, campaignId, onEdit, onDelete, onImageUpload, onImageClear, onClose,
 }: {
   token: TokenDto;
+  campaignId: string;
   onEdit: (id: string, body: Record<string, unknown>) => void;
   onDelete: (id: string) => void;
   onImageUpload: (id: string, file: File) => void;
@@ -58,7 +60,17 @@ export default function TokenEditor({
       <span className="ht-label">{token.name}</span>
 
       {isCharacter ? (
-        <span className="text-[10px] text-ht-muted">hp &amp; conditions come from the character sheet</span>
+        <span className="flex items-center gap-2 text-[10px] text-ht-muted">
+          hp &amp; conditions come from the character sheet
+          <PanelLink
+            to={{ kind: 'sheet', id: token.character_id! }}
+            current={{ kind: 'map', id: campaignId }}
+            className="ht-step"
+            title="open sheet (alt-click: beside the map)"
+          >
+            ▤ sheet
+          </PanelLink>
+        </span>
       ) : (
         <>
           <label className="flex items-center gap-1">

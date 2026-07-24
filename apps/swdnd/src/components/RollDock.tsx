@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { useRollLog } from '../hooks/useRollLog';
 import { parseFormula } from '../lib/dice';
 import { addDie, addModifier, type RollDto } from '../lib/rolls';
+import { useSplit } from './split';
 
 const DICE = [4, 6, 8, 10, 12, 20, 100] as const;
 
@@ -23,7 +24,7 @@ function RollLine({ r }: { r: RollDto }) {
   );
 }
 
-export default function RollDock({ campaignId }: { campaignId: string }) {
+function RollDockInner({ campaignId }: { campaignId: string }) {
   const { authed } = useAuth();
   const log = useRollLog(campaignId);
   const [open, setOpen] = useState(false);
@@ -120,4 +121,11 @@ export default function RollDock({ campaignId }: { campaignId: string }) {
       </div>
     </div>
   );
+}
+
+export default function RollDock({ campaignId }: { campaignId: string }) {
+  // Inside a split panel, the SplitPage mounts the one true dock — a
+  // panel-embedded dock would double the pill and the websocket.
+  if (useSplit()) return null;
+  return <RollDockInner campaignId={campaignId} />;
 }

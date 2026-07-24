@@ -9,8 +9,8 @@ export default function SplitView({
 }) {
   return (
     <div className="grid min-h-screen grid-cols-1 divide-ht-line md:grid-cols-2 md:divide-x">
-      <div className="@container overflow-auto">{left}</div>
-      <div className="@container h-screen overflow-auto">{right}</div>
+      <div className="h-screen overflow-hidden">{left}</div>
+      <div className="h-screen overflow-hidden">{right}</div>
     </div>
   );
 }

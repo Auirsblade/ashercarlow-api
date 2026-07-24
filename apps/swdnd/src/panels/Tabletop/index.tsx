@@ -1,5 +1,6 @@
 // apps/swdnd/src/panels/Tabletop/index.tsx
 import { useState } from 'react';
+import { PanelLink } from '../../components/split';
 import RollDock from '../../components/RollDock';
 import { useTabletop } from '../../hooks/useTabletop';
 import type { GridConfig } from '../../lib/hex';
@@ -29,7 +30,7 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
   const selected = t.tokens.find((tok) => tok.id === selectedId) ?? null;
 
   return (
-    <div className="@container ht-screen flex h-screen min-h-full flex-col font-mono text-ht-text">
+    <div className="@container ht-screen flex h-full min-h-full flex-col font-mono text-ht-text">
       {t.error && (
         <div className="m-2 rounded border border-red-400/60 bg-red-950/40 px-3 py-1.5 text-[11px] text-red-300">
           ⚠ {t.error}
@@ -41,6 +42,27 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
           <span className="text-[10px] text-ht-muted">
             {t.scene.grid_json.unitsPerHex} {t.scene.grid_json.unitLabel}/hex · {t.tokens.length} tokens
           </span>
+        )}
+        {!t.isDm && t.ownCharacters.map((c) => (
+          <PanelLink
+            key={c.id}
+            to={{ kind: 'sheet', id: c.id }}
+            current={{ kind: 'map', id: campaignId }}
+            className="ht-step"
+            title={`open ${c.name}'s sheet (alt-click: beside the map)`}
+          >
+            ▤ {c.name}
+          </PanelLink>
+        ))}
+        {t.isDm && (
+          <PanelLink
+            to={{ kind: 'dm', id: campaignId }}
+            current={{ kind: 'map', id: campaignId }}
+            className="ht-step"
+            title="open the DM screen (alt-click: beside the map)"
+          >
+            ⌘ dm
+          </PanelLink>
         )}
         {t.scene && (
           <span className="flex flex-wrap items-center gap-1">
@@ -169,6 +191,7 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
         <div className="mx-2 mb-2">
           <TokenEditor
             token={selected}
+            campaignId={campaignId}
             onEdit={(id, body) => void t.actions.editToken(id, body)}
             onDelete={(id) => void t.actions.removeToken(id)}
             onImageUpload={(id, file) => void t.actions.setTokenImage(id, file)}

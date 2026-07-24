@@ -28,6 +28,7 @@ export interface TabletopState {
   playerToken: string | null;
   canMove: (t: TokenDto) => boolean;
   ownCharacterIds: Set<string>;
+  ownCharacters: { id: string; name: string }[];
   vitals: Record<string, Vitals>;
   templates: TemplateDto[];
   pings: { id: string; x: number; y: number }[];
@@ -68,6 +69,7 @@ export function useTabletop(campaignId: string): TabletopState {
   const [state, setState] = useState<MapState>(emptyMapState());
   const [scenes, setScenes] = useState<SceneDto[]>([]);
   const [ownCharacterIds, setOwnCharacterIds] = useState<Set<string>>(new Set());
+  const [ownCharacters, setOwnCharacters] = useState<{ id: string; name: string }[]>([]);
   const [vitals, setVitals] = useState<Record<string, Vitals>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -133,14 +135,24 @@ export function useTabletop(campaignId: string): TabletopState {
 
   useEffect(reload, [reload]);
 
-  // Which characters belong to this player link (players/me), for canMove.
+  // Which characters belong to this player link (players/me), for canMove and sheet links.
   useEffect(() => {
     if (!playerToken) return;
+    let alive = true;
     import('../lib/characters').then(({ getPlayerByToken }) =>
       getPlayerByToken(playerToken)
-        .then((me) => setOwnCharacterIds(new Set(me.characters.map((c) => c.id))))
-        .catch(() => setOwnCharacterIds(new Set())),
+        .then((me) => {
+          if (!alive) return;
+          setOwnCharacterIds(new Set(me.characters.map((c) => c.id)));
+          setOwnCharacters(me.characters.map((c) => ({ id: c.id, name: c.name })));
+        })
+        .catch(() => {
+          if (!alive) return;
+          setOwnCharacterIds(new Set());
+          setOwnCharacters([]);
+        }),
     );
+    return () => { alive = false; };
   }, [playerToken]);
 
   // Load campaign characters + reference once and compute each character's
@@ -282,6 +294,7 @@ export function useTabletop(campaignId: string): TabletopState {
     isDm: authed,
     playerToken,
     ownCharacterIds,
+    ownCharacters,
     vitals,
     templates: Object.values(state.templates),
     pings,

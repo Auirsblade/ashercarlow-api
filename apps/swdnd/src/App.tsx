@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useParams, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider } from "./lib/auth";
 import { getCharacter } from "./lib/characters";
 import RollDock from "./components/RollDock";
+import SplitPage from "./components/SplitPage";
+import { splitPath } from "./lib/panels";
 import SinglePanel from "./layouts/SinglePanel";
-import SplitView from "./layouts/SplitView";
 import CharacterSheet from "./panels/CharacterSheet";
 import Tabletop from "./panels/Tabletop";
 import DMScreen from "./panels/DMScreen";
@@ -35,7 +36,9 @@ function MapPage() {
   const { campaignId = "" } = useParams();
   return (
     <SinglePanel>
-      <Tabletop campaignId={campaignId} />
+      <div className="h-screen">
+        <Tabletop campaignId={campaignId} />
+      </div>
     </SinglePanel>
   );
 }
@@ -51,20 +54,24 @@ function DmPage() {
 
 function PlayPage() {
   const { characterId = "" } = useParams();
+  const { search } = useLocation();
   const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     let alive = true;
     getCharacter(characterId)
       .then((c) => alive && setCampaignId(c.campaign_id))
-      .catch(() => alive && setCampaignId(null));
+      .catch(() => alive && setFailed(true));
     return () => {
       alive = false;
     };
   }, [characterId]);
+  if (failed) return <Navigate replace to={`/sheet/${characterId}${search}`} />;
+  if (!campaignId) return <SinglePanel><div className="p-6 text-zinc-500">Loading…</div></SinglePanel>;
   return (
-    <SplitView
-      left={<CharacterSheet characterId={characterId} />}
-      right={campaignId ? <Tabletop campaignId={campaignId} /> : <div className="p-6 text-zinc-500">Loading…</div>}
+    <Navigate
+      replace
+      to={splitPath({ kind: "sheet", id: characterId }, { kind: "map", id: campaignId }) + search}
     />
   );
 }
@@ -93,6 +100,7 @@ export default function App() {
           <Route path="/dm" element={<SinglePanel><DmHome /></SinglePanel>} />
           <Route path="/dm/:campaignId" element={<DmPage />} />
           <Route path="/play/:characterId" element={<PlayPage />} />
+          <Route path="/split/:left/:right" element={<SplitPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

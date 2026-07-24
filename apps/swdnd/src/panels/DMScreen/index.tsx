@@ -1,6 +1,7 @@
 // apps/swdnd/src/panels/DMScreen/index.tsx — DM campaign control surface.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { PanelLink } from '../../components/split';
 import RollDock from '../../components/RollDock';
 import { useAuth } from '../../lib/auth';
 import { useDmScreen } from '../../hooks/useDmScreen';
@@ -37,7 +38,7 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
           <div className="text-[10px] text-ht-muted">dm screen</div>
         </div>
         <div className="ml-auto flex items-center gap-2 text-[11px]">
-          <Link className="ht-step" to={`/map/${campaignId}`}>map</Link>
+          <PanelLink to={{ kind: 'map', id: campaignId }} current={{ kind: 'dm', id: campaignId }} className="ht-step">map</PanelLink>
           <Link className="ht-step" to="/dm">campaigns</Link>
           <button type="button" className="ht-step" onClick={() => setDrawerOpen(true)}>admin</button>
         </div>

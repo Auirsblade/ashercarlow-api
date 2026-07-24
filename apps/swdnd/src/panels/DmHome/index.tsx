@@ -1,6 +1,6 @@
 // apps/swdnd/src/panels/DmHome/index.tsx — /dm landing: campaign list/create/rename.
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { PanelLink } from '../../components/split';
 import { useAuth } from '../../lib/auth';
 import { createCampaign, listCampaigns, renameCampaign, type CampaignDto } from '../../lib/campaigns';
 import BufferedText from '../DMScreen/BufferedText';
@@ -62,8 +62,8 @@ export default function DmHome() {
                 className="min-w-[160px] border-b border-ht-line bg-transparent px-1 text-ht-bright outline-none"
               />
               <div className="ml-auto flex items-center gap-2 text-[11px]">
-                <Link className="ht-step" to={`/dm/${c.id}`}>dm screen</Link>
-                <Link className="ht-step" to={`/map/${c.id}`}>map</Link>
+                <PanelLink to={{ kind: 'dm', id: c.id }} current={{ kind: 'map', id: c.id }} className="ht-step" title="alt-click: dm screen + map">dm screen</PanelLink>
+                <PanelLink to={{ kind: 'map', id: c.id }} current={{ kind: 'dm', id: c.id }} className="ht-step" title="alt-click: map + dm screen">map</PanelLink>
               </div>
             </div>
           ))}
