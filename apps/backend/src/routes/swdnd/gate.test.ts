@@ -64,3 +64,38 @@ test('player-slot creation succeeds with the admin bearer token', async () => {
   });
   expect(res.status).toBe(201);
 });
+
+test('players list GET requires admin (it exposes access tokens; GETs bypass the blanket gate)', async () => {
+  const anon = await app.request('/swdnd/campaigns/c1/players');
+  expect(anon.status).toBe(403);
+
+  const asPlayer = await app.request('/swdnd/campaigns/c1/players', { headers: { 'X-Player-Token': 'tok-1' } });
+  expect(asPlayer.status).toBe(403); // player tokens don't grant admin
+
+  const asAdmin = await app.request('/swdnd/campaigns/c1/players', { headers: { Authorization: 'Bearer admin-secret' } });
+  expect(asAdmin.status).toBe(200);
+  const rows = await asAdmin.json();
+  expect(rows.some((p: { id: string }) => p.id === 'p1')).toBe(true);
+});
+
+test('player slot mutations ride the blanket admin gate', async () => {
+  const anonPatch = await app.request('/swdnd/players/p1', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'x' }),
+  });
+  expect(anonPatch.status).toBe(401);
+
+  const playerPatch = await app.request('/swdnd/players/p1', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Player-Token': 'tok-1' },
+    body: JSON.stringify({ name: 'x' }),
+  });
+  expect(playerPatch.status).toBe(401); // the blanket gate only accepts bearer/cookie
+
+  const anonDelete = await app.request('/swdnd/players/p1', { method: 'DELETE' });
+  expect(anonDelete.status).toBe(401);
+
+  const adminPatch = await app.request('/swdnd/players/p1', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer admin-secret' },
+    body: JSON.stringify({ name: 'Ash Renamed' }),
+  });
+  expect(adminPatch.status).toBe(200);
+});
