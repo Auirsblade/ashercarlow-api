@@ -22,3 +22,12 @@ Reusable gotchas for this repo (Bun + Hono monorepo). Add to this as corrections
 - **Casting lives under `system.powercasting.{force,tech}`** (values `"full" | "3/4" | "half" | "arch" | "none"`), NOT `system.casterType`/`casterRatio` (those fields don't exist in the real Foundry data — they import as NULL).
 - **The point-pool / max-power-level / powers-known / superiority tables are in `vendor/sw5e/module/config.mjs`** and the multiclass derivation is in `vendor/sw5e/module/documents/actor/actor.mjs` — they are computed in code, not stored in the `packs/` data. Cross-check engine constants against those files.
 - **Packs are nested** (`forcepowers/level-1/*.json`, `armor/medium/*.json`, `archetypes/<class>/*.json`) and several fields are free-text prose (backgrounds' skill/tool proficiencies), so the builder is "assisted" (player chooses) rather than fully auto-parsed.
+
+## 2026-07-24 — running backend tests destroyed dev data
+- `bun test` for the swdnd route tests DELETEd whole tables and ran against
+  the real `./data/swdnd.sqlite` (the default path) when invoked from the
+  repo root. This wiped the local dev campaigns before anyone noticed.
+- Rule: never run a test suite that mutates a database without first checking
+  which database it points at. If tests share the app's default DB path, fix
+  the isolation first (done: swdnd DB now defaults to a temp file under
+  NODE_ENV=test), then run them.

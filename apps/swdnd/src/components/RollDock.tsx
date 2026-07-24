@@ -52,6 +52,7 @@ function RollDockInner({ campaignId }: { campaignId: string }) {
     return (
       <button
         type="button"
+        title="open the dice roller and roll log"
         className="ht-glow fixed bottom-4 left-4 z-30 rounded-md px-3 py-2 font-mono text-[11px] text-ht-text"
         onClick={() => setOpen(true)}
       >
@@ -103,14 +104,14 @@ function RollDockInner({ campaignId }: { campaignId: string }) {
       <div className="mt-1 flex items-center gap-2">
         {canAdv && (
           <>
-            <button type="button" className={`ht-step ${advMode === 'adv' ? 'ht-tile-active' : ''}`}
+            <button type="button" title="roll with advantage (take the higher d20)" className={`ht-step ${advMode === 'adv' ? 'ht-tile-active' : ''}`}
               onClick={() => setAdvMode((m) => (m === 'adv' ? 'norm' : 'adv'))}>adv</button>
-            <button type="button" className={`ht-step ${advMode === 'dis' ? 'ht-tile-active' : ''}`}
+            <button type="button" title="roll with disadvantage (take the lower d20)" className={`ht-step ${advMode === 'dis' ? 'ht-tile-active' : ''}`}
               onClick={() => setAdvMode((m) => (m === 'dis' ? 'norm' : 'dis'))}>dis</button>
           </>
         )}
         {authed && (
-          <label className="flex items-center gap-1 text-[10px] text-ht-muted">
+          <label className="flex items-center gap-1 text-[10px] text-ht-muted" title="secret roll — only you see the result">
             <input type="checkbox" checked={secret} onChange={(e) => setSecret(e.target.checked)} />
             secret
           </label>

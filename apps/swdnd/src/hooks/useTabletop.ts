@@ -6,7 +6,8 @@ import { connectCampaign, type CampaignSocket, type WsEnvelope } from '../lib/ws
 import {
   activateScene, clearTemplates, createScene, createTemplate, createToken, deleteScene, deleteTemplate,
   deleteToken, deleteTokenImage, listScenes, listTemplates, listTokens, moveToken, patchFog, patchInitiative,
-  patchScene, patchToken, uploadSceneImage, uploadTokenImage, type SceneDto, type TemplateDto, type TokenDto,
+  patchScene, patchTemplate, patchToken, uploadSceneImage, uploadTokenImage,
+  type SceneDto, type TemplateDto, type TokenDto,
 } from '../lib/scenes';
 import {
   applyMapEvent, confirmMove, emptyMapState, optimisticMove, rollbackMove, type MapState,
@@ -50,6 +51,7 @@ export interface TabletopState {
     clearTokenImage: (id: string) => Promise<void>;
     commitFog: (reveal: string[], hide: string[]) => Promise<void>;
     addTemplate: (body: Record<string, unknown>) => Promise<void>;
+    editTemplate: (id: string, body: Record<string, unknown>) => Promise<void>;
     removeTemplate: (id: string) => Promise<void>;
     clearAllTemplates: () => Promise<void>;
     sendPing: (x: number, y: number) => void;
@@ -336,6 +338,20 @@ export function useTabletop(campaignId: string): TabletopState {
       addTemplate: wrap(async (body: Record<string, unknown>) => {
         if (state.scene) await createTemplate(state.scene.id, body, playerToken);
       }),
+      editTemplate: async (id: string, body: Record<string, unknown>) => {
+        // Optimistic like commitFog: a dragged template must not snap back
+        // for the round-trip window before the template:updated echo lands.
+        setState((s) => (s.templates[id]
+          ? { ...s, templates: { ...s.templates, [id]: { ...s.templates[id], ...body } } }
+          : s));
+        try {
+          await patchTemplate(id, body, playerToken);
+          setError(null);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Template update failed');
+          reload();
+        }
+      },
       removeTemplate: wrap(async (id: string) => { await deleteTemplate(id, playerToken); }),
       clearAllTemplates: wrap(async () => { if (state.scene) await clearTemplates(state.scene.id); }),
       sendPing,

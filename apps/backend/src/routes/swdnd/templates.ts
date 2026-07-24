@@ -53,6 +53,24 @@ const createRouteDef = createRoute({
   },
 });
 
+const PatchBody = z.object({
+  q: z.number().int().optional(), r: z.number().int().optional(),
+  q2: z.number().int().nullable().optional(), r2: z.number().int().nullable().optional(),
+  dir: z.number().int().min(0).max(5).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+}).openapi('SwdndPatchTemplate');
+
+const patchRoute = createRoute({
+  method: 'patch', path: '/swdnd/templates/{id}', tags: ['swdnd'],
+  summary: 'Move or recolor a template (any campaign member)',
+  request: { params: z.object({ id: z.string() }), body: { content: { 'application/json': { schema: PatchBody } } } },
+  responses: {
+    200: { description: 'Updated', content: { 'application/json': { schema: Template } } },
+    403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorBody } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+
 const deleteRoute = createRoute({
   method: 'delete', path: '/swdnd/templates/{id}', tags: ['swdnd'],
   request: { params: z.object({ id: z.string() }) },
@@ -100,6 +118,27 @@ export function registerTemplateRoutes(app: OpenAPIHono): void {
     const room = roomForCampaign(scene.campaign_id);
     publishToRoom(room, { type: 'template:created', room, payload: row });
     return c.json(row, 201);
+  });
+
+  app.openapi(patchRoute, (c) => {
+    const { id } = c.req.valid('param');
+    const b = c.req.valid('json');
+    const row = getRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Template not found' });
+    const scene = getSceneRow(row.scene_id)!;
+    assertCampaignMember(c, scene.campaign_id);
+    swdndDb.run(
+      'UPDATE template SET q = ?, r = ?, q2 = ?, r2 = ?, dir = ?, color = ? WHERE id = ?',
+      [
+        b.q ?? row.q, b.r ?? row.r,
+        b.q2 !== undefined ? b.q2 : row.q2, b.r2 !== undefined ? b.r2 : row.r2,
+        b.dir ?? row.dir, b.color ?? row.color, id,
+      ],
+    );
+    const updated = getRow(id)!;
+    const room = roomForCampaign(scene.campaign_id);
+    publishToRoom(room, { type: 'template:updated', room, payload: updated });
+    return c.json(updated, 200);
   });
 
   app.openapi(deleteRoute, (c) => {

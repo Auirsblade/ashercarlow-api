@@ -24,9 +24,9 @@ export default function InitiativeStrip({
       {initiative.order.length === 0 && <span className="text-[10px] text-ht-muted">no combatants</span>}
       {isDm && (
         <span className="ml-auto flex items-center gap-2">
-          <button type="button" className="ht-step" onClick={onPrev}>◀</button>
-          <button type="button" className="ht-step" onClick={onNext}>▶ next</button>
-          <button type="button" className="ht-step text-red-400" onClick={onEnd}>end</button>
+          <button type="button" title="back one turn" className="ht-step" onClick={onPrev}>◀</button>
+          <button type="button" title="advance to the next turn" className="ht-step" onClick={onNext}>▶ next</button>
+          <button type="button" title="end combat and clear the tracker" className="ht-step text-red-400" onClick={onEnd}>end</button>
         </span>
       )}
     </div>

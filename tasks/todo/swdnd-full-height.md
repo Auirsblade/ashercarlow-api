@@ -2,6 +2,10 @@
 
 Branch `swdnd-full-height` (off `swdnd-split-view`). Two user asks:
 
+> Round 2 (from the vault TODO doc, all in this PR): clickable dice rolls,
+> warning colors, button tooltips, AoE template editing, right-click
+> conditions. See "Round 2" section below.
+
 1. Content should use the full viewport height — most visible in the builder,
    where the step list scroll area stops at `max-h-[60vh]`.
 2. Background descriptions render Foundry roll tables as run-together text
@@ -48,3 +52,52 @@ Verified in the dev preview (backend + vite, real sqlite data):
   @[700px] so panes fill too; re-verified.
 - The 60vh/420px/440px caps survive only in <700px stacked layouts where the
   height chain is unbounded and page scrolling is the right behavior.
+
+## Round 2
+
+- [x] Warning colors: point-buy budget warning text yellow when out of range
+      or over budget (error banners already red).
+- [x] Clickable dice: RollTriggerProvider where RollDock mounts; RollableText
+      renders `Roll dN — Label` headers, `roll dN (Label)` codes and `NdM±k`
+      expressions as buttons that post to the campaign roll log (hidden when
+      DM), with the result shown inline. Wired into StepTable detail,
+      Statblock (traits/actions + HP formula), Reference lookups.
+      lib/diceText matcher + tests.
+- [x] AoE editing: backend PATCH /swdnd/templates/{id} (q/r/q2/r2/dir/color) +
+      template:updated WS + mapState case + route test. Canvas: dragging the
+      origin handle moves the template (lines translate both ends, optimistic
+      with echo reconcile); tap opens an editor bar (6 color swatches, delete)
+      replacing the old insta-delete tap.
+- [x] Right-click conditions: DM-only context menu on tokens — SW5E condition
+      toggles for NPC tokens, "set from the character sheet" hint for
+      character tokens; right-click never pans (button-2 guard).
+- [x] Tooltips: descriptive title= on map tools, fog controls, grid/init/tpl/
+      scenes, initiative strip, RollDock (pill, adv/dis, secret), DM admin,
+      StepTable sort headers, template editor.
+- [x] Drive-by fix: `bun test` wiped data/swdnd.sqlite (route tests DELETE
+      whole tables against the default DB path). Tests now default to a
+      temp-dir DB under NODE_ENV=test; explicit SWDND_DB_PATH still wins.
+- [x] Verify all in browser, run tests + tsc, update PR.
+
+### Round 2 review
+
+Verified in the dev preview (admin session + player-token contexts):
+
+- Builder background detail: "Roll d8 — Feat" click → inline "= 6" and a
+  campaign-log entry `Asher: 1d8=6 (Feat)`; counter test confirmed exactly
+  one roll per click.
+- DM statblock (AT-AT): 6 clickable dice (20d20+120 HP, 12d8/12d12 damage);
+  DM click logged as `DM: 20d20+120=329 hidden=1` — shared-unless-DM ✓.
+- Map: handle drag moved the blast template (preview tracked the pointer,
+  PATCH persisted q0,r0→q3,r4); tap opened the editor; recolor persisted
+  (#5dd39e); right-click on Raider toggled Stunned (ring rendered), Hero
+  showed the sheet hint. Backdrop click closes the menu.
+- Found + fixed while testing: setPointerCapture throws InvalidPointerId on
+  synthetic/stale pointers and aborted the whole pointerdown handler — now
+  try/caught (capture is a nicety).
+- 251 frontend + 78 backend tests pass, tsc clean both apps; dev DB survives
+  test runs after the isolation fix.
+
+Note: the pre-fix test run had already wiped the local dev campaigns
+(Hero/Lyra) — unrecoverable; a fresh "Verify" campaign was created for
+testing. Flagged to Asher in the session.

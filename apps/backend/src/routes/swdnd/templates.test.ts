@@ -116,6 +116,35 @@ describe('swdnd templates', () => {
     });
   });
 
+  it('PATCH moves and recolors; partial bodies leave other fields alone', async () => {
+    const created = (await (await app.request(`/swdnd/scenes/${sceneId}/templates`, json('POST', {
+      kind: 'line', q: 0, r: 0, q2: 3, r2: 2, size: 1,
+    }))).json()) as any;
+
+    const moved = await app.request(`/swdnd/templates/${created.id}`, json('PATCH', { q: 2, r: 1, q2: 5, r2: 3 }));
+    expect(moved.status).toBe(200);
+    const m = (await moved.json()) as any;
+    expect([m.q, m.r, m.q2, m.r2]).toEqual([2, 1, 5, 3]);
+    expect(m.color).toBe(created.color);
+
+    const recolored = (await (await app.request(`/swdnd/templates/${created.id}`, json('PATCH', { color: '#ff5470' }))).json()) as any;
+    expect(recolored.color).toBe('#ff5470');
+    expect([recolored.q, recolored.r]).toEqual([2, 1]);
+
+    const badColor = await app.request(`/swdnd/templates/${created.id}`, json('PATCH', { color: 'red' }));
+    expect(badColor.status).toBe(400);
+
+    const missing = await app.request('/swdnd/templates/nope', json('PATCH', { q: 0 }));
+    expect(missing.status).toBe(404);
+
+    await withAuthEnv(async () => {
+      const stranger = await app.request(`/swdnd/templates/${created.id}`, json('PATCH', { q: 9 }, { 'X-Player-Token': otherCampaignToken }));
+      expect(stranger.status).toBe(403);
+      const member = await app.request(`/swdnd/templates/${created.id}`, json('PATCH', { q: 9 }, { 'X-Player-Token': playerToken }));
+      expect(member.status).toBe(200);
+    });
+  });
+
   it('clear-all removes all templates for the scene', async () => {
     await app.request(`/swdnd/scenes/${sceneId}/templates`, json('POST', { kind: 'blast', q: 0, r: 0, size: 1 }));
     await app.request(`/swdnd/scenes/${sceneId}/templates`, json('POST', { kind: 'blast', q: 1, r: 0, size: 1 }));

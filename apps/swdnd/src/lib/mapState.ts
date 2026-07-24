@@ -99,7 +99,8 @@ export function applyMapEvent(s: MapState, env: WsEnvelope): MapState {
     case 'scene:activated':
     case 'scene:deleted':
       return { ...s, staleScene: true };
-    case 'template:created': {
+    case 'template:created':
+    case 'template:updated': {
       const tpl = env.payload as TemplateDto;
       return { ...s, templates: { ...s.templates, [tpl.id]: tpl } };
     }

@@ -37,7 +37,13 @@ interface Props {
   onPing: (x: number, y: number) => void;
   onRulerFrame: (a: Hex, b: Hex, done: boolean) => void;
   onCreateTemplate: (body: Record<string, unknown>) => void;
-  onDeleteTemplate: (id: string) => void;
+  /** Tap on a template's origin handle selects it (editor opens above the map). */
+  selectedTemplateId: string | null;
+  onSelectTemplate: (id: string | null) => void;
+  /** Drag of a template's origin handle, reported as a hex delta. */
+  onMoveTemplate: (id: string, dq: number, dr: number) => void;
+  /** Right-click on a token (client coords, for a floating menu). */
+  onTokenContextMenu?: (tokenId: string, clientX: number, clientY: number) => void;
 }
 
 /** Grid polygons covering the image area (plus one hex of margin). */
@@ -57,7 +63,8 @@ export default function SceneCanvas({
   scene, tokens, dragGhosts, canMove, onMove, onDragFrame, calibrating,
   isDm, ownCharacterIds, vitals, fogBrush, onFogCommit, onSelectToken,
   mode, templateSize, templates, pings, rulers, activeTokenId,
-  onPing, onRulerFrame, onCreateTemplate, onDeleteTemplate,
+  onPing, onRulerFrame, onCreateTemplate, selectedTemplateId, onSelectTemplate, onMoveTemplate,
+  onTokenContextMenu,
 }: Props) {
   const g = scene.grid_json;
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -66,7 +73,10 @@ export default function SceneCanvas({
     tokenId: string; x: number; y: number; startClientX: number; startClientY: number; startHex: Hex;
   } | null>(null);
   const pan = useRef<{
-    startX: number; startY: number; vb: ViewBox; startClientX: number; startClientY: number; templateId: string | null;
+    startX: number; startY: number; vb: ViewBox; startClientX: number; startClientY: number;
+  } | null>(null);
+  const [tplMove, setTplMove] = useState<{
+    id: string; start: Hex; cur: Hex; startClientX: number; startClientY: number;
   } | null>(null);
   const [fogStroke, setFogStroke] = useState<Set<string> | null>(null);
   const fogStrokeRef = useRef<Set<string>>(new Set());
@@ -96,7 +106,10 @@ export default function SceneCanvas({
   }, []);
 
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+    if (e.button === 2) return; // right-click is the context menu, never a drag/pan
+    // Capture is a nicety (keeps fast drags delivered); a synthetic/stale
+    // pointer id throws InvalidPointerId and must not abort the gesture.
+    try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
     if (fogBrush) {
       const p = mapPoint(e);
       const keys = brushKeys(pixelToHex(p.x, p.y, g), fogBrush.radius);
@@ -129,11 +142,16 @@ export default function SceneCanvas({
         startHex: { q: token.q, r: token.r },
       });
     } else {
-      const tplEl = (e.target as Element).closest('[data-template-id]');
-      pan.current = {
-        startX: e.clientX, startY: e.clientY, vb, startClientX: e.clientX, startClientY: e.clientY,
-        templateId: tplEl?.getAttribute('data-template-id') ?? null,
-      };
+      const tplId = (e.target as Element).closest('[data-template-id]')?.getAttribute('data-template-id');
+      if (tplId) {
+        const p = mapPoint(e);
+        const h = pixelToHex(p.x, p.y, g);
+        setTplMove({ id: tplId, start: h, cur: h, startClientX: e.clientX, startClientY: e.clientY });
+      } else {
+        pan.current = {
+          startX: e.clientX, startY: e.clientY, vb, startClientX: e.clientX, startClientY: e.clientY,
+        };
+      }
     }
   };
 
@@ -164,6 +182,12 @@ export default function SceneCanvas({
     if (tplDrag) {
       const p = mapPoint(e);
       setTplDrag({ ...tplDrag, x: p.x, y: p.y });
+      return;
+    }
+    if (tplMove) {
+      const p = mapPoint(e);
+      const h = pixelToHex(p.x, p.y, g);
+      if (h.q !== tplMove.cur.q || h.r !== tplMove.cur.r) setTplMove({ ...tplMove, cur: h });
       return;
     }
     if (drag) {
@@ -212,6 +236,15 @@ export default function SceneCanvas({
       setTplDrag(null);
       return;
     }
+    if (tplMove) {
+      const moved = Math.hypot(e.clientX - tplMove.startClientX, e.clientY - tplMove.startClientY) > 4;
+      const dq = tplMove.cur.q - tplMove.start.q;
+      const dr = tplMove.cur.r - tplMove.start.r;
+      if (moved && (dq !== 0 || dr !== 0)) onMoveTemplate(tplMove.id, dq, dr);
+      else if (!moved) onSelectTemplate(tplMove.id);
+      setTplMove(null);
+      return;
+    }
     if (drag) {
       const p = mapPoint(e);
       const moved = Math.hypot(e.clientX - drag.startClientX, e.clientY - drag.startClientY) > 4;
@@ -234,10 +267,9 @@ export default function SceneCanvas({
         } else if (mode === 'blast') {
           const hex = pixelToHex(p.x, p.y, g);
           onCreateTemplate({ kind: 'blast', q: hex.q, r: hex.r, size: templateSize });
-        } else if (pan.current.templateId) {
-          onDeleteTemplate(pan.current.templateId); // any member; server enforces
         } else {
           onSelectToken(null); // players deselect their own-token panel the same way
+          onSelectTemplate(null);
         }
       }
     }
@@ -284,6 +316,11 @@ export default function SceneCanvas({
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerLeave={endDrag}
+      onContextMenu={(e) => {
+        e.preventDefault(); // the map owns right-click; no browser menu
+        const id = (e.target as Element).closest('[data-token-id]')?.getAttribute('data-token-id');
+        if (id) onTokenContextMenu?.(id, e.clientX, e.clientY);
+      }}
     >
       {scene.image_path && (
         <image
@@ -310,8 +347,20 @@ export default function SceneCanvas({
       </g>
       <g>
         {templates.map((t) => {
-          const cells = templateHexes(t);
-          const o = hexToPixel({ q: t.q, r: t.r }, g);
+          // In-flight handle drag: preview the template at its tentative spot.
+          const mv = tplMove?.id === t.id ? tplMove : null;
+          const dq = mv ? mv.cur.q - mv.start.q : 0;
+          const dr = mv ? mv.cur.r - mv.start.r : 0;
+          const shown = dq !== 0 || dr !== 0
+            ? {
+                ...t, q: t.q + dq, r: t.r + dr,
+                q2: t.q2 != null ? t.q2 + dq : t.q2,
+                r2: t.r2 != null ? t.r2 + dr : t.r2,
+              }
+            : t;
+          const cells = templateHexes(shown);
+          const o = hexToPixel({ q: shown.q, r: shown.r }, g);
+          const isSelected = t.id === selectedTemplateId;
           return (
             <g key={t.id}>
               <g pointerEvents="none">
@@ -324,12 +373,13 @@ export default function SceneCanvas({
                   />
                 ))}
               </g>
-              {/* origin marker = the delete handle (tap in move mode removes) */}
+              {/* origin marker: drag moves the template, tap opens its editor */}
               <circle
                 data-template-id={t.id}
                 cx={o.x} cy={o.y} r={g.hexSize * 0.22}
-                fill={t.color} fillOpacity={0.9} stroke="#05070a" strokeWidth={1}
-                style={{ cursor: 'pointer' }}
+                fill={t.color} fillOpacity={0.9}
+                stroke={isSelected ? '#f5fbff' : '#05070a'} strokeWidth={isSelected ? 2 : 1}
+                style={{ cursor: 'grab' }}
               />
             </g>
           );
