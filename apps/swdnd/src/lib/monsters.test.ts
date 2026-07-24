@@ -90,6 +90,14 @@ describe('parseMonster', () => {
     expect(v.name).toBe('Not JSON');
     expect(v.cr).toBeNull();
   });
+
+  it('non-string item description values degrade to empty text, never throw', () => {
+    const v = parseMonster({
+      id: 'x', name: 'X',
+      raw_json: JSON.stringify({ items: [{ type: 'weapon', name: 'Odd', system: { description: { value: 42 } } }] }),
+    });
+    expect(v.actions).toEqual([{ name: 'Odd', text: '' }]);
+  });
 });
 
 describe('filterMonsters + monsterTypes', () => {

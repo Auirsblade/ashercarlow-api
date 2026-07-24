@@ -33,6 +33,11 @@ describe('refEntryFromRow', () => {
   it('never throws on unparsable raw_json', () => {
     expect(refEntryFromRow(brokenRow)).toEqual({ id: 'b1', name: 'Broken', text: '' });
   });
+
+  it('non-string description values degrade to empty text, never throw', () => {
+    const e = refEntryFromRow({ id: 'x', name: 'X', raw_json: JSON.stringify({ system: { description: { value: { a: 1 } } } }) });
+    expect(e).toEqual({ id: 'x', name: 'X', text: '' });
+  });
 });
 
 describe('searchEntries', () => {
