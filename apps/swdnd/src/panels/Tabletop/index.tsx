@@ -1,5 +1,6 @@
 // apps/swdnd/src/panels/Tabletop/index.tsx
 import { useState } from 'react';
+import RollDock from '../../components/RollDock';
 import { useTabletop } from '../../hooks/useTabletop';
 import type { GridConfig } from '../../lib/hex';
 import { nextTurn, prevTurn } from '../../lib/initiative';
@@ -226,6 +227,7 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
           </div>
         )}
       </div>
+      <RollDock campaignId={campaignId} />
     </div>
   );
 }

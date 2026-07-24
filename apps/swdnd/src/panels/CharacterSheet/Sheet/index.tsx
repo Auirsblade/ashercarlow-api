@@ -1,7 +1,9 @@
 // apps/swdnd/src/panels/CharacterSheet/Sheet/index.tsx
+import { useSearchParams } from 'react-router-dom';
 import { useCharacterSheet } from '../../../hooks/useCharacterSheet';
 import { factionStyle } from '../../../lib/faction';
 import { rollD20 } from '../../../lib/dice';
+import { postRoll } from '../../../lib/rolls';
 import CoreBar from './CoreBar';
 import Abilities from './Abilities';
 import Skills from './Skills';
@@ -15,6 +17,7 @@ import TabbedShell from './TabbedShell';
 export default function Sheet({ characterId }: { characterId: string }) {
   const s = useCharacterSheet(characterId);
   const { rolls, pushRoll } = useRolls();
+  const [searchParams] = useSearchParams();
 
   if (s.loading) return <div className="p-6 font-mono text-ht-muted">Loading sheet…</div>;
   // Only a LOAD failure is fatal; a failed save renders as a banner over live data.
@@ -22,9 +25,20 @@ export default function Sheet({ characterId }: { characterId: string }) {
     return <div className="p-6 font-mono text-red-400">{s.error ?? 'Character not found'}</div>;
   }
 
+  const characterName = s.build.identity.name;
   const roll = (label: string, mod: number) => {
     const r = rollD20(mod);
     pushRoll(label, `d20 ${r.kept} ${mod >= 0 ? '+' : ''}${mod}`, r.total);
+    // Fire-and-forget into the campaign roll log — a failed POST never blocks the local toast.
+    if (s.dto) {
+      void postRoll(s.dto.campaign_id, {
+        roller: characterName || 'Character',
+        label,
+        formula: mod === 0 ? '1d20' : `1d20${mod >= 0 ? '+' : ''}${mod}`,
+        rolls: [{ sides: 20, value: r.kept }],
+        total: r.total,
+      }, searchParams.get('token')).catch(() => { /* anon viewer or offline: local roll still shows */ });
+    }
   };
 
   const castingAbility = s.derived.casting.force.ability ?? s.derived.casting.tech.ability;
