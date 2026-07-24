@@ -43,3 +43,57 @@ export function rollDamage(formula: string, rng: Rng = defaultRng): DamageResult
   const rolls = Array.from({ length: count }, () => rollDie(sides, rng));
   return { total: rolls.reduce((s, r) => s + r, 0) + bonus, rolls, formula };
 }
+
+export interface DiceTerm { count: number; sides: number }
+export interface FormulaTerms { dice: DiceTerm[]; modifier: number }
+
+/**
+ * Parse a sum of dice terms and integer constants: `2d6+1d8+3-1`.
+ * Bare `dNN` counts as one die. Whitespace/case tolerant. Requires at least
+ * one die; negative dice terms and silly ranges are rejected. → null on junk.
+ */
+export function parseFormula(input: string): FormulaTerms | null {
+  const s = input.replace(/\s+/g, '').toLowerCase();
+  if (!s) return null;
+  const token = /([+-]?)(?:(\d*)d(\d+)|(\d+))/g;
+  const dice: DiceTerm[] = [];
+  let modifier = 0;
+  let idx = 0;
+  let m: RegExpExecArray | null;
+  while ((m = token.exec(s))) {
+    if (m.index !== idx) return null;            // gap between tokens → junk
+    if (idx > 0 && m[1] === '') return null;     // later terms need an explicit sign
+    const negative = m[1] === '-';
+    if (m[3] !== undefined) {
+      if (negative) return null;                 // no negative dice
+      const count = m[2] === '' ? 1 : Number(m[2]);
+      const sides = Number(m[3]);
+      if (count < 1 || count > 100 || sides < 2 || sides > 1000) return null;
+      dice.push({ count, sides });
+    } else {
+      modifier += negative ? -Number(m[4]) : Number(m[4]);
+    }
+    idx = token.lastIndex;
+  }
+  if (idx !== s.length || dice.length === 0) return null;
+  return { dice, modifier };
+}
+
+/** Canonical string form: dice joined with '+', signed trailing modifier, 0 omitted. */
+export function formatFormula(t: FormulaTerms): string {
+  const dice = t.dice.map((d) => `${d.count}d${d.sides}`).join('+');
+  if (t.modifier === 0) return dice;
+  return `${dice}${t.modifier > 0 ? '+' : ''}${t.modifier}`;
+}
+
+export interface FormulaResult { total: number; rolls: { sides: number; value: number }[]; formula: string }
+
+export function rollFormula(terms: FormulaTerms, rng: Rng = defaultRng): FormulaResult {
+  const rolls = terms.dice.flatMap((t) =>
+    Array.from({ length: t.count }, () => ({ sides: t.sides, value: rollDie(t.sides, rng) })));
+  return {
+    total: rolls.reduce((s, r) => s + r.value, 0) + terms.modifier,
+    rolls,
+    formula: formatFormula(terms),
+  };
+}

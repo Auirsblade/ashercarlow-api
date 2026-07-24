@@ -1,6 +1,7 @@
 // apps/swdnd/src/lib/dice.test.ts
-import { test, expect } from 'bun:test';
+import { test, expect, describe } from 'bun:test';
 import { rollDie, rollD20, rollDamage, type Rng } from './dice';
+import { formatFormula, parseFormula, rollFormula } from './dice';
 
 // Deterministic RNG that yields the given [0,1) values in order, then repeats the last.
 function seq(values: number[]): Rng {
@@ -30,4 +31,41 @@ test('rollDamage parses NdM+K', () => {
   expect(r.total).toBe(15);
   expect(r.rolls).toEqual([6, 6]);
   expect(rollDamage('1d8', seq([0])).total).toBe(1);
+});
+
+describe('parseFormula', () => {
+  test('accepts multi-term sums with modifiers', () => {
+    expect(parseFormula('2d6+1d8+3')).toEqual({ dice: [{ count: 2, sides: 6 }, { count: 1, sides: 8 }], modifier: 3 });
+    expect(parseFormula('1d20-1')).toEqual({ dice: [{ count: 1, sides: 20 }], modifier: -1 });
+    expect(parseFormula(' 2D6 + 3 ')).toEqual({ dice: [{ count: 2, sides: 6 }], modifier: 3 });
+    expect(parseFormula('1d8+2-1')).toEqual({ dice: [{ count: 1, sides: 8 }], modifier: 1 });
+  });
+  test('bare dNN means one die', () => {
+    expect(parseFormula('d20')).toEqual({ dice: [{ count: 1, sides: 20 }], modifier: 0 });
+  });
+  test('rejects junk, dice-less, negative-dice, and out-of-range formulas', () => {
+    for (const bad of ['', 'abc', '3', '+5', '2d6potato', '2d6 1d8', '-1d6', '0d6', '2d1', '101d6', '2d2000']) {
+      expect(parseFormula(bad)).toBeNull();
+    }
+  });
+});
+
+describe('formatFormula', () => {
+  test('round-trips and normalizes', () => {
+    expect(formatFormula(parseFormula('2d6+1d8+3')!)).toBe('2d6+1d8+3');
+    expect(formatFormula(parseFormula('1d20-1')!)).toBe('1d20-1');
+    expect(formatFormula(parseFormula('d20')!)).toBe('1d20');
+    expect(formatFormula(parseFormula('2d6+0')!)).toBe('2d6');
+  });
+});
+
+describe('rollFormula', () => {
+  test('rolls every die and adds the modifier (seeded rng)', () => {
+    const seq = [0.99, 0.0, 0.5]; let i = 0;
+    const rng = () => seq[i++ % seq.length];
+    const r = rollFormula(parseFormula('2d6+1d8+3')!, rng);
+    expect(r.rolls).toEqual([{ sides: 6, value: 6 }, { sides: 6, value: 1 }, { sides: 8, value: 5 }]);
+    expect(r.total).toBe(6 + 1 + 5 + 3);
+    expect(r.formula).toBe('2d6+1d8+3');
+  });
 });
