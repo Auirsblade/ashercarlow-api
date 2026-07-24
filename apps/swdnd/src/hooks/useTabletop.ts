@@ -5,8 +5,8 @@ import { useAuth } from '../lib/auth';
 import { connectCampaign, type CampaignSocket, type WsEnvelope } from '../lib/ws';
 import {
   activateScene, clearTemplates, createScene, createTemplate, createToken, deleteScene, deleteTemplate,
-  deleteToken, listScenes, listTemplates, listTokens, moveToken, patchFog, patchInitiative, patchScene,
-  patchToken, uploadSceneImage, type SceneDto, type TemplateDto, type TokenDto,
+  deleteToken, deleteTokenImage, listScenes, listTemplates, listTokens, moveToken, patchFog, patchInitiative,
+  patchScene, patchToken, uploadSceneImage, uploadTokenImage, type SceneDto, type TemplateDto, type TokenDto,
 } from '../lib/scenes';
 import {
   applyMapEvent, confirmMove, emptyMapState, optimisticMove, rollbackMove, type MapState,
@@ -45,6 +45,8 @@ export interface TabletopState {
     addToken: (body: Partial<TokenDto> & { name: string }) => Promise<void>;
     removeToken: (id: string) => Promise<void>;
     editToken: (id: string, body: Record<string, unknown>) => Promise<void>;
+    setTokenImage: (id: string, file: File) => Promise<void>;
+    clearTokenImage: (id: string) => Promise<void>;
     commitFog: (reveal: string[], hide: string[]) => Promise<void>;
     addTemplate: (body: Record<string, unknown>) => Promise<void>;
     removeTemplate: (id: string) => Promise<void>;
@@ -298,6 +300,8 @@ export function useTabletop(campaignId: string): TabletopState {
       addToken: wrap(async (body: Partial<TokenDto> & { name: string }) => { if (state.scene) await createToken(state.scene.id, body); }),
       removeToken: wrap(async (id: string) => { await deleteToken(id); }),
       editToken: wrap(async (id: string, body: Record<string, unknown>) => { await patchToken(id, body); }),
+      setTokenImage: wrap(async (id: string, file: File) => { await uploadTokenImage(id, file, playerToken); }),
+      clearTokenImage: wrap(async (id: string) => { await deleteTokenImage(id, playerToken); }),
       commitFog: async (reveal: string[], hide: string[]) => {
         const scene = state.scene;
         if (!scene) return;
