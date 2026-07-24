@@ -218,7 +218,9 @@ export default function SceneCanvas({
       const hex = pixelToHex(p.x, p.y, g);
       onDragFrame(drag.tokenId, p.x, p.y, true);
       if (!moved) {
-        if (isDm) onSelectToken(drag.tokenId);
+        const t = tokens.find((x) => x.id === drag.tokenId);
+        const own = !!t?.character_id && ownCharacterIds.has(t.character_id);
+        if (isDm || own) onSelectToken(drag.tokenId);
       } else if (hex.q !== drag.startHex.q || hex.r !== drag.startHex.r) {
         onMove(drag.tokenId, hex.q, hex.r);
       }
@@ -234,8 +236,8 @@ export default function SceneCanvas({
           onCreateTemplate({ kind: 'blast', q: hex.q, r: hex.r, size: templateSize });
         } else if (pan.current.templateId) {
           onDeleteTemplate(pan.current.templateId); // any member; server enforces
-        } else if (isDm) {
-          onSelectToken(null);
+        } else {
+          onSelectToken(null); // players deselect their own-token panel the same way
         }
       }
     }
