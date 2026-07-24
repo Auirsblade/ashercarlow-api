@@ -1,9 +1,16 @@
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDatabase, runMigrations, type Migration } from '../runner';
 import { ensureReferenceTables } from './reference';
 import { seedContentFromImage } from './seed';
 
-const DB_PATH = process.env.SWDND_DB_PATH ?? './data/swdnd.sqlite';
+// Route tests wipe whole tables in beforeAll — under `bun test` (NODE_ENV is
+// "test") default to a throwaway temp DB so they can never hit the real
+// ./data/swdnd.sqlite. An explicit SWDND_DB_PATH always wins.
+const DB_PATH = process.env.SWDND_DB_PATH
+  ?? (process.env.NODE_ENV === 'test'
+    ? join(tmpdir(), `swdnd-test-${process.pid}.sqlite`)
+    : './data/swdnd.sqlite');
 
 export const swdndDb = openDatabase(DB_PATH);
 

@@ -45,6 +45,8 @@ export const patchFog = (id: string, reveal: string[], hide: string[]) =>
 export const listTemplates = (sceneId: string) => api<TemplateDto[]>(`/swdnd/scenes/${sceneId}/templates`);
 export const createTemplate = (sceneId: string, body: Record<string, unknown>, token?: string | null) =>
   api<TemplateDto>(`/swdnd/scenes/${sceneId}/templates`, { method: 'POST', headers: auth(token), body: JSON.stringify(body) });
+export const patchTemplate = (id: string, body: Record<string, unknown>, token?: string | null) =>
+  api<TemplateDto>(`/swdnd/templates/${id}`, { method: 'PATCH', headers: auth(token), body: JSON.stringify(body) });
 export const deleteTemplate = (id: string, token?: string | null) =>
   api<{ ok: boolean }>(`/swdnd/templates/${id}`, { method: 'DELETE', headers: auth(token) });
 export const clearTemplates = (sceneId: string) =>

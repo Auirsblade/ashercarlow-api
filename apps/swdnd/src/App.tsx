@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, useParams, Navigate, useLocation } from "
 import { AuthProvider } from "./lib/auth";
 import { getCharacter } from "./lib/characters";
 import RollDock from "./components/RollDock";
+import { RollTriggerProvider } from "./components/RollableText";
 import SplitPage from "./components/SplitPage";
 import { splitPath } from "./lib/panels";
 import SinglePanel from "./layouts/SinglePanel";
@@ -24,10 +25,15 @@ function SheetPage() {
       alive = false;
     };
   }, [characterId]);
-  return (
-    <SinglePanel>
+  const body = (
+    <>
       <CharacterSheet characterId={characterId} />
       {campaignId && <RollDock campaignId={campaignId} />}
+    </>
+  );
+  return (
+    <SinglePanel>
+      {campaignId ? <RollTriggerProvider campaignId={campaignId}>{body}</RollTriggerProvider> : body}
     </SinglePanel>
   );
 }
@@ -36,7 +42,7 @@ function MapPage() {
   const { campaignId = "" } = useParams();
   return (
     <SinglePanel>
-      <div className="h-screen">
+      <div className="h-full">
         <Tabletop campaignId={campaignId} />
       </div>
     </SinglePanel>

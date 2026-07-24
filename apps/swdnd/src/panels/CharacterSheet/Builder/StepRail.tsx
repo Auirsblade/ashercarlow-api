@@ -19,7 +19,7 @@ export default function StepRail({ status, active, houseRuled, onSelect }: Props
   const steps = STEP_ORDER.filter((k) => status[k].applicable);
   const remaining = steps.filter((k) => status[k].state !== 'done').length;
   return (
-    <nav className="flex flex-col gap-1 @lg:min-w-[190px]">
+    <nav className="flex shrink-0 flex-col gap-1 @lg:min-w-[190px]">
       <div className="flex gap-1 overflow-x-auto @lg:flex-col @lg:overflow-visible">
         {steps.map((k) => {
           const s = status[k];

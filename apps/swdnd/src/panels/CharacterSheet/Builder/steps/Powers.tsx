@@ -48,9 +48,9 @@ export default function PowersStep({ build, derived, ref, editable, dispatch }: 
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
       {header}
-      <div className="flex gap-1 text-[11px]">
+      <div className="flex shrink-0 gap-1 text-[11px]">
         {tabs.map((t) => (
           <button key={t} type="button" onClick={() => setTab(t)}
             className={`flex-1 px-2 py-1 capitalize ${activeTab === t ? 'ht-glow text-ht-bright' : 'ht-panel text-ht-muted'}`}>

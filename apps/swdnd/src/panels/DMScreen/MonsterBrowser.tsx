@@ -34,9 +34,9 @@ export default function MonsterBrowser({ monsters, encounters, onSpawn, onAddToE
   const selected = monsters.find((m) => m.id === selectedId) ?? null;
 
   return (
-    <div className="flex flex-col gap-3 @[700px]:flex-row">
-      <div className="min-w-0 flex-1">
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px]">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 @[700px]:flex-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="mb-2 flex shrink-0 flex-wrap items-center gap-2 text-[11px]">
           <input
             className="w-40 border-b border-ht-line bg-transparent px-1 text-ht-bright outline-none"
             placeholder="search…"
@@ -57,7 +57,7 @@ export default function MonsterBrowser({ monsters, encounters, onSpawn, onAddToE
           </select>
           <span className="text-[10px] text-ht-muted">{filtered.length}/{monsters.length}</span>
         </div>
-        <div className="max-h-[420px] overflow-y-auto">
+        <div className="max-h-[420px] overflow-y-auto @[700px]:min-h-0 @[700px]:max-h-none @[700px]:flex-1">
           {filtered.map((m) => (
             <button
               key={m.id}
@@ -75,7 +75,7 @@ export default function MonsterBrowser({ monsters, encounters, onSpawn, onAddToE
         </div>
       </div>
 
-      <div className="ht-panel min-w-0 flex-1 p-3 @[700px]:max-w-[46%]">
+      <div className="ht-panel min-w-0 flex-1 p-3 @[700px]:max-w-[46%] @[700px]:min-h-0 @[700px]:overflow-y-auto">
         {selected ? (
           <>
             <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px]">

@@ -10,6 +10,7 @@ import CharacterSheet from '../panels/CharacterSheet';
 import Tabletop from '../panels/Tabletop';
 import DMScreen from '../panels/DMScreen';
 import RollDock from './RollDock';
+import { RollTriggerProvider } from './RollableText';
 import { SplitContext } from './split';
 
 function PanelBody({ panel }: { panel: Panel }) {
@@ -82,7 +83,7 @@ export default function SplitPage() {
   }, [sheetId]);
   const dockCampaign = direct ?? sheetCampaign;
 
-  return (
+  const body = (
     <>
       <SplitView
         left={<Half panel={l} other={r} side="left" search={search} key={left} />}
@@ -91,4 +92,6 @@ export default function SplitPage() {
       {dockCampaign && <RollDock campaignId={dockCampaign} />}
     </>
   );
+  // Panels that know their own campaign (dm) nest a closer provider inside.
+  return dockCampaign ? <RollTriggerProvider campaignId={dockCampaign}>{body}</RollTriggerProvider> : body;
 }

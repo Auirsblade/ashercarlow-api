@@ -1,4 +1,5 @@
 // apps/swdnd/src/panels/DMScreen/Statblock.tsx — essentials statblock pane.
+import RollableText from '../../components/RollableText';
 import type { MonsterEntryText, MonsterView } from '../../lib/monsters';
 
 const mod = (v: number | null): string => {
@@ -16,7 +17,7 @@ function EntryGroup({ label, entries }: { label: string; entries: MonsterEntryTe
         {entries.map((e, i) => (
           <div key={`${e.name}-${i}`} className="text-[11px]">
             <span className="font-bold text-ht-bright">{e.name}. </span>
-            <span className="whitespace-pre-line text-ht-text">{e.text}</span>
+            <RollableText className="whitespace-pre-line text-ht-text" text={e.text} />
           </div>
         ))}
       </div>
@@ -40,7 +41,7 @@ export default function Statblock({ view }: { view: MonsterView }) {
         <span><span className="ht-label">AC</span> {view.ac ?? '—'}</span>
         <span>
           <span className="ht-label">HP</span> {view.hp ?? '—'}
-          {view.hpFormula ? <span className="text-ht-muted"> ({view.hpFormula})</span> : null}
+          {view.hpFormula ? <span className="text-ht-muted"> (<RollableText text={view.hpFormula} />)</span> : null}
         </span>
         <span><span className="ht-label">Speed</span> {view.speed || '—'}</span>
       </div>

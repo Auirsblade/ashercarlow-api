@@ -44,9 +44,13 @@ export default function AbilitiesStep({ build, derived, editable, dispatch }: Pr
       {mode === 'pointbuy' && (
         <div className={`p-2 ${remaining != null && remaining >= 0 ? 'ht-glow' : 'ht-panel border-yellow-400'}`}>
           <span className="ht-label">Budget</span>{' '}
-          {remaining == null
-            ? '⚠ a score is outside 8–15 — adjust below or switch to Manual'
-            : `${remaining}/${POINT_BUY_BUDGET} points remaining`}
+          {remaining == null ? (
+            <span className="text-yellow-300">⚠ a score is outside 8–15 — adjust below or switch to Manual</span>
+          ) : remaining < 0 ? (
+            <span className="text-yellow-300">⚠ {remaining}/{POINT_BUY_BUDGET} points remaining</span>
+          ) : (
+            `${remaining}/${POINT_BUY_BUDGET} points remaining`
+          )}
         </div>
       )}
 

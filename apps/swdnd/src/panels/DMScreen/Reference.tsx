@@ -1,5 +1,6 @@
 // apps/swdnd/src/panels/DMScreen/Reference.tsx — three-category quick lookup.
 import { useState } from 'react';
+import RollableText from '../../components/RollableText';
 import { searchEntries, type RefEntry } from '../../lib/refSearch';
 import type { PowerEntry } from '../../hooks/useDmScreen';
 
@@ -10,7 +11,7 @@ function RefLookup({ entries, meta }: { entries: RefEntry[]; meta?: (e: RefEntry
   const [openId, setOpenId] = useState<string | null>(null);
   if (entries.length === 0) return <div className="text-[11px] text-ht-muted">No matches.</div>;
   return (
-    <div className="max-h-[440px] overflow-y-auto">
+    <div className="max-h-[440px] overflow-y-auto @[700px]:min-h-0 @[700px]:max-h-none @[700px]:flex-1">
       {entries.map((e) => (
         <div key={e.id} className="border-b border-ht-line/50">
           <button
@@ -22,7 +23,7 @@ function RefLookup({ entries, meta }: { entries: RefEntry[]; meta?: (e: RefEntry
             {meta && <span className="ml-auto shrink-0 text-[10px] text-ht-muted">{meta(e)}</span>}
           </button>
           {openId === e.id && (
-            <div className="whitespace-pre-line px-1 pb-2 text-[11px] text-ht-text">{e.text}</div>
+            <div className="whitespace-pre-line px-1 pb-2 text-[11px] text-ht-text"><RollableText text={e.text} /></div>
           )}
         </div>
       ))}
@@ -46,8 +47,8 @@ export default function Reference({ conditions, powers, weaponProperties }: Prop
     (!castType || p.castType === castType) && (level === '' || p.level === Number(level)));
 
   return (
-    <div>
-      <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px]">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-2 flex shrink-0 flex-wrap items-center gap-2 text-[11px]">
         {CATEGORIES.map((c) => (
           <button key={c} type="button" className={`ht-step ${category === c ? 'ht-tile-active' : ''}`} onClick={() => setCategory(c)}>
             {c}
