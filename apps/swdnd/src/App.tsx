@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
 import { AuthProvider } from "./lib/auth";
 import { getCharacter } from "./lib/characters";
+import RollDock from "./components/RollDock";
 import SinglePanel from "./layouts/SinglePanel";
 import SplitView from "./layouts/SplitView";
 import CharacterSheet from "./panels/CharacterSheet";
@@ -12,9 +13,20 @@ import PlayerHome from "./panels/PlayerHome";
 
 function SheetPage() {
   const { characterId = "" } = useParams();
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getCharacter(characterId)
+      .then((c) => alive && setCampaignId(c.campaign_id))
+      .catch(() => alive && setCampaignId(null));
+    return () => {
+      alive = false;
+    };
+  }, [characterId]);
   return (
     <SinglePanel>
       <CharacterSheet characterId={characterId} />
+      {campaignId && <RollDock campaignId={campaignId} />}
     </SinglePanel>
   );
 }

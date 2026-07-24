@@ -1,4 +1,7 @@
 // apps/backend/src/routes/swdnd/tokens.ts
+import { mkdirSync } from 'node:fs';
+import { unlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
 import { swdndDb } from '../../db/swdnd';
@@ -48,6 +51,11 @@ const PatchBody = PostBody.partial().extend({
   hidden: z.number().int().min(0).max(1).optional(),
 }).openapi('SwdndPatchToken');
 const PositionBody = z.object({ q: z.number().int(), r: z.number().int() }).openapi('SwdndTokenPosition');
+
+const UPLOADS_DIR = () => process.env.SWDND_UPLOADS_DIR ?? './data/uploads/swdnd';
+const MAX_TOKEN_UPLOAD = 5 * 1024 * 1024;
+const EXT_BY_MIME: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+const SAFE_FILE = /^[A-Za-z0-9-]+\.(png|jpg|webp)$/;
 
 export function tokenOut(row: TokenRow) {
   return { ...row, conditions_json: JSON.parse(row.conditions_json || '[]') };
@@ -130,6 +138,27 @@ const positionRoute = createRoute({
     404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
   },
 });
+const uploadImageRoute = createRoute({
+  method: 'post', path: '/swdnd/tokens/{id}/image', tags: ['swdnd'],
+  summary: 'Upload a token image (multipart: file; DM any, a player their own character’s token)',
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    200: { description: 'Token with image', content: { 'application/json': { schema: Token } } },
+    400: { description: 'Bad upload', content: { 'application/json': { schema: ErrorBody } } },
+    403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorBody } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+const deleteImageRoute = createRoute({
+  method: 'delete', path: '/swdnd/tokens/{id}/image', tags: ['swdnd'],
+  summary: 'Remove a token image (reverts to the generated disc)',
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    200: { description: 'Token without image', content: { 'application/json': { schema: Token } } },
+    403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorBody } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
 
 export function registerTokenRoutes(app: OpenAPIHono): void {
   app.openapi(listRoute, (c) => {
@@ -200,6 +229,49 @@ export function registerTokenRoutes(app: OpenAPIHono): void {
     const { q, r } = c.req.valid('json');
     const now = new Date().toISOString();
     swdndDb.run('UPDATE token SET q = ?, r = ?, updated_at = ? WHERE id = ?', [q, r, now, id]);
+    const updated = getTokenRow(id)!;
+    broadcastToken(updated, 'token:updated');
+    return c.json(tokenOut(updated), 200);
+  });
+
+  app.openapi(uploadImageRoute, async (c) => {
+    const { id } = c.req.valid('param');
+    const row = getTokenRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Token not found' });
+    assertTokenMoveAccess(c, row);
+    const body = await c.req.parseBody();
+    const file = body.file;
+    if (!(file instanceof File)) throw new HTTPException(400, { message: 'Missing file' });
+    const ext = EXT_BY_MIME[file.type];
+    if (!ext) throw new HTTPException(400, { message: 'Only png/jpg/webp images are allowed' });
+    if (file.size > MAX_TOKEN_UPLOAD) throw new HTTPException(400, { message: 'Image exceeds 5 MB' });
+
+    mkdirSync(UPLOADS_DIR(), { recursive: true });
+    const filename = `token-${id}.${ext}`;
+    await Bun.write(join(UPLOADS_DIR(), filename), file);
+    for (const otherExt of Object.values(EXT_BY_MIME)) {
+      if (otherExt === ext) continue;
+      const stalePath = join(UPLOADS_DIR(), `token-${id}.${otherExt}`);
+      if (await Bun.file(stalePath).exists()) await unlink(stalePath);
+    }
+    const now = new Date().toISOString();
+    swdndDb.run('UPDATE token SET image_path = ?, updated_at = ? WHERE id = ?', [filename, now, id]);
+    const updated = getTokenRow(id)!;
+    broadcastToken(updated, 'token:updated');
+    return c.json(tokenOut(updated), 200);
+  });
+
+  app.openapi(deleteImageRoute, async (c) => {
+    const { id } = c.req.valid('param');
+    const row = getTokenRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Token not found' });
+    assertTokenMoveAccess(c, row);
+    if (row.image_path && SAFE_FILE.test(row.image_path)) {
+      const p = join(UPLOADS_DIR(), row.image_path);
+      if (await Bun.file(p).exists()) await unlink(p);
+    }
+    const now = new Date().toISOString();
+    swdndDb.run('UPDATE token SET image_path = NULL, updated_at = ? WHERE id = ?', [now, id]);
     const updated = getTokenRow(id)!;
     broadcastToken(updated, 'token:updated');
     return c.json(tokenOut(updated), 200);

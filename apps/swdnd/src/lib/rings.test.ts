@@ -1,6 +1,16 @@
 // apps/swdnd/src/lib/rings.test.ts
-import { describe, expect, it } from 'bun:test';
-import { conditionColor, hpArcPath, hpColor, hpFraction, statusSegments } from './rings';
+import { describe, expect, it, test } from 'bun:test';
+import {
+  BAND_FRACTION,
+  conditionColor,
+  contrastText,
+  hpArcPath,
+  hpColor,
+  hpFraction,
+  RING_FONT_FRACTION,
+  statusSegments,
+  textArcPath,
+} from './rings';
 
 const close = (a: number, b: number) => Math.abs(a - b) < 1e-6;
 
@@ -43,7 +53,7 @@ describe('status pie', () => {
     expect(segs.length).toBe(1);
     expect(segs[0].name).toBe('hunters-mark');
     expect(segs[0].full).toBe(true);
-    expect(close(segs[0].label.y, -20 - 6)).toBe(true); // label sits above the ring
+    expect(close(segs[0].label.y, -20)).toBe(true); // label sits on the band (mid-band radius, not outside)
   });
 
   it('N conditions split into N equal segments with distinct mid-angle labels', () => {
@@ -63,5 +73,59 @@ describe('status pie', () => {
 
   it('no conditions -> no segments', () => {
     expect(statusSegments([], 20)).toEqual([]);
+  });
+});
+
+describe('contrastText', () => {
+  test('light palette colors get dark text, dark colors get light text', () => {
+    expect(contrastText('#ffcb6b')).toBe('#101418'); // light amber
+    expect(contrastText('#a3f7bf')).toBe('#101418'); // light green
+    expect(contrastText('#1a2b3c')).toBe('#f5fbff'); // dark navy
+    expect(contrastText('nonsense')).toBe('#f5fbff'); // unparsable → light default
+  });
+});
+
+describe('textArcPath', () => {
+  test('flip reverses direction (sweep flag 0, start/end swapped)', () => {
+    const fwd = textArcPath(10, 0, 90, false);
+    const rev = textArcPath(10, 0, 90, true);
+    // flag runs are 'x-rotation large-arc sweep': forward sweeps 1, flipped sweeps 0
+    expect(fwd).toContain(' 0 0 1 ');
+    expect(rev).toContain(' 0 0 0 ');
+    // the flipped arc starts (M x y) where the forward arc ends (last two tokens)
+    expect(rev.split(' ').slice(1, 3)).toEqual(fwd.split(' ').slice(-2));
+  });
+});
+
+describe('statusSegments labels', () => {
+  test('single condition: full ring, curved name fits, arc not flipped', () => {
+    const [s] = statusSegments(['stunned'], 40);
+    expect(s.full).toBe(true);
+    expect(s.fits).toBe(true);
+    expect(s.textArc).not.toBeNull();
+    expect(s.textColor).toBe(contrastText(s.color));
+  });
+  test('long name on a narrow slice does not fit; short one does', () => {
+    const segs = statusSegments(["hunter's mark", 'web', 'prone', 'slow'], 40);
+    const long = segs.find((s) => s.name === "hunter's mark")!;
+    const short = segs.find((s) => s.name === 'web')!;
+    expect(long.fits).toBe(false);
+    expect(short.fits).toBe(true);
+  });
+  test('bottom-half slices get a reversed (sweep-0) text arc; top-half stay forward', () => {
+    const segs = statusSegments(['aa', 'bb', 'cc', 'dd'], 40);
+    // slices start at 12 o'clock clockwise: mid-angles 45°, 135°, 225°, 315°
+    expect(segs[0].textArc).toContain(' 0 0 1 '); // 45° top-right → forward
+    expect(segs[1].textArc).toContain(' 0 0 0 '); // 135° bottom-right → flipped
+    expect(segs[2].textArc).toContain(' 0 0 0 '); // 225° bottom-left → flipped
+    expect(segs[3].textArc).toContain(' 0 0 1 '); // 315° top-left → forward
+  });
+  test('label point moved onto the band (mid-band radius, not outside)', () => {
+    const segs = statusSegments(['aa', 'bb'], 40);
+    const d = Math.hypot(segs[0].label.x, segs[0].label.y);
+    expect(d).toBeCloseTo(40, 0);
+  });
+  test('no conditions → no segments (unchanged)', () => {
+    expect(statusSegments([], 40)).toEqual([]);
   });
 });

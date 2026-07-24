@@ -2,15 +2,18 @@
 import { useEffect, useState } from 'react';
 import type { TokenDto } from '../../lib/scenes';
 import { conditionColor } from '../../lib/rings';
+import TokenImageControls from './TokenImageControls';
 
 const hpDraftValue = (v: number | null): string => (v == null ? '' : String(v));
 
 export default function TokenEditor({
-  token, onEdit, onDelete, onClose,
+  token, onEdit, onDelete, onImageUpload, onImageClear, onClose,
 }: {
   token: TokenDto;
   onEdit: (id: string, body: Record<string, unknown>) => void;
   onDelete: (id: string) => void;
+  onImageUpload: (id: string, file: File) => void;
+  onImageClear: (id: string) => void;
   onClose: () => void;
 }) {
   const [newCondition, setNewCondition] = useState('');
@@ -122,6 +125,12 @@ export default function TokenEditor({
           <option value={3}>3</option>
         </select>
       </label>
+
+      <TokenImageControls
+        token={token}
+        onUpload={(f) => onImageUpload(token.id, f)}
+        onClear={() => onImageClear(token.id)}
+      />
 
       <button
         type="button"

@@ -59,3 +59,11 @@ export async function uploadSceneImage(sceneId: string, file: File, w: number, h
   fd.append('h', String(h));
   return api<SceneDto>(`/swdnd/scenes/${sceneId}/image`, { method: 'POST', body: fd });
 }
+
+export async function uploadTokenImage(tokenId: string, file: File, token?: string | null): Promise<TokenDto> {
+  const fd = new FormData();
+  fd.append('file', file);
+  return api<TokenDto>(`/swdnd/tokens/${tokenId}/image`, { method: 'POST', headers: auth(token), body: fd });
+}
+export const deleteTokenImage = (tokenId: string, token?: string | null) =>
+  api<TokenDto>(`/swdnd/tokens/${tokenId}/image`, { method: 'DELETE', headers: auth(token) });

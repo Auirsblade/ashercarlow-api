@@ -1,5 +1,6 @@
 // apps/swdnd/src/panels/Tabletop/index.tsx
 import { useState } from 'react';
+import RollDock from '../../components/RollDock';
 import { useTabletop } from '../../hooks/useTabletop';
 import type { GridConfig } from '../../lib/hex';
 import { nextTurn, prevTurn } from '../../lib/initiative';
@@ -7,6 +8,7 @@ import SceneCanvas from './SceneCanvas';
 import SceneDrawer from './SceneDrawer';
 import GridCalibrator from './GridCalibrator';
 import TokenEditor from './TokenEditor';
+import TokenImageControls from './TokenImageControls';
 import InitiativeStrip from './InitiativeStrip';
 import InitiativeEditor from './InitiativeEditor';
 
@@ -169,8 +171,23 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
             token={selected}
             onEdit={(id, body) => void t.actions.editToken(id, body)}
             onDelete={(id) => void t.actions.removeToken(id)}
+            onImageUpload={(id, file) => void t.actions.setTokenImage(id, file)}
+            onImageClear={(id) => void t.actions.clearTokenImage(id)}
             onClose={() => setSelectedId(null)}
           />
+        </div>
+      )}
+      {!t.isDm && selected && selected.character_id && t.ownCharacterIds.has(selected.character_id) && (
+        <div className="mx-2 mb-2">
+          <div className="ht-panel flex items-center gap-3 p-2 text-[11px]">
+            <span className="ht-label">{selected.name}</span>
+            <TokenImageControls
+              token={selected}
+              onUpload={(f) => void t.actions.setTokenImage(selected.id, f)}
+              onClear={() => void t.actions.clearTokenImage(selected.id)}
+            />
+            <button type="button" className="ht-step ml-auto" onClick={() => setSelectedId(null)}>✕ close</button>
+          </div>
         </div>
       )}
       {t.isDm && initEditorOpen && (
@@ -226,6 +243,7 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
           </div>
         )}
       </div>
+      <RollDock campaignId={campaignId} />
     </div>
   );
 }

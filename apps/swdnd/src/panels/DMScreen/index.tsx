@@ -1,6 +1,7 @@
 // apps/swdnd/src/panels/DMScreen/index.tsx — DM campaign control surface.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import RollDock from '../../components/RollDock';
 import { useAuth } from '../../lib/auth';
 import { useDmScreen } from '../../hooks/useDmScreen';
 import PartyRail from './PartyRail';
@@ -105,6 +106,7 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
           onClose={() => setDrawerOpen(false)}
         />
       )}
+      <RollDock campaignId={campaignId} />
     </div>
   );
 }

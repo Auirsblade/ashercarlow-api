@@ -51,6 +51,15 @@ export function assertAdmin(c: Context): void {
 }
 
 /**
+ * Non-throwing admin check for read-side filtering (e.g. hidden rolls).
+ * Dev mode (env token unset) counts as admin — dev sees everything.
+ */
+export function isAdminRequest(c: Context): boolean {
+  if (!process.env.ASHERCARLOW_AUTH_TOKEN) return true;
+  return isAdmin(c);
+}
+
+/**
  * Throw 403 unless the requester may move this token: dev mode, the admin, or
  * the player owning the token's linked character.
  */

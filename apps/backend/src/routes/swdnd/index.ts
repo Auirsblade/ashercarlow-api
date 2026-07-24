@@ -6,6 +6,7 @@ import { registerCampaignRoutes } from './campaigns';
 import { registerCharacterRoutes } from './characters';
 import { registerEncounterRoutes } from './encounters';
 import { registerPlayerRoutes } from './players';
+import { registerRollRoutes } from './rolls';
 import { registerSceneRoutes } from './scenes';
 import { registerTemplateRoutes } from './templates';
 import { registerTokenRoutes } from './tokens';
@@ -26,7 +27,8 @@ function selfGated(path: string): boolean {
     path.startsWith('/swdnd/templates') || // member-gated delete in-handler
     path.endsWith('/characters') ||
     path.endsWith('/players') ||
-    path.endsWith('/templates') // member-gated create; clear-all asserts admin in-handler
+    path.endsWith('/templates') || // member-gated create; clear-all asserts admin in-handler
+    path.endsWith('/rolls') // member-gated create in-handler; GET filters hidden in-handler
   );
 }
 
@@ -44,6 +46,7 @@ export function registerSwdndRoutes(app: OpenAPIHono): void {
   registerCharacterRoutes(app);
   registerEncounterRoutes(app);
   registerPlayerRoutes(app);
+  registerRollRoutes(app);
   registerSceneRoutes(app);
   registerTemplateRoutes(app);
   registerTokenRoutes(app);
