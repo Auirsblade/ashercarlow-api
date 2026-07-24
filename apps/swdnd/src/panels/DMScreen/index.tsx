@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PanelLink } from '../../components/split';
 import RollDock from '../../components/RollDock';
+import { RollTriggerProvider } from '../../components/RollableText';
 import { useAuth } from '../../lib/auth';
 import { useDmScreen } from '../../hooks/useDmScreen';
 import PartyRail from './PartyRail';
@@ -31,6 +32,7 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
   }
 
   return (
+    <RollTriggerProvider campaignId={campaignId}>
     <div className="ht-screen @container relative flex h-full min-h-0 flex-col font-mono text-ht-text">
       <header className="ht-glow m-3 flex shrink-0 flex-wrap items-center gap-3 rounded-md p-3">
         <div>
@@ -40,7 +42,7 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
         <div className="ml-auto flex items-center gap-2 text-[11px]">
           <PanelLink to={{ kind: 'map', id: campaignId }} current={{ kind: 'dm', id: campaignId }} className="ht-step">map</PanelLink>
           <Link className="ht-step" to="/dm">campaigns</Link>
-          <button type="button" className="ht-step" onClick={() => setDrawerOpen(true)}>admin</button>
+          <button type="button" title="campaign admin — players, characters, share links" className="ht-step" onClick={() => setDrawerOpen(true)}>admin</button>
         </div>
       </header>
 
@@ -113,5 +115,6 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
       )}
       <RollDock campaignId={campaignId} />
     </div>
+    </RollTriggerProvider>
   );
 }

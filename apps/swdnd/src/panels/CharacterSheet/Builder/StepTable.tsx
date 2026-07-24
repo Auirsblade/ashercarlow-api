@@ -1,5 +1,6 @@
 // apps/swdnd/src/panels/CharacterSheet/Builder/StepTable.tsx
 import { useMemo, useState, type ReactNode } from 'react';
+import RollableText from '../../../components/RollableText';
 
 export interface Column<T> {
   key: string;
@@ -67,6 +68,7 @@ export default function StepTable<T>({
       <div className="ht-label flex gap-2 px-2">
         {columns.map((c) => (
           <button key={c.key} type="button" style={{ flex: c.flex ?? 1 }} className="text-left"
+            title={`sort by ${c.label.toLowerCase()}`}
             onClick={() => toggleSort(c.key)}>
             {c.label}{sortKey === c.key ? (sortDir === 1 ? ' ▴' : ' ▾') : ''}
           </button>
@@ -94,7 +96,12 @@ export default function StepTable<T>({
               )}
               {open && (
                 <div className="border-t border-ht-line px-3 py-2">
-                  <div className="whitespace-pre-line text-ht-muted">{detail(item)}</div>
+                  <div className="whitespace-pre-line text-ht-muted">
+                    {(() => {
+                      const d = detail(item);
+                      return typeof d === 'string' ? <RollableText text={d} /> : d;
+                    })()}
+                  </div>
                   {reason && <div className="mt-1 text-yellow-300">⚠ {reason}</div>}
                   {editable && !reason && (
                     <div className="mt-2 text-right">

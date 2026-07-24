@@ -1,5 +1,6 @@
 // apps/swdnd/src/panels/DMScreen/Reference.tsx — three-category quick lookup.
 import { useState } from 'react';
+import RollableText from '../../components/RollableText';
 import { searchEntries, type RefEntry } from '../../lib/refSearch';
 import type { PowerEntry } from '../../hooks/useDmScreen';
 
@@ -22,7 +23,7 @@ function RefLookup({ entries, meta }: { entries: RefEntry[]; meta?: (e: RefEntry
             {meta && <span className="ml-auto shrink-0 text-[10px] text-ht-muted">{meta(e)}</span>}
           </button>
           {openId === e.id && (
-            <div className="whitespace-pre-line px-1 pb-2 text-[11px] text-ht-text">{e.text}</div>
+            <div className="whitespace-pre-line px-1 pb-2 text-[11px] text-ht-text"><RollableText text={e.text} /></div>
           )}
         </div>
       ))}
