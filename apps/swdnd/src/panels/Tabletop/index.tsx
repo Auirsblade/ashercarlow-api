@@ -30,7 +30,7 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
   const selected = t.tokens.find((tok) => tok.id === selectedId) ?? null;
 
   return (
-    <div className="@container ht-screen flex h-screen min-h-full flex-col font-mono text-ht-text">
+    <div className="@container ht-screen flex h-full min-h-full flex-col font-mono text-ht-text">
       {t.error && (
         <div className="m-2 rounded border border-red-400/60 bg-red-950/40 px-3 py-1.5 text-[11px] text-red-300">
           ⚠ {t.error}

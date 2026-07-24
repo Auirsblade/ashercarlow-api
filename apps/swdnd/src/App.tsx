@@ -36,7 +36,9 @@ function MapPage() {
   const { campaignId = "" } = useParams();
   return (
     <SinglePanel>
-      <Tabletop campaignId={campaignId} />
+      <div className="h-screen">
+        <Tabletop campaignId={campaignId} />
+      </div>
     </SinglePanel>
   );
 }

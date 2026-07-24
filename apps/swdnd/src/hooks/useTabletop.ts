@@ -138,17 +138,21 @@ export function useTabletop(campaignId: string): TabletopState {
   // Which characters belong to this player link (players/me), for canMove and sheet links.
   useEffect(() => {
     if (!playerToken) return;
+    let alive = true;
     import('../lib/characters').then(({ getPlayerByToken }) =>
       getPlayerByToken(playerToken)
         .then((me) => {
+          if (!alive) return;
           setOwnCharacterIds(new Set(me.characters.map((c) => c.id)));
           setOwnCharacters(me.characters.map((c) => ({ id: c.id, name: c.name })));
         })
         .catch(() => {
+          if (!alive) return;
           setOwnCharacterIds(new Set());
           setOwnCharacters([]);
         }),
     );
+    return () => { alive = false; };
   }, [playerToken]);
 
   // Load campaign characters + reference once and compute each character's

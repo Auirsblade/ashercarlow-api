@@ -34,9 +34,11 @@ function Half({
       </div>
     );
   }
-  const ctx = other
-    ? { left: side === 'left' ? panel : other, right: side === 'left' ? other : panel, side }
-    : null;
+  const ctx = {
+    left: side === 'left' ? panel : (other ?? panel),
+    right: side === 'left' ? (other ?? panel) : panel,
+    side,
+  };
   return (
     <SplitContext.Provider value={ctx}>
       <div className="flex h-full min-h-0 flex-col">
