@@ -7,8 +7,8 @@ const ENTITIES: Record<string, string> = {
   '&nbsp;': ' ', '&rsquo;': '’', '&lsquo;': '‘', '&mdash;': '—', '&ndash;': '–',
 };
 
-export function cleanRichText(html: string | null | undefined): string {
-  if (!html) return '';
+export function cleanRichText(html: unknown): string {
+  if (typeof html !== 'string' || !html) return '';
   let s = html;
   // Foundry link codes → their display label.
   s = s.replace(/@\w+\[[^\]]*\]\{([^}]*)\}/g, '$1');

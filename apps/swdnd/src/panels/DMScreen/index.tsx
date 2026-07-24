@@ -5,6 +5,10 @@ import { useAuth } from '../../lib/auth';
 import { useDmScreen } from '../../hooks/useDmScreen';
 import PartyRail from './PartyRail';
 import AdminDrawer from './AdminDrawer';
+import MonsterBrowser from './MonsterBrowser';
+import EncounterList from './EncounterList';
+import Reference from './Reference';
+import { addMonster } from '../../lib/encounters';
 
 const TABS = ['monsters', 'encounters', 'reference'] as const;
 type Tab = (typeof TABS)[number];
@@ -57,10 +61,36 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
               </button>
             ))}
           </nav>
-          <div className="ht-panel p-4 text-[11px] text-ht-muted">
-            {tab === 'monsters' && 'Monster browser — coming in phase 2.'}
-            {tab === 'encounters' && 'Encounter groups — coming in phase 2.'}
-            {tab === 'reference' && 'Quick reference — coming in phase 2.'}
+          <div className="ht-panel p-4">
+            {tab === 'monsters' && (
+              <MonsterBrowser
+                monsters={dm.monsters}
+                encounters={dm.encounters}
+                onSpawn={(view, count) => void dm.actions.spawn(view, count)}
+                onAddToEncounter={(encounterId, monsterId) => {
+                  const enc = dm.encounters.find((e) => e.id === encounterId);
+                  if (enc) void dm.actions.setEncounterMonsters(encounterId, addMonster(enc.monsters_json, monsterId));
+                }}
+              />
+            )}
+            {tab === 'encounters' && (
+              <EncounterList
+                encounters={dm.encounters}
+                monsters={dm.monsters}
+                onCreate={(name) => void dm.actions.addEncounter(name)}
+                onRename={(id, name) => void dm.actions.renameEncounter(id, name)}
+                onSetMonsters={(id, monsters) => void dm.actions.setEncounterMonsters(id, monsters)}
+                onSpawnAll={(enc) => void dm.actions.spawnEncounter(enc)}
+                onDelete={(id) => void dm.actions.removeEncounter(id)}
+              />
+            )}
+            {tab === 'reference' && (
+              <Reference
+                conditions={dm.refEntries.conditions}
+                powers={dm.refEntries.powers}
+                weaponProperties={dm.refEntries.weaponProperties}
+              />
+            )}
           </div>
         </main>
       </div>
