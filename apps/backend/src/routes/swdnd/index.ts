@@ -4,6 +4,7 @@ import { authGate } from '../auth';
 import { registerContentRoutes } from './content';
 import { registerCampaignRoutes } from './campaigns';
 import { registerCharacterRoutes } from './characters';
+import { registerEncounterRoutes } from './encounters';
 import { registerPlayerRoutes } from './players';
 import { registerSceneRoutes } from './scenes';
 import { registerTemplateRoutes } from './templates';
@@ -41,6 +42,7 @@ export function registerSwdndRoutes(app: OpenAPIHono): void {
   registerContentRoutes(app);
   registerCampaignRoutes(app);
   registerCharacterRoutes(app);
+  registerEncounterRoutes(app);
   registerPlayerRoutes(app);
   registerSceneRoutes(app);
   registerTemplateRoutes(app);
