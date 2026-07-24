@@ -31,8 +31,8 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
   }
 
   return (
-    <div className="ht-screen @container relative min-h-screen font-mono text-ht-text">
-      <header className="ht-glow m-3 flex flex-wrap items-center gap-3 rounded-md p-3">
+    <div className="ht-screen @container relative flex h-full min-h-0 flex-col font-mono text-ht-text">
+      <header className="ht-glow m-3 flex shrink-0 flex-wrap items-center gap-3 rounded-md p-3">
         <div>
           <div className="ht-name text-sm font-bold">{dm.campaign?.name ?? campaignId}</div>
           <div className="text-[10px] text-ht-muted">dm screen</div>
@@ -46,12 +46,16 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
 
       {dm.error && <div className="mx-3 mb-2 text-[11px] text-red-400">{dm.error}</div>}
 
-      <div className="flex flex-col gap-3 p-3 pt-0 @[860px]:flex-row">
-        <aside className="@[860px]:w-[260px] @[860px]:shrink-0">
+      {/* Narrow (<700px): the row scrolls like a page and lists keep their px
+          caps. From 700px up the row stops scrolling so the tab content can
+          fill the remaining height; ≥860px the party rail becomes a side
+          column with its own scroll. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 pt-0 @[700px]:overflow-visible @[860px]:flex-row">
+        <aside className="shrink-0 @[860px]:min-h-0 @[860px]:w-[260px] @[860px]:overflow-y-auto">
           <PartyRail cards={dm.cards} />
         </aside>
-        <main className="min-w-0 flex-1">
-          <nav className="mb-2 flex gap-1 text-[11px]">
+        <main className="min-w-0 flex-1 @[700px]:flex @[700px]:min-h-0 @[700px]:flex-col">
+          <nav className="mb-2 flex shrink-0 gap-1 text-[11px]">
             {TABS.map((t) => (
               <button
                 key={t}
@@ -63,7 +67,7 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
               </button>
             ))}
           </nav>
-          <div className="ht-panel p-4">
+          <div className="ht-panel p-4 @[700px]:flex @[700px]:min-h-0 @[700px]:flex-1 @[700px]:flex-col @[700px]:overflow-y-auto">
             {tab === 'monsters' && (
               <MonsterBrowser
                 monsters={dm.monsters}

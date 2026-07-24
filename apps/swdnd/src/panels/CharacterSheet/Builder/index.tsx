@@ -34,13 +34,13 @@ export default function Builder({ characterId }: { characterId: string }) {
   }
 
   return (
-    <div className="@container ht-screen min-h-screen p-3 font-mono text-ht-text" style={factionStyle(b.build.identity.alignment)}>
+    <div className="@container ht-screen flex h-full min-h-0 flex-col p-3 font-mono text-ht-text" style={factionStyle(b.build.identity.alignment)}>
       {b.error && (
-        <div className="mb-2 rounded border border-red-400/60 bg-red-950/40 px-3 py-1.5 text-[11px] text-red-300">
+        <div className="mb-2 shrink-0 rounded border border-red-400/60 bg-red-950/40 px-3 py-1.5 text-[11px] text-red-300">
           ⚠ {b.error} — changes may not be saved
         </div>
       )}
-      <div className="ht-glow mb-3 flex flex-wrap items-center gap-3 rounded-md p-3">
+      <div className="ht-glow mb-3 flex shrink-0 flex-wrap items-center gap-3 rounded-md p-3">
         <input
           className="ht-name w-56 border-b border-ht-line bg-transparent text-sm font-bold outline-none"
           value={b.build.identity.name}
@@ -54,9 +54,10 @@ export default function Builder({ characterId }: { characterId: string }) {
         </span>
       </div>
 
-      <div className="flex flex-col gap-3 @lg:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 @lg:flex-row">
         <StepRail status={b.status} active={active} houseRuled={b.build.houseRuled ?? []} onSelect={setActive} />
-        <div className="min-w-0 flex-1">
+        {/* Scroll fallback for steps that don't manage their own list scroll. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
           {active === 'species' && <SpeciesStep build={b.build} ref={b.ref} editable={b.canEdit} dispatch={b.dispatch} />}
           {active === 'background' && <BackgroundStep build={b.build} ref={b.ref} editable={b.canEdit} dispatch={b.dispatch} />}
           {active === 'class' && <ClassStep build={b.build} ref={b.ref} editable={b.canEdit} dispatch={b.dispatch} />}

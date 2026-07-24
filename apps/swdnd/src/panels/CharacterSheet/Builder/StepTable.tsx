@@ -56,7 +56,7 @@ export default function StepTable<T>({
   };
 
   return (
-    <div className="flex flex-col gap-1 text-[11px]">
+    <div className="flex min-h-0 flex-1 flex-col gap-1 text-[11px]">
       {header}
       <input
         className="ht-panel w-full px-2 py-1 text-ht-bright outline-none placeholder:text-ht-muted"
@@ -72,7 +72,7 @@ export default function StepTable<T>({
           </button>
         ))}
       </div>
-      <div className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto pr-1">
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
         {visible.map((item) => {
           const id = idOf(item);
           const selected = isSelected(item);

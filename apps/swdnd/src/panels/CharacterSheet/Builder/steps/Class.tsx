@@ -138,7 +138,7 @@ export default function ClassStep({ build, ref, editable, dispatch }: Props) {
 
   if (picker === 'add') {
     return (
-      <div className="flex flex-col gap-2 text-[11px]">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 text-[11px]">
         {build.levels.length > 0 && (
           <button type="button" className="ht-step self-start" onClick={() => setPicker(null)}>
             ◂ back to level log
@@ -176,7 +176,7 @@ export default function ClassStep({ build, ref, editable, dispatch }: Props) {
     const options = Object.values(ref.archetypes)
       .filter((a) => houseRuled || a.classIdentifier === cls?.identifier);
     return (
-      <div className="flex flex-col gap-2 text-[11px]">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 text-[11px]">
         <button type="button" className="ht-step self-start" onClick={() => setPicker(null)}>
           ◂ back to level log
         </button>
