@@ -24,7 +24,7 @@ export interface BuilderState {
 const SAVE_DEBOUNCE_MS = 500;
 
 export function useBuilder(characterId: string): BuilderState {
-  const { authed } = useAuth();
+  const { authed, loading: authLoading } = useAuth();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
 
@@ -80,5 +80,8 @@ export function useBuilder(characterId: string): BuilderState {
     [canEdit, build, ref, derived, characterId, token],
   );
 
-  return { loading, error, build, derived, ref, status, canEdit, dto, saving, dispatch };
+  // Folded with authLoading (same "authLoading || hook loading" shape as
+  // DMScreen/index.tsx:23-25's authLoading || dm.loading) so an admin-only
+  // canEdit answer never flashes false before the auth cookie check settles.
+  return { loading: loading || authLoading, error, build, derived, ref, status, canEdit, dto, saving, dispatch };
 }
