@@ -149,6 +149,15 @@ export interface DeploymentReferenceData {
   deploymentFeatures: Record<string, RefDeploymentFeature>;
 }
 
+/**
+ * What the ship engine knows about its crew. Proficiency only, and only for
+ * roles whose crew member is deployed at rank 1+ (SotG). Absent → the sheet
+ * falls back to the spine's "+ your proficiency" display.
+ */
+export interface CrewInput {
+  proficiencyByRole: Partial<Record<ShipRole, number>>;
+}
+
 export interface ShipReferenceData {
   sizes: Record<string, RefShipSize>;
   armor: Record<string, RefShipArmor>;   // includes shields (kind: 'shield')
