@@ -84,6 +84,7 @@ describe('swdnd starship creation bootstrap', () => {
   let tokenB: string;
   let charA: string;
   let charB: string;
+  let tokenOther: string;
 
   beforeAll(async () => {
     delete process.env.ASHERCARLOW_AUTH_TOKEN;
@@ -95,6 +96,12 @@ describe('swdnd starship creation bootstrap', () => {
     tokenB = pB.access_token;
     charA = ((await (await app.request(`/swdnd/campaigns/${campaignId}/characters?token=${tokenA}`, json('POST', { name: 'Ace' }))).json()) as any).id;
     charB = ((await (await app.request(`/swdnd/campaigns/${campaignId}/characters?token=${tokenB}`, json('POST', { name: 'Bee' }))).json()) as any).id;
+
+    // A player token that is real but belongs to a DIFFERENT campaign than
+    // `campaignId`, for the wrong-campaign-token creation test below.
+    const otherCampaignId = ((await (await app.request('/swdnd/campaigns', json('POST', { name: 'Rebel Alliance' }))).json()) as any).id;
+    const pOther = (await (await app.request(`/swdnd/campaigns/${otherCampaignId}/players`, json('POST', { name: 'Outsider' }))).json()) as any;
+    tokenOther = pOther.access_token;
   });
 
   it('admin/dev creation may start with an empty roster and seeds the empty build', async () => {
@@ -135,6 +142,31 @@ describe('swdnd starship creation bootstrap', () => {
       expect(ok.status).toBe(201);
       const ship = (await ok.json()) as any;
       expect(ship.crew).toEqual([{ character_id: charA, character_name: 'Ace', role: 'pilot' }]);
+    });
+  });
+
+  it('rejects an anonymous request (no auth header, no player token) with 403', async () => {
+    await withAuthEnv(async () => {
+      // Guards that starships.ts's `if (... && !isPlayerCreate) assertAdmin(c)`
+      // line is actually load-bearing: with no player resolvable, isPlayerCreate
+      // is false, so this must fall into assertAdmin and get rejected. Deleting
+      // that gate line would turn this into a 201.
+      const res = await app.request(`/swdnd/campaigns/${campaignId}/starships`, json('POST', { name: 'Ghost Rider' }));
+      expect(res.status).toBe(403);
+    });
+  });
+
+  it('rejects a player token from a different campaign, via the same admin-only gate as an anonymous request', async () => {
+    await withAuthEnv(async () => {
+      // tokenOther resolves to a REAL player (unlike the anonymous case above),
+      // but that player's campaign_id != campaignId, so isPlayerCreate is still
+      // false. The handler has no dedicated "wrong campaign" branch -- it falls
+      // through to the same assertAdmin(c) an anonymous caller would hit, and
+      // gets the same 403. Pinning this so a future refactor that special-cases
+      // "player token present" without checking campaign membership gets caught.
+      const res = await app.request(`/swdnd/campaigns/${campaignId}/starships?token=${tokenOther}`,
+        json('POST', { name: 'Ghost Rider' }));
+      expect(res.status).toBe(403);
     });
   });
 
