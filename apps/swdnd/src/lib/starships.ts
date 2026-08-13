@@ -179,6 +179,7 @@ export function mapShipWeaponRow(row: ShipRow): RefShipWeapon {
     rangeNormal: numOrNull(s.range?.value),
     rangeLong: numOrNull(s.range?.long),
     saveAbility: shipAbilityOf(s.save?.ability),
+    saveDc: numOrNull(s.save?.dc),
     reload: typeof props.rel === 'number' ? props.rel : null,
     // Real launchers (Assault rocket pod launcher, Rocket pod launcher) omit
     // properties.amm entirely, even though they carry ammo.types + a reload

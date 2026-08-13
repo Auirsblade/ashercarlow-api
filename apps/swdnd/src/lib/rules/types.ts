@@ -121,6 +121,10 @@ export interface RefWeapon {
   damageParts: Array<[string, string]>; // [formula, damageType]
   properties: Record<string, unknown>;  // sw5e weapon properties (fin, dex, ran, ...)
   ability: AbilityKey | '';
+  /** sw5e system.weaponType, e.g. 'simpleB' / 'martialVW' / 'exoticLW'. The
+   * trailing letter is the weapon class: B = blaster, LW = lightweapon,
+   * VW = vibroweapon. '' when absent. */
+  weaponType: string;
   attackBonus: number;
   price: number | null;
   description: string;

@@ -29,18 +29,28 @@ export function substituteMod(formula: string, mod: number): string {
 
 /**
  * Which ability a weapon attacks with. Explicit `system.ability` wins; then
- * finesse (better of STR/DEX); then ranged (DEX); else STR.
+ * finesse (better of STR/DEX); then blaster weaponType (DEX); then a legacy
+ * `ran`-truthy fallback for rows with no weaponType; else STR.
+ *
  * Property keys are the sw5e short forms (`fin`, `ran`) — verified against the
  * ingested `weapons` rows. `fin` is a plain boolean on every row that has it.
- * `ran` is NOT a boolean flag: on 93/101 rows it holds the weapon's range in
- * feet (e.g. `40`, `100`); only 8 outlier rows use literal `true`. Treat it as
- * truthy (present/nonzero = ranged), never `=== true`, or blaster-type
- * weapons silently fall through to STR.
+ * `ran` is NOT a reliable ranged flag: ~35 real blaster rows (simpleB/martialB)
+ * omit it entirely (their range lives in the prose-only `pcl` property
+ * instead), which is why blasters must be routed off `weaponType`, not `ran`.
+ * Worse, `ran` doubles as the THROWN range on melee vibro/light weapons (e.g.
+ * a vibrodagger's `thr: 'range 20/60'` pairs with `ran: 20`) — so trusting
+ * `ran` for those would flip a thrown STR weapon to DEX. `weaponType`'s
+ * trailing letter is the weapon class (B = blaster, LW = lightweapon,
+ * VW = vibroweapon); the `ran` fallback below is restricted to rows with no
+ * melee weaponType (blasters are already resolved above it; what's left is
+ * genuinely unknown-type rows, e.g. test fixtures with no weaponType set).
  */
 function attackAbility(weapon: RefWeapon, str: number, dex: number): AbilityKey {
   if (weapon.ability) return weapon.ability;
   if (weapon.properties.fin === true) return dex > str ? 'dex' : 'str';
-  if (weapon.properties.ran) return 'dex';
+  if (weapon.weaponType.endsWith('B')) return 'dex';
+  const isMelee = weapon.weaponType.endsWith('LW') || weapon.weaponType.endsWith('VW');
+  if (!isMelee && weapon.properties.ran) return 'dex';
   return 'str';
 }
 

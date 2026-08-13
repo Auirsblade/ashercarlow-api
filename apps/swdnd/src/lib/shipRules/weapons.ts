@@ -8,6 +8,31 @@ export const DEFAULT_MOUNT: WeaponMount = 'fixed-forward';
 
 const signed = (n: number): string => (n >= 0 ? `+${n}` : `${n}`);
 
+/**
+ * Replace the ship pack's half-STR damage rider `(@strmod/2)` with its
+ * floor-rounded integer value, inlined as a plain signed constant term.
+ * lib/dice.ts's parseFormula grammar has no parens/division support, so this
+ * cannot be left as `(N/2)` -- it must be pre-computed here. Same shape as
+ * weaponAttacks.ts's substituteMod, applied AFTER it: some ship weapon
+ * formulas reference both `@mod` (full STR, substituted by substituteMod)
+ * and `(@strmod/2)` (an additional half-STR rider) in the same string, e.g.
+ * '1d8 + @mod + (@strmod/2)'.
+ */
+function substituteStrMod(formula: string, strMod: number): string {
+  if (!formula.includes('@strmod')) return formula;
+  const half = Math.floor(strMod / 2);
+  if (half === 0) return formula.replace(/\s*[+-]\s*\(@strmod\/2\)/, '').replace(/\(@strmod\/2\)/g, '0').trim();
+  const abs = Math.abs(half);
+  return formula
+    .replace(/[+-]\s*\(@strmod\/2\)/, half > 0 ? `+ ${abs}` : `- ${abs}`)
+    .replace(/\(@strmod\/2\)/g, String(half))
+    .trim();
+}
+
+/** The pack's placeholder for ammo-driven weapons whose damage comes from the
+ * loaded ammo item, not the launcher itself (e.g. torpedo/missile launchers). */
+const ZERO_BASE_DICE = /^0d\d+/i;
+
 /** The ship's contribution to a weapon save DC: 8 + WIS mod. */
 export function shipSaveDc(build: ShipBuild): number {
   return 8 + shipAbilityModifier(totalShipAbilityScores(build).wis);
@@ -25,7 +50,6 @@ export function shipWeaponProfiles(build: ShipBuild, ref: ShipReferenceData): Sh
   const scores = totalShipAbilityScores(build);
   const wisMod = shipAbilityModifier(scores.wis);
   const strMod = shipAbilityModifier(scores.str);
-  const saveDc = 8 + wisMod;
 
   const out: ShipWeaponProfile[] = [];
   for (const entry of build.equipment) {
@@ -35,7 +59,14 @@ export function shipWeaponProfiles(build: ShipBuild, ref: ShipReferenceData): Sh
     // should never reference one as an equipped weapon, but skip defensively.
     if (!w || w.category === 'other') continue;
     const attackShipMod = wisMod + w.attackBonus;
-    const [formula, type] = w.damageParts[0] ?? ['', ''];
+    const [rawFormula, type] = w.damageParts[0] ?? ['', ''];
+    // Ammo-driven weapons carry a 0dN placeholder formula -- their damage
+    // comes from the loaded ammo item, not the launcher, so there is no
+    // formula to roll here. Emit '' rather than a "0d0 + N" string that
+    // parseFormula would reject anyway (a dead damage button).
+    const damageFormula = ZERO_BASE_DICE.test(rawFormula.trim())
+      ? ''
+      : substituteStrMod(substituteMod(rawFormula, strMod), strMod);
     out.push({
       entryId: entry.id,
       refId: w.id,
@@ -44,12 +75,15 @@ export function shipWeaponProfiles(build: ShipBuild, ref: ShipReferenceData): Sh
       mount: entry.mount ?? DEFAULT_MOUNT,
       attackShipMod,
       attackText: `${signed(attackShipMod)} + your proficiency`,
-      damageFormula: substituteMod(formula, strMod),
+      damageFormula,
       damageType: type,
       rangeNormal: w.rangeNormal,
       rangeLong: w.rangeLong,
       saveAbility: w.saveAbility,
-      saveDc: w.saveAbility ? saveDc : null,
+      // The pack's own DC governs when the row carries one (e.g. a flat-scaling
+      // ion cannon printed at DC 13, independent of the ship's WIS); the spec
+      // formula (8 + WIS mod) is only a fallback for rows that omit it.
+      saveDc: w.saveAbility ? (w.saveDc ?? (8 + wisMod)) : null,
       reload: w.reload,
       usesAmmo: w.usesAmmo,
     });

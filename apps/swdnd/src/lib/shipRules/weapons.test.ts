@@ -1,5 +1,6 @@
 // apps/swdnd/src/lib/shipRules/weapons.test.ts
 import { expect, test } from 'bun:test';
+import { parseFormula } from '../dice';
 import { emptyShipBuild, type RefShipSize, type RefShipWeapon, type ShipReferenceData } from './types';
 import { rateOfFireCap, shipSaveDc, shipWeaponProfiles } from './weapons';
 
@@ -10,7 +11,7 @@ const size = (key: RefShipSize['key']): RefShipSize => ({
 });
 const weapon = (over: Partial<RefShipWeapon> & { id: string }): RefShipWeapon => ({
   name: over.id, category: 'primary', damageParts: [], rangeNormal: null, rangeLong: null,
-  saveAbility: '', reload: null, usesAmmo: false, ammoTypes: [], weaponSize: null,
+  saveAbility: '', saveDc: null, reload: null, usesAmmo: false, ammoTypes: [], weaponSize: null,
   attackBonus: 0, price: null, description: '', ...over,
 });
 
@@ -24,6 +25,11 @@ const ref: ShipReferenceData = {
       damageParts: [['4d6', 'ion']], attackBonus: 1 }),
     bomb: weapon({ id: 'bomb', name: 'Bomb deployer', category: 'quaternary',
       usesAmmo: true, reload: 4, ammoTypes: ['ssbomb'], damageParts: [['0d0 + @mod', '-']] }),
+    // Real pack shape (heavy-ion-cannon.json): a half-STR damage rider on top
+    // of the normal @mod substitution, and an explicit save.dc that should
+    // win over the 8 + WIS fallback.
+    heavyIon: weapon({ id: 'heavyIon', name: 'Heavy ion cannon', category: 'primary',
+      saveAbility: 'con', saveDc: 13, damageParts: [['1d10 + @mod + (@strmod/2)', 'ion']] }),
   },
 };
 
@@ -99,6 +105,44 @@ test('non-installable category "other" rows (ammo/simpleVW) are skipped even if 
     { id: 'w2', ref: 'laser', kind: 'weapon' },
   ];
   expect(shipWeaponProfiles(b, otherRef).map((p) => p.entryId)).toEqual(['w2']);
+});
+
+test('a 0dN base-dice formula (ammo-driven launchers) emits no damage formula', () => {
+  const b = ship();
+  b.equipment = [{ id: 'w1', ref: 'bomb', kind: 'weapon' }];
+  expect(shipWeaponProfiles(b, ref)[0].damageFormula).toBe('');
+});
+
+test('the half-STR (@strmod/2) rider is pre-computed and inlined alongside @mod', () => {
+  // STR 17 -> +3. @mod (full STR) substitutes to +3; (@strmod/2) is an
+  // ADDITIONAL half-STR rider -> floor(3/2) = +1. lib/dice.ts's parseFormula
+  // grammar has no parens/division, so this must come out as a plain
+  // trailing constant, never as literal "(N/2)".
+  const b = ship({ str: 17 });
+  b.equipment = [{ id: 'w1', ref: 'heavyIon', kind: 'weapon' }];
+  const [p] = shipWeaponProfiles(b, ref);
+  expect(p.damageFormula).toBe('1d10 + 3 + 1');
+  expect(parseFormula(p.damageFormula)).not.toBeNull();
+});
+
+test('a negative half-STR rider still parses (STR 8 -> -1 mod -> floor(-1/2) = -1)', () => {
+  const b = ship({ str: 8 });
+  b.equipment = [{ id: 'w1', ref: 'heavyIon', kind: 'weapon' }];
+  const [p] = shipWeaponProfiles(b, ref);
+  expect(p.damageFormula).toBe('1d10 - 1 - 1');
+  expect(parseFormula(p.damageFormula)).not.toBeNull();
+});
+
+test('an explicit pack save.dc wins over the 8 + WIS spec fallback', () => {
+  const b = ship({ wis: 10 });                                 // WIS +0 -> spec fallback would be DC 8
+  b.equipment = [{ id: 'w1', ref: 'heavyIon', kind: 'weapon' }];
+  expect(shipWeaponProfiles(b, ref)[0].saveDc).toBe(13);
+});
+
+test('a save-based weapon with no pack DC still falls back to 8 + WIS', () => {
+  const b = ship({ wis: 18 });                                 // +4 -> DC 12
+  b.equipment = [{ id: 'w1', ref: 'ion', kind: 'weapon' }];      // 'ion' fixture carries no saveDc
+  expect(shipWeaponProfiles(b, ref)[0].saveDc).toBe(12);
 });
 
 test('rate-of-fire cap is max(Str mod, 1) x the size multiplier, rounded up', () => {

@@ -1,4 +1,5 @@
 // apps/swdnd/src/panels/CharacterSheet/Sheet/Combat.tsx
+import { parseFormula } from '../../../lib/dice';
 import { weaponAttacks } from '../../../lib/rules/weaponAttacks';
 import type { CharacterBuild, DerivedSheet, ReferenceData } from '../../../lib/rules/types';
 
@@ -28,7 +29,9 @@ export default function Combat({
             onClick={() => onRoll(`${a.name} attack`, a.attackBonus)}>
             atk {fmt(a.attackBonus)}
           </button>
-          {a.damageFormula && (
+          {/* Guard against a dead button: a non-empty formula that lib/dice.ts's
+              grammar can't parse must not render a button that no-ops on click. */}
+          {a.damageFormula && parseFormula(a.damageFormula) !== null && (
             <button type="button" className="ht-step" title={`roll ${a.damageType} damage`}
               onClick={() => onRollDamage(`${a.name} damage`, a.damageFormula)}>
               {a.damageFormula}

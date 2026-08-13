@@ -98,6 +98,9 @@ export interface RefShipWeapon {
   rangeNormal: number | null;
   rangeLong: number | null;
   saveAbility: ShipAbilityKey | '';
+  /** The pack's own save DC (save.dc), e.g. a flat-scaling ion cannon at 13.
+   * null when the row leaves the DC to the spec formula (8 + WIS mod). */
+  saveDc: number | null;
   reload: number | null;                // properties.rel
   usesAmmo: boolean;                    // properties.amm
   ammoTypes: string[];

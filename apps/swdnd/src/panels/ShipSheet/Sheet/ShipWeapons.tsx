@@ -1,4 +1,5 @@
 // apps/swdnd/src/panels/ShipSheet/Sheet/ShipWeapons.tsx
+import { parseFormula } from '../../../lib/dice';
 import type { ShipPlayAction } from '../../../lib/shipPlayState';
 import type { DerivedShip, ShipPlayState } from '../../../lib/shipRules/types';
 
@@ -38,7 +39,10 @@ export default function ShipWeapons({
             ) : (
               <span className="text-ht-muted">DC {w.saveDc} {w.saveAbility.toUpperCase()}</span>
             )}
-            {w.damageFormula && (
+            {/* Guard against a dead button: a non-empty formula the engine
+                emits but lib/dice.ts's grammar can't parse (e.g. leftover
+                parens/division) must not render a button that no-ops on click. */}
+            {w.damageFormula && parseFormula(w.damageFormula) !== null && (
               <button type="button" className="ht-step" title={`roll ${w.damageType} damage`}
                 onClick={() => onRollDamage(`${w.name} damage`, w.damageFormula)}>
                 {w.damageFormula}

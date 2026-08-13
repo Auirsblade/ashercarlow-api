@@ -169,6 +169,7 @@ export function mapWeaponRow(row: Row): RefWeapon {
     damageParts: Array.isArray(s.damage?.parts) ? (s.damage.parts as Array<[string, string]>) : [],
     properties: (s.properties ?? {}) as Record<string, unknown>,
     ability: asAbility(s.ability) ?? '',
+    weaponType: typeof s.weaponType === 'string' ? s.weaponType : '',
     attackBonus: Number(s.attackBonus ?? 0) || 0,
     price: priceOf(s),
     description: descriptionOf(s),

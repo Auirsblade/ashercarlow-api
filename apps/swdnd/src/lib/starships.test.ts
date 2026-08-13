@@ -152,7 +152,32 @@ test('mapShipWeaponRow normalises the category, ranges, save and ammo flags', ()
   const ion = { id: 'i', name: 'Ion battery', raw_json: JSON.stringify({ system: {
     weaponType: 'secondary (starship)', save: { ability: 'con', dc: 13, scaling: 'flat' },
   } }) };
-  expect(mapShipWeaponRow(ion)).toMatchObject({ category: 'secondary', saveAbility: 'con' });
+  expect(mapShipWeaponRow(ion)).toMatchObject({ category: 'secondary', saveAbility: 'con', saveDc: 13 });
+});
+
+// Fixture verbatim from the real pack row (heavy-ion-cannon.json): a
+// flat-scaling save weapon prints its own DC rather than deriving one from
+// the ship's WIS -- the mapper must preserve it, not drop it on the floor.
+test('mapShipWeaponRow reads an explicit save.dc off a flat-scaling ion cannon', () => {
+  const heavyIon = { id: 'hic', name: 'Heavy ion cannon', raw_json: JSON.stringify({ system: {
+    weaponType: 'primary (starship)',
+    damage: { parts: [['1d10 + @mod + (@strmod/2)', 'ion']] },
+    range: { value: 300, long: 1200 },
+    save: { ability: 'con', dc: 13, scaling: 'flat' },
+    ammo: { types: [] }, attackBonus: 0,
+    properties: { amm: false },
+  } }) };
+  expect(mapShipWeaponRow(heavyIon)).toMatchObject({ category: 'primary', saveAbility: 'con', saveDc: 13 });
+});
+
+// A power-scaling save weapon (the common case) omits dc entirely -- the
+// mapper must fall through to null, not coerce a missing/null dc to 0 (which
+// would read as a DC-0 save downstream instead of "no pack override").
+test('mapShipWeaponRow maps a null/absent save.dc to null, not 0', () => {
+  const laser = { id: 'l2', name: 'Laser cannon', raw_json: JSON.stringify({ system: {
+    weaponType: 'primary (starship)', save: { ability: '', dc: null, scaling: 'power' },
+  } }) };
+  expect(mapShipWeaponRow(laser).saveDc).toBeNull();
 });
 
 // Real launchers (Assault rocket pod launcher, Rocket pod launcher) omit
