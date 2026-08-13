@@ -1,9 +1,9 @@
 // apps/swdnd/src/lib/buildState.ts
 import type {
-  AbilityKey, CharacterBuild, DerivedSheet, ReferenceData, SkillKey,
+  AbilityKey, CharacterBuild, DeploymentEntry, DerivedSheet, ReferenceData, SkillKey,
 } from './rules/types';
 import { maxHp } from './rules/combat';
-import { classLevelOrdinal, totalAbilityScores } from './rules/core';
+import { classLevelOrdinal, deploymentsOf, totalAbilityScores } from './rules/core';
 import { multiclassBlockers } from './multiclass';
 
 export type BuildAction =
@@ -27,7 +27,9 @@ export type BuildAction =
   | { t: 'setAsiChoice'; n: number; choice: 'asi' | 'feat' | null }
   | { t: 'allocateAsiPoint'; n: number; ability: AbilityKey; delta: 1 | -1 }
   | { t: 'setFeatForLevel'; n: number; featId: string | null }
-  | { t: 'setArchetype'; classId: string; archetypeId: string | null };
+  | { t: 'setArchetype'; classId: string; archetypeId: string | null }
+  | { t: 'setDeploymentRank'; deploymentId: string; rank: number }
+  | { t: 'setPrestige'; prestige: number };
 
 const clone = (b: CharacterBuild): CharacterBuild => ({
   ...b,
@@ -50,6 +52,7 @@ const clone = (b: CharacterBuild): CharacterBuild => ({
   play: { ...b.play, conditions: [...b.play.conditions] },
   overrides: { ...b.overrides },
   houseRuled: [...(b.houseRuled ?? [])],
+  deployments: deploymentsOf(b).map((d) => ({ ...d })),
 });
 
 const houseRuled = (b: CharacterBuild, step: string) => (b.houseRuled ?? []).includes(step);
@@ -279,6 +282,18 @@ export function applyBuildAction(
       target.archetypeId = action.archetypeId;
       break;
     }
+
+    case 'setDeploymentRank': {
+      const rank = Math.max(0, Math.min(5, Math.trunc(action.rank)));
+      const kept: DeploymentEntry[] = deploymentsOf(b).filter((d) => d.deploymentId !== action.deploymentId);
+      // Rank 0 is "not deployed": the entry is dropped rather than stored as a zero.
+      b.deployments = rank > 0 ? [...kept, { deploymentId: action.deploymentId, rank }] : kept;
+      break;
+    }
+
+    case 'setPrestige':
+      b.prestige = Math.max(0, Math.trunc(action.prestige));
+      break;
   }
   return b;
 }

@@ -294,3 +294,35 @@ test('setLevelHp on a non-existent level is a no-op', () => {
   const b = fighterAt(2);
   expect(applyBuildAction(b, ref, derived, { t: 'setLevelHp', n: 9, hp: 5 })).toEqual(b);
 });
+
+test('setDeploymentRank adds, updates, and clears a deployment', () => {
+  const b0 = emptyBuild('x');
+  const b1 = applyBuildAction(b0, ref, derived, { t: 'setDeploymentRank', deploymentId: 'gunner-row', rank: 2 });
+  expect(b1.deployments).toEqual([{ deploymentId: 'gunner-row', rank: 2 }]);
+
+  const b2 = applyBuildAction(b1, ref, derived, { t: 'setDeploymentRank', deploymentId: 'gunner-row', rank: 5 });
+  expect(b2.deployments).toEqual([{ deploymentId: 'gunner-row', rank: 5 }]);
+
+  const b3 = applyBuildAction(b2, ref, derived, { t: 'setDeploymentRank', deploymentId: 'pilot-row', rank: 1 });
+  expect(b3.deployments).toEqual([{ deploymentId: 'gunner-row', rank: 5 }, { deploymentId: 'pilot-row', rank: 1 }]);
+
+  // Rank 0 removes the entry entirely — "unranked" and "not deployed" are one state.
+  const b4 = applyBuildAction(b3, ref, derived, { t: 'setDeploymentRank', deploymentId: 'gunner-row', rank: 0 });
+  expect(b4.deployments).toEqual([{ deploymentId: 'pilot-row', rank: 1 }]);
+});
+
+test('setDeploymentRank clamps to 0..5 and never mutates the input build', () => {
+  const b0 = emptyBuild('x');
+  expect(applyBuildAction(b0, ref, derived, { t: 'setDeploymentRank', deploymentId: 'g', rank: 9 }).deployments)
+    .toEqual([{ deploymentId: 'g', rank: 5 }]);
+  expect(applyBuildAction(b0, ref, derived, { t: 'setDeploymentRank', deploymentId: 'g', rank: -2 }).deployments)
+    .toEqual([]);
+  expect(b0.deployments).toEqual([]);
+});
+
+test('setPrestige stores a clamped whole number', () => {
+  const b0 = emptyBuild('x');
+  expect(applyBuildAction(b0, ref, derived, { t: 'setPrestige', prestige: 12 }).prestige).toBe(12);
+  expect(applyBuildAction(b0, ref, derived, { t: 'setPrestige', prestige: -5 }).prestige).toBe(0);
+  expect(applyBuildAction(b0, ref, derived, { t: 'setPrestige', prestige: 3.7 }).prestige).toBe(3);
+});
