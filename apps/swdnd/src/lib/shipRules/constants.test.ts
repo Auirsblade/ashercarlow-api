@@ -14,6 +14,8 @@ const medium: RefShipSize = {
   description: '',
 };
 const small: RefShipSize = { ...medium, key: 'small', hullDie: 6, hullDiceStart: 3, shieldDie: 6, shieldDiceStart: 3, hardpointMult: 1, modMaxSuitesBase: -1, modMaxSuitesMult: 1 };
+const huge: RefShipSize = { ...medium, key: 'huge', hullDie: 12, hullDiceStart: 9, shieldDie: 12, shieldDiceStart: 9, hardpointMult: 2, modMaxSuitesBase: 6, modMaxSuitesMult: 3 };
+const gargantuan: RefShipSize = { ...medium, key: 'gargantuan', hullDie: 20, hullDiceStart: 11, shieldDie: 20, shieldDiceStart: 11, hardpointMult: 3, modMaxSuitesBase: 10, modMaxSuitesMult: 4 };
 
 test('the six ship abilities and six SOTG crew roles are fixed constants', () => {
   expect(SHIP_ABILITIES).toEqual(['str', 'dex', 'con', 'int', 'wis', 'cha']);
@@ -42,10 +44,24 @@ test('diceTotal is max on the first die, average-rounded-up after (matches hullD
   expect(diceTotal(8, 0)).toBe(0);
 });
 
-test('hull and shield dice counts start from the size row and gain one per tier', () => {
+test('hull and shield dice counts start from the size row and gain one per tier (most sizes)', () => {
   expect(hullDiceCount(medium, 0)).toBe(5);
   expect(hullDiceCount(medium, 3)).toBe(8);
   expect(shieldDiceCount(small, 2)).toBe(5);
+});
+
+test('Huge and Gargantuan hull/shield dice gain 2 per tier, not 1', () => {
+  // Huge: hullDiceStart 9, +2/tier -> tier 5 = 9 + 2*5 = 19 dice.
+  expect(hullDiceCount(huge, 5)).toBe(19);
+  expect(shieldDiceCount(huge, 5)).toBe(19);
+  // Gargantuan: hullDiceStart 11, +2/tier -> tier 3 = 11 + 2*3 = 17 dice.
+  expect(hullDiceCount(gargantuan, 3)).toBe(17);
+  expect(shieldDiceCount(gargantuan, 3)).toBe(17);
+  // Worked example from the controller ruling: a tier-5 Huge ship's max hull
+  // (diceTotal over hullDiceCount) is 138 — diceTotal(12, 19) = 12 + 18*7 = 138.
+  // The pre-fix flat +1/tier formula would have given 14 dice and 103
+  // (diceTotal(12, 14) = 12 + 13*7 = 103), which is wrong.
+  expect(diceTotal(huge.hullDie, hullDiceCount(huge, 5))).toBe(138);
 });
 
 test('budget formulas', () => {
@@ -56,6 +72,8 @@ test('budget formulas', () => {
   expect(suiteBudget(medium, 2)).toBe(5);       // 3 + 1*2
   expect(suiteBudget(small, 0)).toBe(0);        // max(0, -1 + 0)
   expect(suiteBudget(small, 2)).toBe(1);        // -1 + 2
+  expect(suiteBudget(gargantuan, 0)).toBe(10);  // base only: 10 + 4*0
+  expect(suiteBudget(gargantuan, 3)).toBe(22);  // 10 + 4*3
 });
 
 test('condition options list plain conditions plus levelled Slowed 1-4', () => {

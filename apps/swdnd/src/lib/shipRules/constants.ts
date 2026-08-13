@@ -31,7 +31,13 @@ export const HULL_DIE_BY_SIZE: Record<ShipSizeKey, number> = {
   tiny: 4, small: 6, medium: 8, large: 10, huge: 12, gargantuan: 20,
 };
 
-/** SOTG rate-of-fire size multiplier (result rounded up, min 1 Str mod). */
+/**
+ * SOTG rate-of-fire size multiplier (result rounded up, min 1 Str mod). Not
+ * pack-sourced — the ingest has no rate-of-fire table. Source: SOTG 2.0
+ * Chapter 7 rules text (Tiny/Small 1, Medium 1.5, Large 2.5, Huge 2,
+ * Gargantuan 3, round up). The non-monotonic Large > Huge value is
+ * intentional — that's genuinely what the book says.
+ */
 export const ROF_SIZE_MULTIPLIER: Record<ShipSizeKey, number> = {
   tiny: 1, small: 1, medium: 1.5, large: 2.5, huge: 2, gargantuan: 3,
 };
@@ -58,12 +64,21 @@ export function diceTotal(die: number, count: number): number {
   return die + (count - 1) * (Math.floor(die / 2) + 1);
 }
 
-/** Starting dice from the size row, plus one per tier. */
+/**
+ * Starting dice from the size row, plus per-tier growth. Huge and Gargantuan
+ * gain 2 dice per tier; every other size gains 1. Controller ruling: the
+ * vendor SW5E engine governs over the brief's flat +1 formula here — see
+ * `vendor/sw5e/module/documents/actor/actor.mjs:777,802,809`
+ * (`(hugeOrGrg ? 2 : 1) * tiers`), corroborated at `:2880` and `:3432`.
+ */
+function diceGrowthPerTier(size: RefShipSize): number {
+  return size.key === 'huge' || size.key === 'gargantuan' ? 2 : 1;
+}
 export function hullDiceCount(size: RefShipSize, tier: number): number {
-  return size.hullDiceStart + Math.max(0, tier);
+  return size.hullDiceStart + diceGrowthPerTier(size) * Math.max(0, tier);
 }
 export function shieldDiceCount(size: RefShipSize, tier: number): number {
-  return size.shieldDiceStart + Math.max(0, tier);
+  return size.shieldDiceStart + diceGrowthPerTier(size) * Math.max(0, tier);
 }
 
 /**
