@@ -1,5 +1,5 @@
 // apps/swdnd/src/lib/shipRules/constants.ts
-import type { RefShipSize, ShipAbilityKey, ShipRole, ShipSizeKey, WeaponMount } from './types';
+import type { PowerSystem, RefShipSize, ShipAbilityKey, ShipRole, ShipSizeKey, WeaponMount } from './types';
 
 export const SHIP_ABILITIES: ShipAbilityKey[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 
@@ -15,6 +15,9 @@ export const SHIP_ROLES: ShipRole[] = [
 export const WEAPON_MOUNTS: WeaponMount[] = [
   'fixed-forward', 'fixed-aft', 'fixed-port', 'fixed-starboard', 'turret',
 ];
+
+/** SotG system capacitors, in sheet display order. */
+export const POWER_SYSTEMS: PowerSystem[] = ['comms', 'engines', 'shields', 'sensors', 'weapons'];
 
 export const MAX_SHIP_TIER = 5;
 export const MAX_SYSTEM_DAMAGE = 6;

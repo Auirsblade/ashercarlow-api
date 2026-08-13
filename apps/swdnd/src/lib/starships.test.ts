@@ -1,7 +1,8 @@
 // apps/swdnd/src/lib/starships.test.ts
 import { expect, test } from 'bun:test';
 import {
-  mapShipArmorRow, mapShipEquipmentRow, mapShipModRow, mapShipSizeRow, mapShipWeaponRow,
+  mapDeploymentFeatureRow, mapDeploymentRow, mapShipArmorRow, mapShipEquipmentRow, mapShipModRow,
+  mapShipSizeRow, mapShipWeaponRow,
 } from './starships';
 
 test('mapShipSizeRow pulls dice, speeds and budget inputs (Medium, verbatim from the pack)', () => {
@@ -215,4 +216,58 @@ test('mapShipModRow unwraps the {value} envelopes', () => {
     system: { value: 'Suite' }, grade: { value: null }, prerequisites: { value: '' }, free: { slot: true, suite: true },
   } }) };
   expect(mapShipModRow(bare)).toMatchObject({ system: 'Suite', grade: 0, prerequisite: null, freeSlot: true, freeSuite: true });
+});
+
+test('mapDeploymentRow derives the role key from the row name', () => {
+  const row = {
+    id: '8B0449FqtXP02WVs', name: 'Gunner',
+    raw_json: JSON.stringify({ system: { description: { value: '<p>Guns &amp; more guns.</p>' } } }),
+  };
+  const d = mapDeploymentRow(row);
+  expect(d).toMatchObject({ id: '8B0449FqtXP02WVs', name: 'Gunner', role: 'gunner' });
+  expect(d.description).toContain('Guns & more guns.');
+  // A row whose name is not one of the six SotG deployments has no role.
+  expect(mapDeploymentRow({ id: 'x', name: 'Quartermaster', raw_json: '{}' }).role).toBeNull();
+});
+
+test('mapDeploymentFeatureRow parses role, rank, power-die location and activation', () => {
+  const row = {
+    id: 'dSMbwvdqRmrHWvwl', name: 'Angle Deflector Shields',
+    raw_json: JSON.stringify({
+      system: {
+        requirements: 'Technician 1st Rank',
+        activation: { type: 'reaction', cost: 1, condition: '' },
+        consume: { type: 'powerdice', target: 'attributes.power.shields.value', amount: 1 },
+        description: { value: '<p>Reduce the damage absorbed by your shields.</p>' },
+      },
+    }),
+  };
+  const f = mapDeploymentFeatureRow(row);
+  expect(f).toMatchObject({
+    id: 'dSMbwvdqRmrHWvwl', name: 'Angle Deflector Shields',
+    role: 'technician', rank: 1, powerSystem: 'shields', activation: 'reaction',
+  });
+  expect(f.description).toContain('Reduce the damage absorbed by your shields.');
+});
+
+test('mapDeploymentFeatureRow handles every rank ordinal and the Universal outlier', () => {
+  const at = (requirements: string) =>
+    mapDeploymentFeatureRow({ id: 'r', name: 'R', raw_json: JSON.stringify({ system: { requirements } }) });
+  expect(at('Gunner 2nd Rank')).toMatchObject({ role: 'gunner', rank: 2 });
+  expect(at('Pilot 3rd Rank')).toMatchObject({ role: 'pilot', rank: 3 });
+  expect(at('Operator 4th Rank')).toMatchObject({ role: 'operator', rank: 4 });
+  expect(at('Mechanic 5th Rank')).toMatchObject({ role: 'mechanic', rank: 5 });
+  expect(at('Universal 1st Rank')).toMatchObject({ role: 'universal', rank: 1 });
+  // Unparseable requirements fall into the universal bucket at rank 0 (always visible).
+  expect(at('')).toMatchObject({ role: 'universal', rank: 0 });
+});
+
+test('mapDeploymentFeatureRow leaves powerSystem null when nothing is consumed', () => {
+  const row = {
+    id: 'f', name: 'F',
+    raw_json: JSON.stringify({
+      system: { requirements: 'Pilot 1st Rank', consume: { type: '', target: '', amount: null } },
+    }),
+  };
+  expect(mapDeploymentFeatureRow(row)).toMatchObject({ powerSystem: null, activation: '' });
 });

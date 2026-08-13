@@ -120,12 +120,43 @@ export interface RefShipModification {
   baseCost: number | null;
   description: string;
 }
+
+export type PowerSystem = 'comms' | 'engines' | 'shields' | 'sensors' | 'weapons';
+
+/** A SotG deployment (one of the six crew roles) as it appears in the pack. */
+export interface RefDeployment {
+  id: string;
+  name: string;
+  /** Derived from the row name; null for rows that are not one of the six roles. */
+  role: ShipRole | null;
+  description: string;
+}
+
+/** A rank-gated deployment ability. Rendered as reference text — never automated. */
+export interface RefDeploymentFeature {
+  id: string;
+  name: string;
+  /** 'universal' covers the single SotG universal feature and unparseable rows. */
+  role: ShipRole | 'universal';
+  rank: number;                    // 1..5; 0 when the requirement line is unparseable
+  powerSystem: PowerSystem | null; // which capacitor the ability spends from
+  activation: string;              // '' | action | bonus | reaction | none | special | minute
+  description: string;
+}
+
+export interface DeploymentReferenceData {
+  deployments: Record<string, RefDeployment>;
+  deploymentFeatures: Record<string, RefDeploymentFeature>;
+}
+
 export interface ShipReferenceData {
   sizes: Record<string, RefShipSize>;
   armor: Record<string, RefShipArmor>;   // includes shields (kind: 'shield')
   equipment: Record<string, RefShipEquipment>;
   weapons: Record<string, RefShipWeapon>;
   modifications: Record<string, RefShipModification>;
+  deployments: Record<string, RefDeployment>;
+  deploymentFeatures: Record<string, RefDeploymentFeature>;
 }
 
 // ---- Derived ship (computed, never stored) ----
