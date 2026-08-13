@@ -4,9 +4,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { getCharacter } from '../lib/characters';
+import { getStarship } from '../lib/starships';
 import { panelPath, parsePanel, type Panel } from '../lib/panels';
 import SplitView from '../layouts/SplitView';
 import CharacterSheet from '../panels/CharacterSheet';
+import ShipSheet from '../panels/ShipSheet';
 import Tabletop from '../panels/Tabletop';
 import DMScreen from '../panels/DMScreen';
 import RollDock from './RollDock';
@@ -15,6 +17,7 @@ import { SplitContext } from './split';
 
 function PanelBody({ panel }: { panel: Panel }) {
   if (panel.kind === 'sheet') return <CharacterSheet characterId={panel.id} />;
+  if (panel.kind === 'ship') return <ShipSheet shipId={panel.id} />;
   if (panel.kind === 'map') return <Tabletop campaignId={panel.id} />;
   return <DMScreen campaignId={panel.id} />;
 }
@@ -30,8 +33,9 @@ function Half({
   if (!panel) {
     return (
       <div className="p-6 font-mono text-[11px] text-ht-muted">
-        Unknown panel — expected <code>sheet:&lt;id&gt;</code>, <code>map:&lt;id&gt;</code> or{' '}
-        <code>dm:&lt;id&gt;</code>. <Link className="ht-step" to="/">home</Link>
+        Unknown panel — expected <code>sheet:&lt;id&gt;</code>, <code>map:&lt;id&gt;</code>,{' '}
+        <code>dm:&lt;id&gt;</code> or <code>ship:&lt;id&gt;</code>.{' '}
+        <Link className="ht-step" to="/">home</Link>
       </div>
     );
   }
@@ -68,20 +72,21 @@ export default function SplitPage() {
   const r = parsePanel(right);
 
   // The page's single RollDock: first map/dm campaign id (left first), else
-  // resolve a sheet panel's campaign with a one-shot fetch.
-  const direct = [l, r].find((p) => p && p.kind !== 'sheet')?.id ?? null;
-  const sheetId = direct ? null : ([l, r].find((p) => p?.kind === 'sheet')?.id ?? null);
-  const [sheetCampaign, setSheetCampaign] = useState<string | null>(null);
+  // resolve a sheet or ship panel's campaign with a one-shot fetch.
+  const direct = [l, r].find((p) => p && p.kind !== 'sheet' && p.kind !== 'ship')?.id ?? null;
+  const entity = direct ? null : ([l, r].find((p) => p?.kind === 'sheet' || p?.kind === 'ship') ?? null);
+  const [entityCampaign, setEntityCampaign] = useState<string | null>(null);
   useEffect(() => {
-    setSheetCampaign(null);
-    if (!sheetId) return;
+    setEntityCampaign(null);
+    if (!entity) return;
     let alive = true;
-    getCharacter(sheetId)
-      .then((c) => alive && setSheetCampaign(c.campaign_id))
+    const load = entity.kind === 'ship' ? getStarship(entity.id) : getCharacter(entity.id);
+    load
+      .then((row) => alive && setEntityCampaign(row.campaign_id))
       .catch(() => {});
     return () => { alive = false; };
-  }, [sheetId]);
-  const dockCampaign = direct ?? sheetCampaign;
+  }, [entity?.kind, entity?.id]);
+  const dockCampaign = direct ?? entityCampaign;
 
   const body = (
     <>

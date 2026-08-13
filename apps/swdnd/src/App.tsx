@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useParams, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider } from "./lib/auth";
 import { getCharacter } from "./lib/characters";
+import { getStarship } from "./lib/starships";
 import RollDock from "./components/RollDock";
 import { RollTriggerProvider } from "./components/RollableText";
 import SplitPage from "./components/SplitPage";
 import { splitPath } from "./lib/panels";
 import SinglePanel from "./layouts/SinglePanel";
 import CharacterSheet from "./panels/CharacterSheet";
+import ShipSheet from "./panels/ShipSheet";
 import Tabletop from "./panels/Tabletop";
 import DMScreen from "./panels/DMScreen";
 import DmHome from "./panels/DmHome";
@@ -28,6 +30,31 @@ function SheetPage() {
   const body = (
     <>
       <CharacterSheet characterId={characterId} />
+      {campaignId && <RollDock campaignId={campaignId} />}
+    </>
+  );
+  return (
+    <SinglePanel>
+      {campaignId ? <RollTriggerProvider campaignId={campaignId}>{body}</RollTriggerProvider> : body}
+    </SinglePanel>
+  );
+}
+
+function ShipPage() {
+  const { shipId = "" } = useParams();
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getStarship(shipId)
+      .then((s) => alive && setCampaignId(s.campaign_id))
+      .catch(() => alive && setCampaignId(null));
+    return () => {
+      alive = false;
+    };
+  }, [shipId]);
+  const body = (
+    <>
+      <ShipSheet shipId={shipId} />
       {campaignId && <RollDock campaignId={campaignId} />}
     </>
   );
@@ -102,6 +129,8 @@ export default function App() {
           <Route path="/player" element={<SinglePanel><PlayerHome /></SinglePanel>} />
           <Route path="/sheet/:characterId" element={<SheetPage />} />
           <Route path="/sheet/:characterId/:mode" element={<SheetPage />} />
+          <Route path="/ship/:shipId" element={<ShipPage />} />
+          <Route path="/ship/:shipId/:mode" element={<ShipPage />} />
           <Route path="/map/:campaignId" element={<MapPage />} />
           <Route path="/dm" element={<SinglePanel><DmHome /></SinglePanel>} />
           <Route path="/dm/:campaignId" element={<DmPage />} />

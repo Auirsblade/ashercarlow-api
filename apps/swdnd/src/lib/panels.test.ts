@@ -8,6 +8,7 @@ const sheetA: Panel = { kind: 'sheet', id: 'a' };
 const sheetB: Panel = { kind: 'sheet', id: 'b' };
 const mapC: Panel = { kind: 'map', id: 'c' };
 const dmC: Panel = { kind: 'dm', id: 'c' };
+const shipS: Panel = { kind: 'ship', id: 's' };
 
 describe('parsePanel / formatPanel', () => {
   test('round-trips all three kinds', () => {
@@ -76,5 +77,28 @@ describe('navigateFrom — in a split', () => {
   });
   test('alt-click onto what the own side shows collapses to it', () => {
     expect(navigateFrom(ctxRight, sheetA, sheetA, true)).toBe('/sheet/a');
+  });
+});
+
+describe('ship panels', () => {
+  test('parse/format round-trip and the full-screen path', () => {
+    expect(parsePanel(formatPanel(shipS))).toEqual(shipS);
+    expect(panelPath(shipS)).toBe('/ship/s');
+    expect(parsePanel('ship:s')).toEqual(shipS);
+    expect(parsePanel('ship:')).toBeNull();
+  });
+
+  test('a ship never collides with a same-id sheet or map', () => {
+    expect(samePanel(shipS, { kind: 'sheet', id: 's' })).toBe(false);
+    expect(samePanel(shipS, { kind: 'ship', id: 's' })).toBe(true);
+  });
+
+  test('ship <-> map and ship <-> sheet splits come free from navigateFrom', () => {
+    expect(navigateFrom(null, shipS, mapC, true)).toBe('/split/ship:s/map:c');
+    expect(navigateFrom(null, sheetA, shipS, true)).toBe('/split/sheet:a/ship:s');
+    const ctxLeft = { left: shipS, right: mapC, side: 'left' as const };
+    expect(navigateFrom(ctxLeft, shipS, sheetA, false)).toBe('/split/sheet:a/map:c');
+    expect(navigateFrom(ctxLeft, shipS, mapC, false)).toBe('/map/c');   // collapse
+    expect(navigateFrom(ctxLeft, shipS, dmC, true)).toBe('/split/ship:s/dm:c');
   });
 });

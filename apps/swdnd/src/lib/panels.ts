@@ -1,11 +1,11 @@
 // apps/swdnd/src/lib/panels.ts — pure panel descriptors + split navigation model.
 // The whole alt-click/split rule table lives in navigateFrom; components stay dumb.
 
-export type PanelKind = 'sheet' | 'map' | 'dm';
+export type PanelKind = 'sheet' | 'map' | 'dm' | 'ship';
 export interface Panel { kind: PanelKind; id: string }
 export interface SplitCtx { left: Panel; right: Panel; side: 'left' | 'right' }
 
-const KINDS: readonly string[] = ['sheet', 'map', 'dm'];
+const KINDS: readonly string[] = ['sheet', 'map', 'dm', 'ship'];
 
 /** `kind:id` → Panel, or null on anything malformed. Ids may contain ':' but never '/'. */
 export function parsePanel(s: string): Panel | null {
@@ -23,6 +23,7 @@ export const formatPanel = (p: Panel): string => `${p.kind}:${p.id}`;
 export function panelPath(p: Panel): string {
   if (p.kind === 'sheet') return `/sheet/${p.id}`;
   if (p.kind === 'map') return `/map/${p.id}`;
+  if (p.kind === 'ship') return `/ship/${p.id}`;
   return `/dm/${p.id}`;
 }
 
