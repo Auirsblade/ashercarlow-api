@@ -134,11 +134,11 @@ export function applyShipPlayAction(
       const current = action.where === 'central'
         ? p.powerDice.central
         : p.powerDice.systems[action.where];
-      const step = action.t === 'setPower' ? action.n : Math.max(1, Math.trunc(action.n ?? 1));
+      const step = action.t === 'setPower' ? action.n : action.n === undefined ? 1 : Math.max(0, Math.trunc(action.n));
       const next = action.t === 'setPower'
         ? step
         : action.t === 'spendPower' ? current - step : current + step;
-      const clamped = Math.max(0, Math.min(cap, Math.trunc(next)));
+      const clamped = clamp(Math.trunc(next), 0, cap);
       if (action.where === 'central') p.powerDice.central = clamped;
       else p.powerDice.systems = { ...p.powerDice.systems, [action.where]: clamped };
       break;

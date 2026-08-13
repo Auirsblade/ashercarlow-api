@@ -131,3 +131,17 @@ test('power actions work on a pre-v2 document with no powerDice field', () => {
   const p = applyShipPlayAction(build, derived, { t: 'recoverPower', where: 'engines', n: 1 });
   expect(p.powerDice).toEqual({ central: 0, systems: { comms: 0, engines: 1, shields: 0, sensors: 0, weapons: 0 } });
 });
+
+test('an explicit n: 0 moves no dice — distinct from an omitted n (default step 1)', () => {
+  // Guards the ionization reactor's 1d2-1 recovery formula, which legitimately
+  // rolls 0 half the time: dispatch({ t: 'recoverPower', where, n: rolled })
+  // must be a no-op on a 0 roll, not silently grant a free die.
+  const build = ship();
+  const filled = applyShipPlayAction(build, derived, { t: 'recoverPower', where: 'central', n: 2 });
+
+  const recoveredZero = applyShipPlayAction({ ...build, play: filled }, derived, { t: 'recoverPower', where: 'central', n: 0 });
+  expect(recoveredZero.powerDice!.central).toBe(2); // unchanged, not clamped-up
+
+  const spentZero = applyShipPlayAction({ ...build, play: filled }, derived, { t: 'spendPower', where: 'central', n: 0 });
+  expect(spentZero.powerDice!.central).toBe(2);      // unchanged, not clamped-down
+});
