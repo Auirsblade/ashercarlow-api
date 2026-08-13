@@ -2,7 +2,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { useCharacterSheet } from '../../../hooks/useCharacterSheet';
 import { factionStyle } from '../../../lib/faction';
-import { rollD20 } from '../../../lib/dice';
+import { parseFormula, rollD20, rollFormula } from '../../../lib/dice';
 import { postRoll } from '../../../lib/rolls';
 import CoreBar from './CoreBar';
 import Abilities from './Abilities';
@@ -41,6 +41,22 @@ export default function Sheet({ characterId }: { characterId: string }) {
     }
   };
 
+  const rollDamage = (label: string, formula: string) => {
+    const terms = parseFormula(formula);
+    if (!terms) return;
+    const r = rollFormula(terms);
+    pushRoll(label, r.formula, r.total);
+    if (s.dto) {
+      void postRoll(s.dto.campaign_id, {
+        roller: characterName || 'Character',
+        label,
+        formula: r.formula,
+        rolls: r.rolls,
+        total: r.total,
+      }, searchParams.get('token')).catch(() => { /* anon viewer or offline: local roll still shows */ });
+    }
+  };
+
   const castingAbility = s.derived.casting.force.ability ?? s.derived.casting.tech.ability;
   const colAbilities = (
     <div className="flex flex-col gap-3">
@@ -50,7 +66,7 @@ export default function Sheet({ characterId }: { characterId: string }) {
   );
   const colCombat = (
     <div className="flex flex-col gap-3">
-      <Combat build={s.build} derived={s.derived} ref={s.ref} onRoll={roll} />
+      <Combat build={s.build} derived={s.derived} ref={s.ref} onRoll={roll} onRollDamage={rollDamage} />
       <Gear build={s.build} ref={s.ref} />
       <Features build={s.build} ref={s.ref} />
     </div>
