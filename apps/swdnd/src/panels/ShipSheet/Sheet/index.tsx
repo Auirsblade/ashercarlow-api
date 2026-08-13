@@ -74,7 +74,10 @@ export default function ShipSheetView({ shipId }: { shipId: string }) {
     <div className="flex flex-col gap-3">
       <ShipWeapons derived={derived} play={play} editable={s.canEdit} dispatch={s.dispatch}
         onRoll={roll} onRollDamage={rollDamage} />
-      <CrewStrip shipId={shipId} crew={s.crew} />
+      <CrewStrip
+        shipId={shipId} campaignId={s.dto?.campaign_id ?? null} crew={s.crew}
+        canEdit={s.canEdit} token={token} onReload={s.reload}
+      />
     </div>
   );
   const colNotes = (

@@ -25,6 +25,7 @@ export interface ShipSheetState {
   canEdit: boolean;
   dto: StarshipDto | null;
   dispatch: (action: ShipPlayAction) => void;
+  reload: () => void;
 }
 
 const SAVE_DEBOUNCE_MS = 400;
@@ -41,6 +42,9 @@ export function useShipSheet(shipId: string): ShipSheetState {
   const [ownCharacterIds, setOwnCharacterIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Bumped by reload() to re-run the load effect below (e.g. after a crew
+  // PUT/DELETE) without restructuring the hook's single load path.
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -59,7 +63,9 @@ export function useShipSheet(shipId: string): ShipSheetState {
       .catch((e: unknown) => alive && setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [shipId]);
+  }, [shipId, reloadNonce]);
+
+  const reload = useCallback(() => setReloadNonce((n) => n + 1), []);
 
   useEffect(() => {
     if (!token) { setOwnCharacterIds([]); return; }
@@ -114,5 +120,5 @@ export function useShipSheet(shipId: string): ShipSheetState {
     [canEdit, build, derived, play, shipId, token],
   );
 
-  return { loading, error, build, derived, ref, play, crew: dto?.crew ?? [], canEdit, dto, dispatch };
+  return { loading, error, build, derived, ref, play, crew: dto?.crew ?? [], canEdit, dto, dispatch, reload };
 }
