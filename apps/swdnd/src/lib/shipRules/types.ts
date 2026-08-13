@@ -34,6 +34,8 @@ export interface ShipPlayState {
   conditions: string[];                // plain + levelled ('Slowed 1'…'Slowed 4')
   systemDamage: number;                // 0-6, its own field (never a condition string)
   notes: string;
+  /** Absent on pre-v2 documents — read via powerDiceOf(). Manual counters only. */
+  powerDice?: PowerDicePool;
 }
 export interface ShipBuild {
   schemaVersion: number;
@@ -122,6 +124,12 @@ export interface RefShipModification {
 }
 
 export type PowerSystem = 'comms' | 'engines' | 'shields' | 'sensors' | 'weapons';
+
+/** Power dice held in the central capacitor and per system capacitor. */
+export interface PowerDicePool {
+  central: number;
+  systems: Record<PowerSystem, number>;
+}
 
 /** A SotG deployment (one of the six crew roles) as it appears in the pack. */
 export interface RefDeployment {
@@ -222,7 +230,7 @@ export interface DerivedShip {
  */
 export function emptyShipBuild(name: string): ShipBuild {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     identity: { name, sizeId: '', tier: 0 },
     abilities: {
       base: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
@@ -233,6 +241,7 @@ export function emptyShipBuild(name: string): ShipBuild {
     play: {
       hull: 0, shields: 0, hullDiceSpent: 0, shieldDiceSpent: 0,
       ammoSpent: {}, conditions: [], systemDamage: 0, notes: '',
+      powerDice: { central: 0, systems: { comms: 0, engines: 0, shields: 0, sensors: 0, weapons: 0 } },
     },
     overrides: {},
     houseRuled: [],

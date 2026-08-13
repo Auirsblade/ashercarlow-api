@@ -4,7 +4,7 @@ import { emptyShipBuild } from './types';
 
 test('emptyShipBuild matches the backend emptyShipBuildJson mirror exactly', () => {
   expect(emptyShipBuild('Ghost')).toEqual({
-    schemaVersion: 1,
+    schemaVersion: 2,
     identity: { name: 'Ghost', sizeId: '', tier: 0 },
     abilities: { base: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, increases: [] },
     equipment: [],
@@ -12,6 +12,7 @@ test('emptyShipBuild matches the backend emptyShipBuildJson mirror exactly', () 
     play: {
       hull: 0, shields: 0, hullDiceSpent: 0, shieldDiceSpent: 0,
       ammoSpent: {}, conditions: [], systemDamage: 0, notes: '',
+      powerDice: { central: 0, systems: { comms: 0, engines: 0, shields: 0, sensors: 0, weapons: 0 } },
     },
     overrides: {},
     houseRuled: [],
