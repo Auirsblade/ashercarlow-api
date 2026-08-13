@@ -60,7 +60,7 @@ export function deleteShipCrew(id: string, body: { characterId: string; role?: S
 import { cleanRichText } from './richText';
 import type {
   RefShipArmor, RefShipEquipment, RefShipModification, RefShipSize, RefShipWeapon,
-  ShipAbilityKey, ShipSizeKey, ShipWeaponCategory,
+  ShipAbilityKey, ShipReferenceData, ShipSizeKey, ShipWeaponCategory,
 } from './shipRules/types';
 
 interface ShipRow { id: string; name?: string | null; raw_json: string; [k: string]: unknown }
@@ -204,5 +204,38 @@ export function mapShipModRow(row: ShipRow): RefShipModification {
     freeSuite: s.free?.suite === true,
     baseCost: numOrNull(s.basecost?.value),
     description: descriptionOf(s),
+  };
+}
+
+// ---- Reference loader ----
+function byId<T extends { id: string }>(rows: T[]): Record<string, T> {
+  return Object.fromEntries(rows.map((r) => [r.id, r]));
+}
+
+/**
+ * Fetch the starship content categories the engine needs.
+ *
+ * DELIBERATELY SEPARATE from loadReference(): ship data loads only on ship
+ * screens, because the character loader already fires 10 requests on every
+ * panel mount and no character screen needs starship rows.
+ *
+ * starship_deployments / deployment_features / ventures stay out until the crew
+ * layer (sub-project 2); starship_features and starship_actions stay out of the
+ * spine because nothing computes from them yet.
+ */
+export async function loadShipReference(): Promise<ShipReferenceData> {
+  const [sizes, armor, equipment, weapons, modifications] = await Promise.all([
+    api<ShipRow[]>('/swdnd/content/starship_sizes'),
+    api<ShipRow[]>('/swdnd/content/starship_armor'),
+    api<ShipRow[]>('/swdnd/content/starship_equipment'),
+    api<ShipRow[]>('/swdnd/content/starship_weapons'),
+    api<ShipRow[]>('/swdnd/content/starship_modifications'),
+  ]);
+  return {
+    sizes: byId(sizes.map(mapShipSizeRow)),
+    armor: byId(armor.map(mapShipArmorRow)),
+    equipment: byId(equipment.map(mapShipEquipmentRow)),
+    weapons: byId(weapons.map(mapShipWeaponRow)),
+    modifications: byId(modifications.map(mapShipModRow)),
   };
 }
