@@ -69,3 +69,86 @@ describe('swdnd starship reads', () => {
     expect(list[0].crew).toHaveLength(1);
   });
 });
+
+// Route tests run in dev mode (no ASHERCARLOW_AUTH_TOKEN), where admin checks
+// pass for everyone. To exercise the player matrix we temporarily set the env
+// var so the asserts actually discriminate (same pattern as tokens.test.ts).
+const withAuthEnv = async (fn: () => Promise<void>) => {
+  process.env.ASHERCARLOW_AUTH_TOKEN = 'test-admin-secret';
+  try { await fn(); } finally { delete process.env.ASHERCARLOW_AUTH_TOKEN; }
+};
+
+describe('swdnd starship creation bootstrap', () => {
+  let campaignId: string;
+  let tokenA: string;
+  let tokenB: string;
+  let charA: string;
+  let charB: string;
+
+  beforeAll(async () => {
+    delete process.env.ASHERCARLOW_AUTH_TOKEN;
+    swdndDb.exec('DELETE FROM starship_crew; DELETE FROM starship; DELETE FROM character; DELETE FROM player; DELETE FROM campaign;');
+    campaignId = ((await (await app.request('/swdnd/campaigns', json('POST', { name: 'Fleet' }))).json()) as any).id;
+    const pA = (await (await app.request(`/swdnd/campaigns/${campaignId}/players`, json('POST', { name: 'A' }))).json()) as any;
+    const pB = (await (await app.request(`/swdnd/campaigns/${campaignId}/players`, json('POST', { name: 'B' }))).json()) as any;
+    tokenA = pA.access_token;
+    tokenB = pB.access_token;
+    charA = ((await (await app.request(`/swdnd/campaigns/${campaignId}/characters?token=${tokenA}`, json('POST', { name: 'Ace' }))).json()) as any).id;
+    charB = ((await (await app.request(`/swdnd/campaigns/${campaignId}/characters?token=${tokenB}`, json('POST', { name: 'Bee' }))).json()) as any).id;
+  });
+
+  it('admin/dev creation may start with an empty roster and seeds the empty build', async () => {
+    const res = await app.request(`/swdnd/campaigns/${campaignId}/starships`, json('POST', { name: 'Ghost' }));
+    expect(res.status).toBe(201);
+    const ship = (await res.json()) as any;
+    expect(ship.crew).toEqual([]);
+    expect(ship.data_json).toMatchObject({
+      schemaVersion: 1,
+      identity: { name: 'Ghost', sizeId: '', tier: 0 },
+      abilities: { base: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, increases: [] },
+      equipment: [], modifications: [], overrides: {}, houseRuled: [],
+    });
+    expect(ship.data_json.play).toMatchObject({
+      hull: 0, shields: 0, hullDiceSpent: 0, shieldDiceSpent: 0,
+      ammoSpent: {}, conditions: [], systemDamage: 0, notes: '',
+    });
+  });
+
+  it('404s an unknown campaign', async () => {
+    expect((await app.request('/swdnd/campaigns/nope/starships', json('POST', { name: 'X' }))).status).toBe(404);
+  });
+
+  it('player creation requires an initial crew naming an owned character', async () => {
+    await withAuthEnv(async () => {
+      // no crew at all -> 400
+      const bare = await app.request(`/swdnd/campaigns/${campaignId}/starships?token=${tokenA}`, json('POST', { name: 'Solo' }));
+      expect(bare.status).toBe(400);
+
+      // someone else's character -> 403
+      const stolen = await app.request(`/swdnd/campaigns/${campaignId}/starships?token=${tokenA}`,
+        json('POST', { name: 'Solo', crew: { characterId: charB, role: 'pilot' } }));
+      expect(stolen.status).toBe(403);
+
+      // own character -> 201 with the crew row inserted in the same transaction
+      const ok = await app.request(`/swdnd/campaigns/${campaignId}/starships?token=${tokenA}`,
+        json('POST', { name: 'Solo', crew: { characterId: charA, role: 'pilot' } }));
+      expect(ok.status).toBe(201);
+      const ship = (await ok.json()) as any;
+      expect(ship.crew).toEqual([{ character_id: charA, character_name: 'Ace', role: 'pilot' }]);
+    });
+  });
+
+  it('rejects an unknown role at validation time', async () => {
+    const res = await app.request(`/swdnd/campaigns/${campaignId}/starships`,
+      json('POST', { name: 'Bad', crew: { characterId: charA, role: 'chef' } }));
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a crew character from another campaign', async () => {
+    const other = ((await (await app.request('/swdnd/campaigns', json('POST', { name: 'Other' }))).json()) as any).id;
+    const outsider = ((await (await app.request(`/swdnd/campaigns/${other}/characters`, json('POST', { name: 'Outsider' }))).json()) as any).id;
+    const res = await app.request(`/swdnd/campaigns/${campaignId}/starships`,
+      json('POST', { name: 'Mixed', crew: { characterId: outsider, role: 'gunner' } }));
+    expect(res.status).toBe(400);
+  });
+});
