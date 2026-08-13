@@ -31,12 +31,16 @@ export function substituteMod(formula: string, mod: number): string {
  * Which ability a weapon attacks with. Explicit `system.ability` wins; then
  * finesse (better of STR/DEX); then ranged (DEX); else STR.
  * Property keys are the sw5e short forms (`fin`, `ran`) — verified against the
- * ingested `weapons` rows, where they are booleans.
+ * ingested `weapons` rows. `fin` is a plain boolean on every row that has it.
+ * `ran` is NOT a boolean flag: on 93/101 rows it holds the weapon's range in
+ * feet (e.g. `40`, `100`); only 8 outlier rows use literal `true`. Treat it as
+ * truthy (present/nonzero = ranged), never `=== true`, or blaster-type
+ * weapons silently fall through to STR.
  */
 function attackAbility(weapon: RefWeapon, str: number, dex: number): AbilityKey {
   if (weapon.ability) return weapon.ability;
   if (weapon.properties.fin === true) return dex > str ? 'dex' : 'str';
-  if (weapon.properties.ran === true) return 'dex';
+  if (weapon.properties.ran) return 'dex';
   return 'str';
 }
 

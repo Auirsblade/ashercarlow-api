@@ -78,6 +78,22 @@ test('substituteMod drops the term at +0 and flips the sign when negative', () =
   expect(substituteMod('2d6', 4)).toBe('2d6');
 });
 
+test('ran holding a range value (not literal true) still resolves to DEX — real pack shape', () => {
+  // In the ingested pack, `ran` is the weapon's range in feet on the vast majority of
+  // rows (e.g. Blaster pistol: 40, Blaster rifle: 100); only a handful of outliers use
+  // literal `true`. This fixture matches the common shape.
+  const withBlaster = {
+    ...ref,
+    weapons: {
+      ...ref.weapons,
+      blaster: w({ id: 'blaster', name: 'Blaster pistol', properties: { ran: 40 }, damageParts: [['1d6 + @mod', 'energy']] }),
+    },
+  } as ReferenceData;
+  const b = hero(18, 12);                       // STR +4, DEX +1
+  b.equipment = [...b.equipment, { ref: 'blaster', qty: 1, equipped: true }];
+  expect(byId(weaponAttacks(b, computeSheet(b, withBlaster), withBlaster), 'blaster').ability).toBe('dex');
+});
+
 test('a weapon with no damage parts still yields an attack entry', () => {
   const b = hero(16, 12);
   b.equipment = [{ ref: 'none', qty: 1, equipped: true }];
