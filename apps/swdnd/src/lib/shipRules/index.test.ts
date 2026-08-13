@@ -32,6 +32,7 @@ const ref: ShipReferenceData = {
   equipment: {},
   weapons: { laser: weaponRow({ id: 'laser', name: 'Twin laser cannon', damageParts: [['1d8 + @mod', 'energy']] }) },
   modifications: { scrambler: modRow('scrambler', 'Engineering'), lounge: modRow('lounge', 'Suite') },
+  deployments: {}, deploymentFeatures: {},
 };
 
 function ghost() {
@@ -99,4 +100,20 @@ test('a brand new build computes cleanly with no size chosen', () => {
     modSlotsUsed: 0, modSlotsMax: 1, suitesUsed: 0, suitesMax: 0,
   });
   expect(d.weapons).toEqual([]);
+});
+
+test('computeShip threads crew input into weapons and exposes the power profile', () => {
+  const bare = computeShip(ghost(), ref);
+  expect(bare.weapons[0].crewProficiencyApplied).toBe(false);
+  expect(bare.power.die.label).toBeString();
+  expect(bare.power.capacity).toBeDefined();
+
+  const crewed = computeShip(ghost(), ref, { proficiencyByRole: { gunner: 3 } });
+  expect(crewed.weapons[0].attackBonus).toBe(bare.weapons[0].attackBonus + 3);
+  expect(crewed.weapons[0].saveDc).toBeNull();   // ghost's lasers are attack weapons
+  expect(crewed.weapons[0].crewProficiencyApplied).toBe(true);
+  // Crew never touches anything but the crew-dependent numbers.
+  expect(crewed.armorClass).toBe(bare.armorClass);
+  expect(crewed.maxHull).toBe(bare.maxHull);
+  expect(crewed.power).toEqual(bare.power);
 });

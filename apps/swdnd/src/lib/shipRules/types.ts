@@ -2,6 +2,7 @@
 // Congruent with lib/rules/types.ts: one stored build document (build + play),
 // reference view types mapped from /swdnd/content/starship_* raw_json, and a
 // derived sheet that is computed and never stored.
+import type { DerivedPower } from './power';
 
 export type ShipAbilityKey = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
 export type ShipSizeKey = 'tiny' | 'small' | 'medium' | 'large' | 'huge' | 'gargantuan';
@@ -191,12 +192,18 @@ export interface ShipWeaponProfile {
   attackShipMod: number;
   /** e.g. '+3 + your proficiency' — the crew layer replaces the suffix. */
   attackText: string;
+  /** attackShipMod plus the deployed gunner's proficiency, if any (crew layer). */
+  attackBonus: number;
+  /** True when a deployed gunner's proficiency is folded into attackBonus/saveDc. */
+  crewProficiencyApplied: boolean;
   damageFormula: string;
   damageType: string;
   rangeNormal: number | null;
   rangeLong: number | null;
   saveAbility: ShipAbilityKey | '';
-  saveDc: number | null;           // 8 + WIS mod, or null on attack weapons
+  /** 8 + WIS mod (+ crew proficiency), or the pack's own flat DC — crew
+   * proficiency never touches a flat pack DC. null on attack weapons. */
+  saveDc: number | null;
   reload: number | null;
   usesAmmo: boolean;
 }
@@ -220,6 +227,7 @@ export interface DerivedShip {
   modSlotsMax: number;
   suitesUsed: number;
   suitesMax: number;
+  power: DerivedPower;
 }
 
 /**

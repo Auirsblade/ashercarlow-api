@@ -5,8 +5,9 @@ import {
   maxHull, maxShields, shieldRegen, shipArmorClass, shipDamageReduction, shipHullDice, shipShieldDice,
 } from './defense';
 import { shipSpeed, shipTurnSpeed } from './movement';
+import { derivePower } from './power';
 import { rateOfFireCap, shipWeaponProfiles } from './weapons';
-import type { DerivedShip, ShipAbilityBlock, ShipAbilityKey, ShipBuild, ShipReferenceData } from './types';
+import type { CrewInput, DerivedShip, ShipAbilityBlock, ShipAbilityKey, ShipBuild, ShipReferenceData } from './types';
 
 export * from './types';
 
@@ -20,10 +21,11 @@ function applyOverride(build: ShipBuild, field: OverridableShip, computed: numbe
 }
 
 /**
- * The whole derived ship. Pure, synchronous, frontend-only, and SHIP-ONLY:
- * no crew inputs (see shipRules/weapons.ts for the deferred proficiency).
+ * The whole derived ship. Pure and synchronous. `crew` is optional — when
+ * omitted, behavior is byte-identical to the ship-only spine (weapons carry
+ * no gunner proficiency, `attackText`'s "+ your proficiency" suffix stands).
  */
-export function computeShip(build: ShipBuild, ref: ShipReferenceData): DerivedShip {
+export function computeShip(build: ShipBuild, ref: ShipReferenceData, crew?: CrewInput): DerivedShip {
   const scores = totalShipAbilityScores(build);
   const tier = shipTier(build);
   const size = ref.sizes[build.identity.sizeId];
@@ -50,7 +52,7 @@ export function computeShip(build: ShipBuild, ref: ShipReferenceData): DerivedSh
     shieldRegen: shieldRegen(build, ref),
     speed: applyOverride(build, 'speed', shipSpeed(build, ref)),
     turnSpeed: applyOverride(build, 'turnSpeed', shipTurnSpeed(build, ref)),
-    weapons: shipWeaponProfiles(build, ref),
+    weapons: shipWeaponProfiles(build, ref, crew),
     rateOfFireCap: rateOfFireCap(build, ref),
     hardpointsUsed: build.equipment.filter((e) => e.kind === 'weapon').length,
     hardpointsMax: size ? hardpointBudget(size, tier) : 0,
@@ -58,5 +60,6 @@ export function computeShip(build: ShipBuild, ref: ShipReferenceData): DerivedSh
     modSlotsMax: modSlotBudget(tier),
     suitesUsed,
     suitesMax: size ? suiteBudget(size, tier) : 0,
+    power: derivePower(build, ref),
   };
 }
