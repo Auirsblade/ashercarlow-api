@@ -57,7 +57,7 @@ Sub-project 1 is merged before this plan runs. Every name below has been **pre-a
 
 - `deployments` has exactly **6 rows** (Coordinator, Gunner, Mechanic, Operator, Pilot, Technician — `content_source: 'SotG'`); `deployment_features` has **109 rows**.
 - Every deployment feature's `system.requirements` matches `^<Name> <N>(st|nd|rd|th) Rank$`. Names are the six deployments plus a single `Universal 1st Rank` row.
-- Power-die location comes from `system.consume.target`: `attributes.power.{comms|engines|sensors|shields|weapons}.value` (71 rows have one, 38 do not). There is no `central` target in the pack.
+- Power-die location comes from `system.consume.target`: `attributes.power.{comms|engines|sensors|shields|weapons}.value`. CORRECTED (Task 1 Step 1 confirmation, checked against `data/swdnd.sqlite`): **39 rows have one** (`consume.type: 'powerdice'` exactly matches these 39 — comms 12, engines 8, weapons 8, shields 7, sensors 4), the other **70 have no `consume` block at all** — not the 71/38 split originally stated here. There is no `central` target in the pack.
 - `system.activation.type` ∈ `'' | action | bonus | reaction | none | special | minute`.
 - `starship_equipment` holds 17 rows: 3 couplings (`Direct` / `Distributed` / `Hub & Spoke Power Coupling`, `system.equipmentType === 'powerc'`), 3 reactors (`Fuel Cell` / `Ionization` / `Power Core Reactor`, `equipmentType === 'reactor'`), 11 hyperdrives.
 - Tech die is the **Mechanic's** (`System Boost`, Mechanic 1st Rank): starts d4, becomes d6/d8/d10/d12 at ranks 2/3/4/5; using it does not expend it; rolling a 1 shrinks it one size until the end of your next turn, rolling max grows it one size (cap d12).
