@@ -41,12 +41,16 @@ export function shipSaveDc(build: ShipBuild): number {
 /**
  * One profile per installed weapon.
  *
- * `attackShipMod` / `attackText` remain the SHIP's part only — WIS mod plus
- * the weapon's own bonus — so the display can still render the spine's
- * breakdown. `attackBonus` and `saveDc`'s `8 + WIS` fallback additionally
- * fold in the deployed gunner's proficiency when `crew` is supplied; a flat
- * pack `saveDc` is left untouched either way (controller ruling: crew
- * proficiency never modifies an explicit pack DC).
+ * `attackShipMod` stays the SHIP's part only — WIS mod plus the weapon's own
+ * bonus — so the display can still render the spine's breakdown. `attackText`
+ * is engine-conditional: with no gunner deployed it keeps the spine's literal
+ * "+ your proficiency" suffix, but once `crewProficiencyApplied` is true the
+ * bonus is complete, so `attackText` renders the whole signed `attackBonus`
+ * instead (controller ruling, review round 1 — no suffix left to fill in).
+ * `saveDc`'s `8 + WIS` fallback also folds in the deployed gunner's
+ * proficiency when `crew` is supplied; a flat pack `saveDc` is left untouched
+ * either way (controller ruling: crew proficiency never modifies an explicit
+ * pack DC).
  */
 export function shipWeaponProfiles(build: ShipBuild, ref: ShipReferenceData, crew?: CrewInput): ShipWeaponProfile[] {
   const scores = totalShipAbilityScores(build);
@@ -64,6 +68,7 @@ export function shipWeaponProfiles(build: ShipBuild, ref: ShipReferenceData, cre
     // should never reference one as an equipped weapon, but skip defensively.
     if (!w || w.category === 'other') continue;
     const attackShipMod = wisMod + w.attackBonus;
+    const attackBonus = attackShipMod + prof;
     const [rawFormula, type] = w.damageParts[0] ?? ['', ''];
     // Ammo-driven weapons carry a 0dN placeholder formula -- their damage
     // comes from the loaded ammo item, not the launcher, so there is no
@@ -79,8 +84,12 @@ export function shipWeaponProfiles(build: ShipBuild, ref: ShipReferenceData, cre
       category: w.category,
       mount: entry.mount ?? DEFAULT_MOUNT,
       attackShipMod,
-      attackText: `${signed(attackShipMod)} + your proficiency`,
-      attackBonus: attackShipMod + prof,
+      // A deployed gunner completes the bonus — no more "+ your proficiency"
+      // suffix to fill in, since attackBonus is now the whole number. With no
+      // gunner aboard, the spine's literal suffix still stands (controller
+      // ruling, review round 1).
+      attackText: crewProficiencyApplied ? signed(attackBonus) : `${signed(attackShipMod)} + your proficiency`,
+      attackBonus,
       crewProficiencyApplied,
       damageFormula,
       damageType: type,

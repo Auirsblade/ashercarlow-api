@@ -39,6 +39,7 @@ const ref: ShipReferenceData = {
   },
   weapons: { laser: weaponRow('laser'), ion: weaponRow('ion'), pod: weaponRow('pod') },
   modifications: { eng: modRow('eng', 'Engineering'), uni: modRow('uni', 'Universal'), lounge: modRow('lounge', 'Suite') },
+  deployments: {}, deploymentFeatures: {},
 };
 
 const status = (b = ship()) => shipStepStatus(b, ref, computeShip(b, ref));

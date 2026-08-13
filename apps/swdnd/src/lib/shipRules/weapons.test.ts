@@ -170,6 +170,7 @@ test('a deployed gunner adds their proficiency to attack and save DC', () => {
   expect(soloSave.saveDc).toBe(11);              // 8 + 3, the fallback formula
   expect(soloPack.saveDc).toBe(13);              // flat pack DC, unaffected by Wis
   expect(solo.crewProficiencyApplied).toBe(false);
+  expect(solo.attackText).toBe('+3 + your proficiency');  // no gunner: spine suffix stands
 
   const [crewed, crewedSave, crewedPack] = shipWeaponProfiles(b, ref, { proficiencyByRole: { gunner: 4 } });
   expect(crewed.attackBonus).toBe(7);            // 3 + 4
@@ -178,6 +179,7 @@ test('a deployed gunner adds their proficiency to attack and save DC', () => {
   expect(crewedPack.attackBonus).toBe(7);        // attack bonus still gets crew, independent of the DC rule
   expect(crewed.saveDc).toBeNull();              // still null — crew never invents a DC
   expect(crewed.crewProficiencyApplied).toBe(true);
+  expect(crewed.attackText).toBe('+7');          // gunner deployed: complete bonus, no suffix
 
   // A crew with no gunner is the same as no crew at all.
   const noGunner = shipWeaponProfiles(b, ref, { proficiencyByRole: { pilot: 6 } })[0];

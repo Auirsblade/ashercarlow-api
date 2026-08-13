@@ -10,7 +10,7 @@ const size = (key: RefShipSize['key'], turn: number): RefShipSize => ({
 
 const ref: ShipReferenceData = {
   sizes: { medium: size('medium', 200), gargantuan: size('gargantuan', 50) },
-  armor: {}, equipment: {}, weapons: {}, modifications: {},
+  armor: {}, equipment: {}, weapons: {}, modifications: {}, deployments: {}, deploymentFeatures: {},
 };
 
 test('speed and turn speed come straight from the size row', () => {

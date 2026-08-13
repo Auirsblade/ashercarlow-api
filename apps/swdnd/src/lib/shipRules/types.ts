@@ -190,7 +190,8 @@ export interface ShipWeaponProfile {
   mount: WeaponMount;
   /** The SHIP's part of the attack bonus (WIS mod + the weapon's own bonus). */
   attackShipMod: number;
-  /** e.g. '+3 + your proficiency' — the crew layer replaces the suffix. */
+  /** e.g. '+3 + your proficiency' with no crew, or the complete '+7' once a
+   * gunner is deployed and crewProficiencyApplied is true (no suffix left). */
   attackText: string;
   /** attackShipMod plus the deployed gunner's proficiency, if any (crew layer). */
   attackBonus: number;
