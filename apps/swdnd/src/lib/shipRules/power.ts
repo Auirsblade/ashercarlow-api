@@ -71,6 +71,19 @@ function recoveryLabelFor(formula: string): string {
   return formula === '1' ? '1 die' : `${formula.replace('-', '−')} dice`;
 }
 
+/**
+ * The pack stores some `powerdicerec` values with cosmetic parens around the
+ * dice term -- the Ionization Reactor's real row is literally `"(1d2)-1"` --
+ * which `lib/dice.ts`'s `parseFormula` grammar (flat `NdM±K` sums, no
+ * grouping) rejects outright. Every formula in this domain is a flat
+ * dice-plus-or-minus-constant expression, so a blind paren strip is safe and
+ * yields the same value as the RECOVERY table's own already-clean
+ * equivalent (`"(1d2)-1"` -> `"1d2-1"`).
+ */
+function normalizeDiceFormula(formula: string): string {
+  return formula.replace(/[()]/g, '');
+}
+
 export function emptyPowerDice(): PowerDicePool {
   const systems = {} as Record<PowerSystem, number>;
   for (const s of POWER_SYSTEMS) systems[s] = 0;
@@ -94,7 +107,9 @@ export function powerDiceOf(play: ShipPlayState): PowerDicePool {
  * NAME still decides the topology LABEL (Direct / Distributed / Hub & Spoke,
  * fuel-cell / ionization / power-core) since that's cosmetic and the three
  * per kind are stable -- but a row whose name doesn't match any of those
- * keywords (e.g. "Coaxium Coupling", "Fusial Reactor": real pack rows) is
+ * keywords (e.g. "Coaxium Coupling", "Fusial Reactor" -- synthetic fixture
+ * names, not rows in the actual ingested pack, used to prove this exact gap;
+ * a real pack row with an unrecognized name would hit the same path) is
  * still a genuinely installed coupling/reactor, and its OWN mapped
  * centralCapacity/systemCapacity/powerDiceRecovery fields win over the
  * name-keyed table so capacity/recovery never silently reads as empty
@@ -120,12 +135,11 @@ export function derivePower(build: ShipBuild, ref: ShipReferenceData): DerivedPo
       }
     : tableCapacity;
 
+  const recoveryFormula = reactorRow?.powerDiceRecovery
+    ? normalizeDiceFormula(reactorRow.powerDiceRecovery)
+    : tableRecovery.formula;
   const recovery: ReactorRecovery = reactorRow
-    ? {
-        kind: reactorKind,
-        formula: reactorRow.powerDiceRecovery ?? tableRecovery.formula,
-        label: recoveryLabelFor(reactorRow.powerDiceRecovery ?? tableRecovery.formula),
-      }
+    ? { kind: reactorKind, formula: recoveryFormula, label: recoveryLabelFor(recoveryFormula) }
     : tableRecovery;
 
   return {

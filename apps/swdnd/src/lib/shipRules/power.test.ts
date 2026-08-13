@@ -86,12 +86,17 @@ test('derivePower reads tier, coupling and reactor off the build', () => {
 });
 
 test('derivePower honors an installed row\'s own mapped capacity/recovery over the name table (Task 6 ADJUDICATED)', () => {
-  // Coaxium Coupling / Fusial Reactor: real pack rows whose NAMES don't match
-  // any of the direct/distributed/hub-spoke or fuel-cell/ionization/power-core
-  // keywords, so couplingKindOf/reactorKindOf both fall through to null. Which
-  // entry IS the coupling/reactor comes from entry.kind, not the name scan --
-  // so their own centralCapacity/systemCapacity/powerDiceRecovery must still
-  // be honored instead of silently reading as zero/absent.
+  // Coaxium Coupling / Fusial Reactor: SYNTHETIC fixture names (mirroring
+  // integration.test.ts's fixture ref) -- not rows in the actual ingested
+  // pack (data/swdnd.sqlite's starship_equipment has exactly three coupling
+  // names and three reactor names, all of which DO match the keywords
+  // below). They stand in for "some future/unrecognized row name", whose
+  // NAME won't match any of the direct/distributed/hub-spoke or
+  // fuel-cell/ionization/power-core keywords, so couplingKindOf/reactorKindOf
+  // both fall through to null. Which entry IS the coupling/reactor comes from
+  // entry.kind, not the name scan -- so their own
+  // centralCapacity/systemCapacity/powerDiceRecovery must still be honored
+  // instead of silently reading as zero/absent.
   const ref = {
     equipment: {
       coaxium: {
@@ -120,4 +125,31 @@ test('derivePower honors an installed row\'s own mapped capacity/recovery over t
   expect(power.coupling).toBeNull();                              // topology label stays name-derived
   expect(power.capacity).toEqual({ central: 4, perSystem: 2 });    // capacity honored regardless
   expect(power.recovery).toMatchObject({ kind: null, formula: '1d4', label: '1d4 dice' });
+});
+
+test('derivePower strips the pack\'s cosmetic parens so the Ionization Reactor\'s real recovery formula parses', () => {
+  // The REAL ingested row (data/swdnd.sqlite, starship_equipment, "Ionization
+  // Reactor") stores powerdicerec as the literal string "(1d2)-1" -- verified
+  // directly against the pack, not a guess. lib/dice.ts's parseFormula grammar
+  // is flat NdM+/-K sums with no grouping, so the unstripped string fails to
+  // parse (a leading '(' is a gap before the first token), which regressed
+  // the reactor-recovery roll to a silent constant 0 once derivePower started
+  // preferring the row's own mapped powerDiceRecovery over the table.
+  const ref = {
+    equipment: {
+      ionization: {
+        id: 'ionization', name: 'Ionization Reactor', kind: 'reactor',
+        centralCapacity: null, systemCapacity: null, powerDiceRecovery: '(1d2)-1',
+      },
+    },
+  } as unknown as ShipReferenceData;
+  const build = {
+    ...emptyShipBuild('Kestrel'),
+    equipment: [{ id: 'e1', ref: 'ionization', kind: 'reactor' }],
+  } as unknown as ShipBuild;
+
+  const power = derivePower(build, ref);
+  expect(power.recovery.kind).toBe('ionization');       // name-recognized: matches the table's own kind too
+  expect(power.recovery.formula).toBe('1d2-1');          // parens stripped -- parses, matches the table's formula
+  expect(power.recovery.label).toBe('1d2−1 dice');
 });
