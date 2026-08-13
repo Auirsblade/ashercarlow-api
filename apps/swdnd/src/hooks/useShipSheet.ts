@@ -55,10 +55,15 @@ export function useShipSheet(shipId: string): ShipSheetState {
       .then(([ship, reference]) => {
         if (!alive) return;
         setDto(ship);
-        setBuild(ship.data_json);
-        setPlay(ship.data_json.play);
         setRef(reference);
         setError(null);
+        // A local edit is pending (debounce timer armed) — don't clobber it.
+        // Mirrors the WS handler's own guard below, same rationale: our
+        // in-flight PATCH hasn't landed yet, so this fetch's build/play are
+        // stale relative to what the user is mid-typing.
+        if (saveTimer.current) return;
+        setBuild(ship.data_json);
+        setPlay(ship.data_json.play);
       })
       .catch((e: unknown) => alive && setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => alive && setLoading(false));
