@@ -1,6 +1,6 @@
 // apps/swdnd/src/lib/rules/core.ts
 import { ABILITIES } from './constants';
-import type { AbilityKey, CharacterBuild } from './types';
+import type { AbilityKey, CharacterBuild, DeploymentEntry } from './types';
 
 export function abilityModifier(score: number): number {
   return Math.floor((score - 10) / 2);
@@ -56,4 +56,14 @@ export function classLevelOrdinal(build: CharacterBuild, n: number): number {
     if (l.n === n) break;
   }
   return count;
+}
+
+/** Tolerant read: pre-v2 documents have no `deployments` field. */
+export function deploymentsOf(build: CharacterBuild): DeploymentEntry[] {
+  return build.deployments ?? [];
+}
+
+/** Tolerant read: pre-v2 documents have no `prestige` field. */
+export function prestigeOf(build: CharacterBuild): number {
+  return build.prestige ?? 0;
 }
