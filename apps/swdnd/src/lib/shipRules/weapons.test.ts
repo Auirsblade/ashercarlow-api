@@ -17,7 +17,7 @@ const weapon = (over: Partial<RefShipWeapon> & { id: string }): RefShipWeapon =>
 
 const ref: ShipReferenceData = {
   sizes: { medium: size('medium'), small: size('small'), gargantuan: size('gargantuan'), large: size('large'), huge: size('huge'), tiny: size('tiny') },
-  armor: {}, equipment: {}, modifications: {},
+  armor: {}, equipment: {}, modifications: {}, deployments: {}, deploymentFeatures: {},
   weapons: {
     laser: weapon({ id: 'laser', name: 'Twin laser cannon', category: 'primary',
       damageParts: [['1d8 + @mod', 'energy']], rangeNormal: 600, rangeLong: 2400 }),
@@ -153,4 +153,36 @@ test('rate-of-fire cap is max(Str mod, 1) x the size multiplier, rounded up', ()
   expect(rateOfFireCap(ship({ str: 18, size: 'huge' }), ref)).toBe(8);     // 4 * 2
   expect(rateOfFireCap(ship({ str: 15, size: 'gargantuan' }), ref)).toBe(6); // 2 * 3
   expect(rateOfFireCap(ship({ str: 4, size: 'tiny' }), ref)).toBe(1);      // floor at 1
+});
+
+test('a deployed gunner adds their proficiency to attack and save DC', () => {
+  // Ship Wis 16 → +3. Gunner proficiency +4.
+  const b = ship({ wis: 16 });
+  b.equipment = [
+    { id: 'w1', ref: 'laser', kind: 'weapon' },     // attack weapon: saveDc stays null
+    { id: 'w2', ref: 'ion', kind: 'weapon' },       // save weapon, no pack DC: 8 + Wis (+ crew)
+    { id: 'w3', ref: 'heavyIon', kind: 'weapon' },  // save weapon, EXPLICIT pack DC 13
+  ];
+
+  const [solo, soloSave, soloPack] = shipWeaponProfiles(b, ref);
+  expect(solo.attackBonus).toBe(3);              // ship Wis mod only
+  expect(solo.saveDc).toBeNull();                // unchanged: attack weapons have no DC
+  expect(soloSave.saveDc).toBe(11);              // 8 + 3, the fallback formula
+  expect(soloPack.saveDc).toBe(13);              // flat pack DC, unaffected by Wis
+  expect(solo.crewProficiencyApplied).toBe(false);
+  expect(solo.attackText).toBe('+3 + your proficiency');  // no gunner: spine suffix stands
+
+  const [crewed, crewedSave, crewedPack] = shipWeaponProfiles(b, ref, { proficiencyByRole: { gunner: 4 } });
+  expect(crewed.attackBonus).toBe(7);            // 3 + 4
+  expect(crewedSave.saveDc).toBe(15);            // 8 + 3 + 4 — fallback composes with crew
+  expect(crewedPack.saveDc).toBe(13);            // flat pack DC — crew proficiency NEVER touches it
+  expect(crewedPack.attackBonus).toBe(7);        // attack bonus still gets crew, independent of the DC rule
+  expect(crewed.saveDc).toBeNull();              // still null — crew never invents a DC
+  expect(crewed.crewProficiencyApplied).toBe(true);
+  expect(crewed.attackText).toBe('+7');          // gunner deployed: complete bonus, no suffix
+
+  // A crew with no gunner is the same as no crew at all.
+  const noGunner = shipWeaponProfiles(b, ref, { proficiencyByRole: { pilot: 6 } })[0];
+  expect(noGunner.attackBonus).toBe(3);
+  expect(noGunner.crewProficiencyApplied).toBe(false);
 });

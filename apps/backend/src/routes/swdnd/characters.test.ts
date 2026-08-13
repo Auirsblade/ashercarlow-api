@@ -28,7 +28,7 @@ test('create → get → list → patch → delete', async () => {
   expect(created.status).toBe(201);
   const char = await created.json();
   expect(char.name).toBe('Lyra');
-  expect(char.data_json.schemaVersion).toBe(1); // parsed, not a string
+  expect(char.data_json.schemaVersion).toBe(2); // parsed, not a string
 
   const got = await app.request(`/swdnd/characters/${char.id}`);
   expect(got.status).toBe(200);

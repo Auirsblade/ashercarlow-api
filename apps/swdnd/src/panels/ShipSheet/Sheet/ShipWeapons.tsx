@@ -30,10 +30,16 @@ export default function ShipWeapons({
               {w.name}
             </span>
             {w.saveDc == null ? (
-              <button type="button" className="ht-step" title="roll to hit (add your own proficiency)"
-                onClick={() => onRoll(`${w.name} attack`, w.attackShipMod)}>
-                {/* The ship supplies WIS; the gunner's proficiency is a crew stat
-                    the spine does not know — hence the literal suffix. */}
+              // attackBonus is attackShipMod + the deployed gunner's
+              // proficiency (0 when uncrewed, so this always matches
+              // attackShipMod in that case) -- always roll it, not
+              // attackShipMod alone, so the die matches what attackText
+              // displays once a gunner is aboard. The tooltip mirrors the
+              // same crewProficiencyApplied flag attackText uses for its
+              // "+ your proficiency" suffix.
+              <button type="button" className="ht-step"
+                title={w.crewProficiencyApplied ? 'roll to hit' : 'roll to hit (add your own proficiency)'}
+                onClick={() => onRoll(`${w.name} attack`, w.attackBonus)}>
                 {w.attackText}
               </button>
             ) : (

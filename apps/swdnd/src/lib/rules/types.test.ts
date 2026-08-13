@@ -4,7 +4,7 @@ import { emptyBuild, type CharacterBuild } from './types';
 
 test('emptyBuild produces a schema-versioned, playable blank build', () => {
   const b: CharacterBuild = emptyBuild('Lyra Voss');
-  expect(b.schemaVersion).toBe(1);
+  expect(b.schemaVersion).toBe(2);
   expect(b.identity.name).toBe('Lyra Voss');
   expect(b.identity.alignment).toBe('none');
   expect(b.abilities.base).toEqual({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
@@ -12,4 +12,8 @@ test('emptyBuild produces a schema-versioned, playable blank build', () => {
   expect(b.play.hp).toBe(0);
   expect(b.overrides).toEqual({});
   expect(b.houseRuled).toEqual([]);
+  expect(b.deployments).toEqual([]);
+  expect(b.prestige).toBe(0);
+  // Absent tech die means "follow the Mechanic-rank base" — see lib/crew.ts.
+  expect(b.play.techDie).toBeUndefined();
 });

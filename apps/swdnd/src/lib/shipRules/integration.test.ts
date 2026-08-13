@@ -51,6 +51,7 @@ const ref: ShipReferenceData = {
   modifications: {
     scrambler: { id: 'scrambler', name: 'EM Scrambler', system: 'Engineering', grade: 1, prerequisite: null, freeSlot: false, freeSuite: false, baseCost: 3500, description: '' } satisfies RefShipModification,
   },
+  deployments: {}, deploymentFeatures: {},
 };
 
 function build(...actions: ShipBuildAction[]) {

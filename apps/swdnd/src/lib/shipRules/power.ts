@@ -1,0 +1,151 @@
+// apps/swdnd/src/lib/shipRules/power.ts
+// SotG power dice: die SIZE from ship tier, CAPACITY from the power coupling's
+// topology, RECOVERY rate from the reactor. Everything here is display data —
+// dice move only when a player taps a counter.
+import { POWER_SYSTEMS } from './constants';
+import type { PowerDicePool, PowerSystem, RefShipEquipment, ShipBuild, ShipPlayState, ShipReferenceData } from './types';
+
+export type CouplingKind = 'direct' | 'distributed' | 'hub-spoke';
+export type ReactorKind = 'fuel-cell' | 'ionization' | 'power-core';
+
+export interface PowerDie { sides: number | null; label: string }
+export interface PowerCapacity { central: number; perSystem: number }
+export interface ReactorRecovery { kind: ReactorKind | null; formula: string; label: string }
+export interface DerivedPower {
+  die: PowerDie;
+  coupling: CouplingKind | null;
+  capacity: PowerCapacity;
+  recovery: ReactorRecovery;
+}
+
+// Tier 0 ships have no die: each "power die" is a flat 1.
+const DIE_BY_TIER: Array<number | null> = [null, 4, 6, 8, 10, 12];
+
+export function powerDieForTier(tier: number): PowerDie {
+  const t = Math.max(0, Math.min(DIE_BY_TIER.length - 1, Math.trunc(tier)));
+  const sides = DIE_BY_TIER[t];
+  return { sides, label: sides === null ? '1' : `d${sides}` };
+}
+
+export function couplingKindOf(name: string): CouplingKind | null {
+  const n = name.toLowerCase();
+  if (!n.includes('coupling')) return null;
+  if (n.includes('direct')) return 'direct';
+  if (n.includes('distributed')) return 'distributed';
+  if (n.includes('hub')) return 'hub-spoke';
+  return null;
+}
+
+export function reactorKindOf(name: string): ReactorKind | null {
+  const n = name.toLowerCase();
+  if (!n.includes('reactor')) return null;
+  if (n.includes('fuel cell')) return 'fuel-cell';
+  if (n.includes('ionization')) return 'ionization';
+  if (n.includes('power core')) return 'power-core';
+  return null;
+}
+
+const CAPACITY: Record<CouplingKind, PowerCapacity> = {
+  direct: { central: 4, perSystem: 0 },        // one big capacitor
+  distributed: { central: 0, perSystem: 2 },   // no central store at all
+  'hub-spoke': { central: 2, perSystem: 1 },   // a bit of both
+};
+
+export function powerCapacity(coupling: CouplingKind | null): PowerCapacity {
+  return coupling ? { ...CAPACITY[coupling] } : { central: 0, perSystem: 0 };
+}
+
+const RECOVERY: Record<ReactorKind, { formula: string; label: string }> = {
+  'fuel-cell': { formula: '1', label: '1 die' },
+  ionization: { formula: '1d2-1', label: '1d2−1 dice' },
+  'power-core': { formula: '1d2', label: '1d2 dice' },
+};
+
+export function reactorRecovery(kind: ReactorKind | null): ReactorRecovery {
+  return kind ? { kind, ...RECOVERY[kind] } : { kind: null, formula: '0', label: 'no reactor' };
+}
+
+/** Renders a dice-pool formula the same way the RECOVERY table's own labels do. */
+function recoveryLabelFor(formula: string): string {
+  if (formula === '0') return 'no known recovery';
+  return formula === '1' ? '1 die' : `${formula.replace('-', '−')} dice`;
+}
+
+/**
+ * The pack stores some `powerdicerec` values with cosmetic parens around the
+ * dice term -- the Ionization Reactor's real row is literally `"(1d2)-1"` --
+ * which `lib/dice.ts`'s `parseFormula` grammar (flat `NdM±K` sums, no
+ * grouping) rejects outright. Every formula in this domain is a flat
+ * dice-plus-or-minus-constant expression, so a blind paren strip is safe and
+ * yields the same value as the RECOVERY table's own already-clean
+ * equivalent (`"(1d2)-1"` -> `"1d2-1"`).
+ */
+function normalizeDiceFormula(formula: string): string {
+  return formula.replace(/[()]/g, '');
+}
+
+export function emptyPowerDice(): PowerDicePool {
+  const systems = {} as Record<PowerSystem, number>;
+  for (const s of POWER_SYSTEMS) systems[s] = 0;
+  return { central: 0, systems };
+}
+
+/** Tolerant read: pre-v2 ship documents have no `powerDice` field. */
+export function powerDiceOf(play: ShipPlayState): PowerDicePool {
+  const stored = play.powerDice;
+  if (!stored) return emptyPowerDice();
+  const pool = emptyPowerDice();
+  pool.central = stored.central ?? 0;
+  for (const s of POWER_SYSTEMS) pool.systems[s] = stored.systems?.[s] ?? 0;
+  return pool;
+}
+
+/**
+ * The only function here that touches reference data. WHICH installed entry
+ * is the coupling/reactor comes from `entry.kind` (authoritative — set at
+ * install time), not from scanning every equipped item's name. The pack row
+ * NAME still decides the topology LABEL (Direct / Distributed / Hub & Spoke,
+ * fuel-cell / ionization / power-core) since that's cosmetic and the three
+ * per kind are stable -- but a row whose name doesn't match any of those
+ * keywords (e.g. "Coaxium Coupling", "Fusial Reactor" -- synthetic fixture
+ * names, not rows in the actual ingested pack, used to prove this exact gap;
+ * a real pack row with an unrecognized name would hit the same path) is
+ * still a genuinely installed coupling/reactor, and its OWN mapped
+ * centralCapacity/systemCapacity/powerDiceRecovery fields win over the
+ * name-keyed table so capacity/recovery never silently reads as empty
+ * (Task 6, ADJUDICATED).
+ */
+export function derivePower(build: ShipBuild, ref: ShipReferenceData): DerivedPower {
+  let couplingRow: RefShipEquipment | null = null;
+  let reactorRow: RefShipEquipment | null = null;
+  for (const entry of build.equipment) {
+    if (entry.kind === 'coupling') couplingRow ??= ref.equipment[entry.ref] ?? null;
+    else if (entry.kind === 'reactor') reactorRow ??= ref.equipment[entry.ref] ?? null;
+  }
+
+  const coupling = couplingRow ? couplingKindOf(couplingRow.name) : null;
+  const reactorKind = reactorRow ? reactorKindOf(reactorRow.name) : null;
+  const tableCapacity = powerCapacity(coupling);
+  const tableRecovery = reactorRecovery(reactorKind);
+
+  const capacity: PowerCapacity = couplingRow
+    ? {
+        central: couplingRow.centralCapacity ?? tableCapacity.central,
+        perSystem: couplingRow.systemCapacity ?? tableCapacity.perSystem,
+      }
+    : tableCapacity;
+
+  const recoveryFormula = reactorRow?.powerDiceRecovery
+    ? normalizeDiceFormula(reactorRow.powerDiceRecovery)
+    : tableRecovery.formula;
+  const recovery: ReactorRecovery = reactorRow
+    ? { kind: reactorKind, formula: recoveryFormula, label: recoveryLabelFor(recoveryFormula) }
+    : tableRecovery;
+
+  return {
+    die: powerDieForTier(build.identity.tier),
+    coupling,
+    capacity,
+    recovery,
+  };
+}

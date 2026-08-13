@@ -2,6 +2,7 @@
 // Congruent with lib/rules/types.ts: one stored build document (build + play),
 // reference view types mapped from /swdnd/content/starship_* raw_json, and a
 // derived sheet that is computed and never stored.
+import type { DerivedPower } from './power';
 
 export type ShipAbilityKey = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
 export type ShipSizeKey = 'tiny' | 'small' | 'medium' | 'large' | 'huge' | 'gargantuan';
@@ -34,6 +35,8 @@ export interface ShipPlayState {
   conditions: string[];                // plain + levelled ('Slowed 1'…'Slowed 4')
   systemDamage: number;                // 0-6, its own field (never a condition string)
   notes: string;
+  /** Absent on pre-v2 documents — read via powerDiceOf(). Manual counters only. */
+  powerDice?: PowerDicePool;
 }
 export interface ShipBuild {
   schemaVersion: number;
@@ -120,12 +123,58 @@ export interface RefShipModification {
   baseCost: number | null;
   description: string;
 }
+
+export type PowerSystem = 'comms' | 'engines' | 'shields' | 'sensors' | 'weapons';
+
+/** Power dice held in the central capacitor and per system capacitor. */
+export interface PowerDicePool {
+  central: number;
+  systems: Record<PowerSystem, number>;
+}
+
+/** A SotG deployment (one of the six crew roles) as it appears in the pack. */
+export interface RefDeployment {
+  id: string;
+  name: string;
+  /** Derived from the row name; null for rows that are not one of the six roles. */
+  role: ShipRole | null;
+  description: string;
+}
+
+/** A rank-gated deployment ability. Rendered as reference text — never automated. */
+export interface RefDeploymentFeature {
+  id: string;
+  name: string;
+  /** 'universal' covers the single SotG universal feature and unparseable rows. */
+  role: ShipRole | 'universal';
+  rank: number;                    // 1..5; 0 when the requirement line is unparseable
+  powerSystem: PowerSystem | null; // which capacitor the ability spends from
+  activation: string;              // '' | action | bonus | reaction | none | special | minute
+  description: string;
+}
+
+export interface DeploymentReferenceData {
+  deployments: Record<string, RefDeployment>;
+  deploymentFeatures: Record<string, RefDeploymentFeature>;
+}
+
+/**
+ * What the ship engine knows about its crew. Proficiency only, and only for
+ * roles whose crew member is deployed at rank 1+ (SotG). Absent → the sheet
+ * falls back to the spine's "+ your proficiency" display.
+ */
+export interface CrewInput {
+  proficiencyByRole: Partial<Record<ShipRole, number>>;
+}
+
 export interface ShipReferenceData {
   sizes: Record<string, RefShipSize>;
   armor: Record<string, RefShipArmor>;   // includes shields (kind: 'shield')
   equipment: Record<string, RefShipEquipment>;
   weapons: Record<string, RefShipWeapon>;
   modifications: Record<string, RefShipModification>;
+  deployments: Record<string, RefDeployment>;
+  deploymentFeatures: Record<string, RefDeploymentFeature>;
 }
 
 // ---- Derived ship (computed, never stored) ----
@@ -141,14 +190,21 @@ export interface ShipWeaponProfile {
   mount: WeaponMount;
   /** The SHIP's part of the attack bonus (WIS mod + the weapon's own bonus). */
   attackShipMod: number;
-  /** e.g. '+3 + your proficiency' — the crew layer replaces the suffix. */
+  /** e.g. '+3 + your proficiency' with no crew, or the complete '+7' once a
+   * gunner is deployed and crewProficiencyApplied is true (no suffix left). */
   attackText: string;
+  /** attackShipMod plus the deployed gunner's proficiency, if any (crew layer). */
+  attackBonus: number;
+  /** True when a deployed gunner's proficiency is folded into attackBonus/saveDc. */
+  crewProficiencyApplied: boolean;
   damageFormula: string;
   damageType: string;
   rangeNormal: number | null;
   rangeLong: number | null;
   saveAbility: ShipAbilityKey | '';
-  saveDc: number | null;           // 8 + WIS mod, or null on attack weapons
+  /** 8 + WIS mod (+ crew proficiency), or the pack's own flat DC — crew
+   * proficiency never touches a flat pack DC. null on attack weapons. */
+  saveDc: number | null;
   reload: number | null;
   usesAmmo: boolean;
 }
@@ -172,6 +228,7 @@ export interface DerivedShip {
   modSlotsMax: number;
   suitesUsed: number;
   suitesMax: number;
+  power: DerivedPower;
 }
 
 /**
@@ -182,7 +239,7 @@ export interface DerivedShip {
  */
 export function emptyShipBuild(name: string): ShipBuild {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     identity: { name, sizeId: '', tier: 0 },
     abilities: {
       base: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
@@ -193,6 +250,7 @@ export function emptyShipBuild(name: string): ShipBuild {
     play: {
       hull: 0, shields: 0, hullDiceSpent: 0, shieldDiceSpent: 0,
       ammoSpent: {}, conditions: [], systemDamage: 0, notes: '',
+      powerDice: { central: 0, systems: { comms: 0, engines: 0, shields: 0, sensors: 0, weapons: 0 } },
     },
     overrides: {},
     houseRuled: [],

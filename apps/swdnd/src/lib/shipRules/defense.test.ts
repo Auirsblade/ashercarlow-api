@@ -34,7 +34,7 @@ const ref: ShipReferenceData = {
     fortress: armor({ id: 'fortress', kind: 'shield', baseAc: 0, capacityCoefficient: 1.5, regenCoefficient: 0.667 }),
     quick: armor({ id: 'quick', kind: 'shield', baseAc: 0, capacityCoefficient: 0.667, regenCoefficient: 1.5 }),
   },
-  equipment: {}, weapons: {}, modifications: {},
+  equipment: {}, weapons: {}, modifications: {}, deployments: {}, deploymentFeatures: {},
 };
 
 function ship(opts: { tier?: number; dex?: number; con?: number; str?: number; size?: string; install?: Array<[string, 'armor' | 'shield']> } = {}) {

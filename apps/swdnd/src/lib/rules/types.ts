@@ -27,6 +27,11 @@ export interface EquipmentEntry {
   equipped: boolean;
   mods?: string[];
 }
+/** A SotG deployment the character holds, at rank 1–5. Rank 0 entries are never stored. */
+export interface DeploymentEntry {
+  deploymentId: string;            // id of a `deployments` reference row
+  rank: number;                    // 1..5
+}
 export interface PlayState {
   hp: number;
   tempHp: number;
@@ -38,6 +43,12 @@ export interface PlayState {
   exhaustion: number;
   inspiration: boolean;
   notes: string;
+  /**
+   * Mechanic's tech die, as a die SIZE (4|6|8|10|12), or 0 while unusable.
+   * Absent → follow the rank-derived base (see techDieForRank in lib/crew.ts).
+   * Manual: the roll-a-1 / roll-max swing is never automated.
+   */
+  techDie?: number;
 }
 export interface CharacterBuild {
   schemaVersion: number;
@@ -70,6 +81,10 @@ export interface CharacterBuild {
   overrides: Record<string, number>;
   /** Step keys the player has house-rule-unlocked (additive; absent = none). */
   houseRuled?: string[];
+  /** SotG deployments held, ranked. Absent on pre-v2 documents — read via deploymentsOf(). */
+  deployments?: DeploymentEntry[];
+  /** SotG prestige, a plain tracked number. Absent on pre-v2 documents — read via prestigeOf(). */
+  prestige?: number;
 }
 
 // ---- Reference view types (mapped from /swdnd/content/:category raw_json) ----
@@ -222,7 +237,7 @@ export interface DerivedSheet {
 
 export function emptyBuild(name: string): CharacterBuild {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     identity: { name, speciesId: '', backgroundId: '', alignment: 'none' },
     abilities: {
       base: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
@@ -240,5 +255,7 @@ export function emptyBuild(name: string): CharacterBuild {
     },
     overrides: {},
     houseRuled: [],
+    deployments: [],
+    prestige: 0,
   };
 }

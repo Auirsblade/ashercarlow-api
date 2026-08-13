@@ -58,7 +58,9 @@ export function deleteShipCrew(id: string, body: { characterId: string; role?: S
 
 // ---- Reference row mappers (Foundry raw_json -> engine view types) ----
 import { cleanRichText } from './richText';
+import { SHIP_ROLES } from './shipRules/constants';
 import type {
+  DeploymentReferenceData, PowerSystem, RefDeployment, RefDeploymentFeature,
   RefShipArmor, RefShipEquipment, RefShipModification, RefShipSize, RefShipWeapon,
   ShipAbilityKey, ShipReferenceData, ShipSizeKey, ShipWeaponCategory,
 } from './shipRules/types';
@@ -208,9 +210,58 @@ export function mapShipModRow(row: ShipRow): RefShipModification {
   };
 }
 
+const ROLE_SET = new Set<string>(SHIP_ROLES);
+function asRole(v: unknown): ShipRole | null {
+  const k = String(v ?? '').trim().toLowerCase();
+  return ROLE_SET.has(k) ? (k as ShipRole) : null;
+}
+
+export function mapDeploymentRow(row: ShipRow): RefDeployment {
+  const s = system(row);
+  const name = row.name ?? row.id;
+  return { id: row.id, name, role: asRole(name), description: descriptionOf(s) };
+}
+
+// "Technician 1st Rank" / "Gunner 4th Rank" / "Universal 1st Rank" — the only
+// machine-readable link between a feature and its deployment + rank.
+const REQUIREMENT_RE = /^\s*([A-Za-z]+)\s+(\d+)(?:st|nd|rd|th)\s+rank/i;
+const POWER_TARGET_RE = /^attributes\.power\.(comms|engines|shields|sensors|weapons)\.value$/;
+
+export function mapDeploymentFeatureRow(row: ShipRow): RefDeploymentFeature {
+  const s = system(row);
+  const m = REQUIREMENT_RE.exec(typeof s.requirements === 'string' ? s.requirements : '');
+  const target = typeof s.consume?.target === 'string' ? s.consume.target : '';
+  const ps = POWER_TARGET_RE.exec(target);
+  return {
+    id: row.id,
+    name: row.name ?? row.id,
+    role: (m ? asRole(m[1]) : null) ?? 'universal',
+    rank: m ? Number(m[2]) : 0,
+    powerSystem: ps ? (ps[1] as PowerSystem) : null,
+    activation: typeof s.activation?.type === 'string' ? s.activation.type : '',
+    description: descriptionOf(s),
+  };
+}
+
 // ---- Reference loader ----
 function byId<T extends { id: string }>(rows: T[]): Record<string, T> {
   return Object.fromEntries(rows.map((r) => [r.id, r]));
+}
+
+/**
+ * Two requests, fetched on demand. Ship screens get these through
+ * loadShipReference(); the character sheet's Deployments UI calls this directly
+ * rather than growing the ten-request character loader.
+ */
+export async function loadDeploymentReference(): Promise<DeploymentReferenceData> {
+  const [deployments, features] = await Promise.all([
+    api<ShipRow[]>('/swdnd/content/deployments'),
+    api<ShipRow[]>('/swdnd/content/deployment_features'),
+  ]);
+  return {
+    deployments: byId(deployments.map(mapDeploymentRow)),
+    deploymentFeatures: byId(features.map(mapDeploymentFeatureRow)),
+  };
 }
 
 /**
@@ -220,17 +271,19 @@ function byId<T extends { id: string }>(rows: T[]): Record<string, T> {
  * screens, because the character loader already fires 10 requests on every
  * panel mount and no character screen needs starship rows.
  *
- * starship_deployments / deployment_features / ventures stay out until the crew
- * layer (sub-project 2); starship_features and starship_actions stay out of the
- * spine because nothing computes from them yet.
+ * Folds in loadDeploymentReference() (crew layer, sub-project 2) so ship
+ * screens pay nothing extra for it; `ventures` stays out, and
+ * starship_features / starship_actions stay out of the spine, because
+ * nothing computes from them yet.
  */
 export async function loadShipReference(): Promise<ShipReferenceData> {
-  const [sizes, armor, equipment, weapons, modifications] = await Promise.all([
+  const [sizes, armor, equipment, weapons, modifications, deploymentRef] = await Promise.all([
     api<ShipRow[]>('/swdnd/content/starship_sizes'),
     api<ShipRow[]>('/swdnd/content/starship_armor'),
     api<ShipRow[]>('/swdnd/content/starship_equipment'),
     api<ShipRow[]>('/swdnd/content/starship_weapons'),
     api<ShipRow[]>('/swdnd/content/starship_modifications'),
+    loadDeploymentReference(),
   ]);
   return {
     sizes: byId(sizes.map(mapShipSizeRow)),
@@ -238,5 +291,6 @@ export async function loadShipReference(): Promise<ShipReferenceData> {
     equipment: byId(equipment.map(mapShipEquipmentRow)),
     weapons: byId(weapons.map(mapShipWeaponRow)),
     modifications: byId(modifications.map(mapShipModRow)),
+    ...deploymentRef,
   };
 }

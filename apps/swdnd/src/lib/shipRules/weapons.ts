@@ -2,7 +2,7 @@
 import { substituteMod } from '../rules/weaponAttacks';
 import { ROF_SIZE_MULTIPLIER } from './constants';
 import { shipAbilityModifier, totalShipAbilityScores } from './core';
-import type { ShipBuild, ShipReferenceData, ShipWeaponProfile, WeaponMount } from './types';
+import type { CrewInput, ShipBuild, ShipReferenceData, ShipWeaponProfile, WeaponMount } from './types';
 
 export const DEFAULT_MOUNT: WeaponMount = 'fixed-forward';
 
@@ -41,15 +41,24 @@ export function shipSaveDc(build: ShipBuild): number {
 /**
  * One profile per installed weapon.
  *
- * SPINE LIMITATION (by design): the attack bonus is the SHIP's part only —
- * WIS mod plus the weapon's own bonus. The gunner's proficiency is a crew stat,
- * so `attackText` carries the literal "+ your proficiency" suffix until the
- * crew layer (sub-project 2) upgrades the engine to take crew inputs.
+ * `attackShipMod` stays the SHIP's part only — WIS mod plus the weapon's own
+ * bonus — so the display can still render the spine's breakdown. `attackText`
+ * is engine-conditional: with no gunner deployed it keeps the spine's literal
+ * "+ your proficiency" suffix, but once `crewProficiencyApplied` is true the
+ * bonus is complete, so `attackText` renders the whole signed `attackBonus`
+ * instead (controller ruling, review round 1 — no suffix left to fill in).
+ * `saveDc`'s `8 + WIS` fallback also folds in the deployed gunner's
+ * proficiency when `crew` is supplied; a flat pack `saveDc` is left untouched
+ * either way (controller ruling: crew proficiency never modifies an explicit
+ * pack DC).
  */
-export function shipWeaponProfiles(build: ShipBuild, ref: ShipReferenceData): ShipWeaponProfile[] {
+export function shipWeaponProfiles(build: ShipBuild, ref: ShipReferenceData, crew?: CrewInput): ShipWeaponProfile[] {
   const scores = totalShipAbilityScores(build);
   const wisMod = shipAbilityModifier(scores.wis);
   const strMod = shipAbilityModifier(scores.str);
+  const gunnerProficiency = crew?.proficiencyByRole.gunner;
+  const crewProficiencyApplied = typeof gunnerProficiency === 'number';
+  const prof = gunnerProficiency ?? 0;
 
   const out: ShipWeaponProfile[] = [];
   for (const entry of build.equipment) {
@@ -59,6 +68,7 @@ export function shipWeaponProfiles(build: ShipBuild, ref: ShipReferenceData): Sh
     // should never reference one as an equipped weapon, but skip defensively.
     if (!w || w.category === 'other') continue;
     const attackShipMod = wisMod + w.attackBonus;
+    const attackBonus = attackShipMod + prof;
     const [rawFormula, type] = w.damageParts[0] ?? ['', ''];
     // Ammo-driven weapons carry a 0dN placeholder formula -- their damage
     // comes from the loaded ammo item, not the launcher, so there is no
@@ -74,16 +84,23 @@ export function shipWeaponProfiles(build: ShipBuild, ref: ShipReferenceData): Sh
       category: w.category,
       mount: entry.mount ?? DEFAULT_MOUNT,
       attackShipMod,
-      attackText: `${signed(attackShipMod)} + your proficiency`,
+      // A deployed gunner completes the bonus — no more "+ your proficiency"
+      // suffix to fill in, since attackBonus is now the whole number. With no
+      // gunner aboard, the spine's literal suffix still stands (controller
+      // ruling, review round 1).
+      attackText: crewProficiencyApplied ? signed(attackBonus) : `${signed(attackShipMod)} + your proficiency`,
+      attackBonus,
+      crewProficiencyApplied,
       damageFormula,
       damageType: type,
       rangeNormal: w.rangeNormal,
       rangeLong: w.rangeLong,
       saveAbility: w.saveAbility,
       // The pack's own DC governs when the row carries one (e.g. a flat-scaling
-      // ion cannon printed at DC 13, independent of the ship's WIS); the spec
-      // formula (8 + WIS mod) is only a fallback for rows that omit it.
-      saveDc: w.saveAbility ? (w.saveDc ?? (8 + wisMod)) : null,
+      // ion cannon printed at DC 13, independent of the ship's WIS); crew
+      // proficiency composes only into the 8 + WIS mod fallback for rows that
+      // omit it — it never modifies a flat pack DC (controller ruling).
+      saveDc: w.saveAbility ? (w.saveDc ?? (8 + wisMod + prof)) : null,
       reload: w.reload,
       usesAmmo: w.usesAmmo,
     });

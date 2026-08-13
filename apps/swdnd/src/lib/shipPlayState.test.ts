@@ -6,6 +6,12 @@ import { applyShipPlayAction, type ShipPlayAction } from './shipPlayState';
 const derived = {
   maxHull: 40, maxShields: 20, shieldRegen: 8,
   hullDice: { die: 8, count: 5 }, shieldDice: { die: 8, count: 5 },
+  power: {
+    die: { sides: 8, label: 'd8' },
+    coupling: 'hub-spoke',
+    capacity: { central: 2, perSystem: 1 },
+    recovery: { kind: 'power-core', formula: '1d2', label: '1d2 dice' },
+  },
 } as unknown as DerivedShip;
 
 function ship(over: Partial<ShipBuild['play']> = {}): ShipBuild {
@@ -91,4 +97,51 @@ test('notes are stored verbatim and the reducer never mutates its input', () => 
   expect(next.notes).toBe('venting plasma');
   expect(b.play.notes).toBe('');
   expect(next.conditions).not.toBe(b.play.conditions);
+});
+
+test('power dice spend and recover within the coupling capacity', () => {
+  const build = ship();                            // derived: hub & spoke — 2 central, 1 per system
+
+  const filled = applyShipPlayAction(build, derived, { t: 'recoverPower', where: 'central', n: 5 });
+  expect(filled.powerDice!.central).toBe(2);       // clamped to capacity
+
+  const spent = applyShipPlayAction({ ...build, play: filled }, derived, { t: 'spendPower', where: 'central' });
+  expect(spent.powerDice!.central).toBe(1);        // default step is one die
+
+  const floored = applyShipPlayAction({ ...build, play: spent }, derived, { t: 'spendPower', where: 'central', n: 9 });
+  expect(floored.powerDice!.central).toBe(0);
+});
+
+test('system capacitors clamp per system, independently of central', () => {
+  const build = ship();
+  const p1 = applyShipPlayAction(build, derived, { t: 'recoverPower', where: 'weapons', n: 3 });
+  expect(p1.powerDice!.systems.weapons).toBe(1);   // hub & spoke: 1 per system
+  expect(p1.powerDice!.systems.shields).toBe(0);
+  expect(p1.powerDice!.central).toBe(0);
+
+  const p2 = applyShipPlayAction({ ...build, play: p1 }, derived, { t: 'setPower', where: 'weapons', n: 0 });
+  expect(p2.powerDice!.systems.weapons).toBe(0);
+  const p3 = applyShipPlayAction({ ...build, play: p2 }, derived, { t: 'setPower', where: 'shields', n: 7 });
+  expect(p3.powerDice!.systems.shields).toBe(1);
+});
+
+test('power actions work on a pre-v2 document with no powerDice field', () => {
+  const build = ship();
+  delete (build.play as { powerDice?: unknown }).powerDice;
+  const p = applyShipPlayAction(build, derived, { t: 'recoverPower', where: 'engines', n: 1 });
+  expect(p.powerDice).toEqual({ central: 0, systems: { comms: 0, engines: 1, shields: 0, sensors: 0, weapons: 0 } });
+});
+
+test('an explicit n: 0 moves no dice — distinct from an omitted n (default step 1)', () => {
+  // Guards the ionization reactor's 1d2-1 recovery formula, which legitimately
+  // rolls 0 half the time: dispatch({ t: 'recoverPower', where, n: rolled })
+  // must be a no-op on a 0 roll, not silently grant a free die.
+  const build = ship();
+  const filled = applyShipPlayAction(build, derived, { t: 'recoverPower', where: 'central', n: 2 });
+
+  const recoveredZero = applyShipPlayAction({ ...build, play: filled }, derived, { t: 'recoverPower', where: 'central', n: 0 });
+  expect(recoveredZero.powerDice!.central).toBe(2); // unchanged, not clamped-up
+
+  const spentZero = applyShipPlayAction({ ...build, play: filled }, derived, { t: 'spendPower', where: 'central', n: 0 });
+  expect(spentZero.powerDice!.central).toBe(2);      // unchanged, not clamped-down
 });

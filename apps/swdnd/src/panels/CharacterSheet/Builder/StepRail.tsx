@@ -3,7 +3,7 @@ import { STEP_ORDER, type StepInfo, type StepKey } from '../../../lib/validation
 
 const LABELS: Record<StepKey, string> = {
   species: 'Species', background: 'Background', class: 'Class', abilities: 'Abilities',
-  skills: 'Skills', feats: 'Feats', equipment: 'Equipment', powers: 'Powers',
+  skills: 'Skills', feats: 'Feats', equipment: 'Equipment', powers: 'Powers', deployments: 'Deployments',
 };
 const GLYPH = { done: '✓', attention: '!', untouched: '○' } as const;
 const GLYPH_CLASS = { done: 'text-green-300', attention: 'text-yellow-300', untouched: 'text-ht-muted' } as const;

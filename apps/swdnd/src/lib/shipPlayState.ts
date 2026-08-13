@@ -1,6 +1,10 @@
 // apps/swdnd/src/lib/shipPlayState.ts
 import { LEVELED_SHIP_CONDITIONS, MAX_SYSTEM_DAMAGE } from './shipRules/constants';
-import type { DerivedShip, ShipBuild, ShipPlayState } from './shipRules/types';
+import { powerDiceOf } from './shipRules/power';
+import type { DerivedShip, PowerSystem, ShipBuild, ShipPlayState } from './shipRules/types';
+
+/** Where a power die sits: the central capacitor or one system capacitor. */
+export type PowerLocation = 'central' | PowerSystem;
 
 export type ShipPlayAction =
   | { t: 'damage'; n: number }
@@ -31,7 +35,10 @@ export type ShipPlayAction =
   | { t: 'addCondition'; c: string }
   | { t: 'removeCondition'; c: string }
   | { t: 'setSystemDamage'; n: number }
-  | { t: 'setNotes'; notes: string };
+  | { t: 'setNotes'; notes: string }
+  | { t: 'spendPower'; where: PowerLocation; n?: number }
+  | { t: 'recoverPower'; where: PowerLocation; n?: number }
+  | { t: 'setPower'; where: PowerLocation; n: number };
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -51,6 +58,7 @@ export function applyShipPlayAction(
     conditions: [...build.play.conditions],
     ammoSpent: { ...build.play.ammoSpent },
   };
+  p.powerDice = powerDiceOf(build.play);
 
   switch (action.t) {
     case 'damage': {
@@ -117,6 +125,24 @@ export function applyShipPlayAction(
     case 'setNotes':
       p.notes = action.notes;
       break;
+    case 'spendPower':
+    case 'recoverPower':
+    case 'setPower': {
+      const cap = action.where === 'central'
+        ? derived.power.capacity.central
+        : derived.power.capacity.perSystem;
+      const current = action.where === 'central'
+        ? p.powerDice.central
+        : p.powerDice.systems[action.where];
+      const step = action.t === 'setPower' ? action.n : action.n === undefined ? 1 : Math.max(0, Math.trunc(action.n));
+      const next = action.t === 'setPower'
+        ? step
+        : action.t === 'spendPower' ? current - step : current + step;
+      const clamped = clamp(Math.trunc(next), 0, cap);
+      if (action.where === 'central') p.powerDice.central = clamped;
+      else p.powerDice.systems = { ...p.powerDice.systems, [action.where]: clamped };
+      break;
+    }
   }
   return p;
 }

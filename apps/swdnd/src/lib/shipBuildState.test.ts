@@ -35,6 +35,7 @@ const ref: ShipReferenceData = {
   equipment: {},
   weapons: { laser: weaponRow('laser'), ion: weaponRow('ion') },
   modifications: { scrambler: modRow('scrambler', 'Engineering'), lounge: modRow('lounge', 'Suite') },
+  deployments: {}, deploymentFeatures: {},
 };
 
 const dispatch = (b = base(), ...actions: ShipBuildAction[]) =>

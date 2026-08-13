@@ -3,7 +3,8 @@
 // armed-save-timer WS-echo merge guard.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { getPlayerByToken } from '../lib/characters';
+import { getCharacter, getPlayerByToken, type CharacterDto } from '../lib/characters';
+import { crewInputFrom, type CrewMemberInput } from '../lib/crew';
 import {
   getStarship, loadShipReference, patchStarship, type ShipCrewMember, type StarshipDto,
 } from '../lib/starships';
@@ -12,7 +13,8 @@ import { useAuth } from '../lib/auth';
 import { resolveShipCanEdit } from '../lib/canEdit';
 import { applyShipPlayAction, type ShipPlayAction } from '../lib/shipPlayState';
 import { computeShip } from '../lib/shipRules';
-import type { DerivedShip, ShipBuild, ShipPlayState, ShipReferenceData } from '../lib/shipRules/types';
+import { SHIP_ROLES } from '../lib/shipRules/constants';
+import type { CrewInput, DerivedShip, ShipBuild, ShipPlayState, ShipReferenceData, ShipRole } from '../lib/shipRules/types';
 
 export interface ShipSheetState {
   loading: boolean;
@@ -22,10 +24,25 @@ export interface ShipSheetState {
   ref: ShipReferenceData | null;
   play: ShipPlayState | null;
   crew: ShipCrewMember[];
+  crewMembers: Array<{ role: ShipRole; dto: CharacterDto }>;
+  crewError: string | null;
+  crewInput: CrewInput | undefined;
   canEdit: boolean;
   dto: StarshipDto | null;
   dispatch: (action: ShipPlayAction) => void;
   reload: () => void;
+  reloadCrew: () => void;
+}
+
+// starship_crew.role is unconstrained TEXT in the DB (only the write-path
+// PUT validates against RoleEnum) -- a row inserted outside that path can
+// carry a value outside the ShipRole union even though ShipCrewMember types
+// it as ShipRole. Normalize + validate here, at the CrewMemberInput
+// construction boundary, rather than trust the cast.
+const SHIP_ROLE_SET = new Set<string>(SHIP_ROLES);
+function normalizeShipRole(raw: string): ShipRole | null {
+  const k = raw.trim().toLowerCase();
+  return SHIP_ROLE_SET.has(k) ? (k as ShipRole) : null;
 }
 
 const SAVE_DEBOUNCE_MS = 400;
@@ -100,7 +117,87 @@ export function useShipSheet(shipId: string): ShipSheetState {
     return () => { alive = false; };
   }, [token]);
 
-  const derived = useMemo(() => (build && ref ? computeShip(build, ref) : null), [build, ref]);
+  const [crewMembers, setCrewMembers] = useState<Array<{ role: ShipRole; dto: CharacterDto }>>([]);
+  const [crewError, setCrewError] = useState<string | null>(null);
+  // Bumped by reloadCrew() to force the crew-load effect below to re-run even
+  // when crewKey is unchanged (a retry after a transient fetch failure, not a
+  // roster change) -- same "nonce forces a re-run" shape as Deployments.tsx's
+  // `attempt` state.
+  const [crewReloadNonce, setCrewReloadNonce] = useState(0);
+  const reloadCrew = useCallback(() => setCrewReloadNonce((n) => n + 1), []);
+  // Mirrors `crewMembers`, so the WS callback below (recreated only on
+  // [dto?.campaign_id, shipId, token, reload]) can read the current roster
+  // instead of the stale snapshot it would otherwise close over.
+  const crewMembersRef = useRef<Array<{ role: ShipRole; dto: CharacterDto }>>([]);
+  useEffect(() => { crewMembersRef.current = crewMembers; }, [crewMembers]);
+
+  // Stringify the roster's ids+roles so this effect doesn't re-run on an
+  // identical roster (e.g. a DTO reload that leaves crew unchanged).
+  const crewKey = (dto?.crew ?? []).map((c) => `${c.character_id}:${c.role}`).sort().join(',');
+
+  useEffect(() => {
+    const rows = dto?.crew ?? [];
+    if (rows.length === 0) {
+      setCrewMembers([]);
+      setCrewError(null);
+      return;
+    }
+    let alive = true;
+    let failedCount = 0;
+    // One request per crewed character and nothing else: crewInputFrom derives
+    // proficiency from the build document itself (crewProficiency), so the ship
+    // sheet never pays for the ten-request character reference loader.
+    Promise.all(rows.map((row) => getCharacter(row.character_id).catch(() => {
+      failedCount += 1;
+      return null;
+    })))
+      .then((dtos) => {
+        if (!alive) return;
+        const members = rows.flatMap((row, i) => {
+          const cdto = dtos[i];
+          if (!cdto) return [];
+          const role = normalizeShipRole(row.role);
+          if (!role) {
+            // Explicit drop, not a silent one: starship_crew.role is
+            // unconstrained TEXT (only the write-path PUT validates against
+            // RoleEnum), so a row inserted outside that path can carry a
+            // value outside the ShipRole union even though ShipCrewMember
+            // types it as ShipRole. Normalizing here -- where crewMembers is
+            // set -- keeps the exported crewMembers.role sound everywhere
+            // downstream (crewInput below, and the ship sheet's UI) instead
+            // of leaving that to every consumer.
+            console.debug(`[useShipSheet] dropping crew member ${cdto.id} with unrecognized role "${row.role}"`);
+            return [];
+          }
+          return [{ role, dto: cdto }];
+        });
+        setCrewMembers(members);
+        // A failed member fetch used to just vanish from crewMembers with no
+        // signal -- CrewAbilities silently lost the entry and a gunner bonus
+        // reverted to the suffix form with nothing telling the user why. Set
+        // (or clear, on a fully successful load) crewError so the sheet can
+        // surface it instead.
+        setCrewError(failedCount > 0
+          ? `crew data incomplete — ${failedCount} member(s) failed to load`
+          : null);
+      })
+      .catch(() => { /* crew stats are additive: a failed load leaves the ship uncrewed */ });
+    return () => { alive = false; };
+  }, [crewKey, crewReloadNonce]);
+
+  const crewInput = useMemo(() => {
+    if (!ref || crewMembers.length === 0) return undefined;
+    // crewMembers' roles are already normalized+validated where the state is
+    // set (the load effect above) -- no unsound role, and no render-phase
+    // console.debug, left for this memo to do.
+    const members: CrewMemberInput[] = crewMembers.map((m) => ({ role: m.role, build: m.dto.data_json }));
+    return crewInputFrom(members, ref.deployments);
+  }, [crewMembers, ref]);
+
+  const derived = useMemo(
+    () => (build && ref ? computeShip(build, ref, crewInput) : null),
+    [build, ref, crewInput],
+  );
 
   useEffect(() => {
     const campaignId = dto?.campaign_id;
@@ -108,6 +205,19 @@ export function useShipSheet(shipId: string): ShipSheetState {
     const sock = connectCampaign(
       campaignId,
       (env) => {
+        if (env.type === 'character:updated') {
+          // A crewed character's deployments live in their build, which the
+          // thin payload doesn't carry — refetch that one character. This is
+          // independent of local ship edits, so it needs no save-timer guard.
+          const payload = env.payload as { characterId?: string } | undefined;
+          const id = payload?.characterId;
+          if (id && crewMembersRef.current.some((m) => m.dto.id === id)) {
+            void getCharacter(id).then((fresh) => {
+              setCrewMembers((prev) => prev.map((m) => (m.dto.id === id ? { ...m, dto: fresh } : m)));
+            }).catch(() => { /* transient: the next mount recomputes */ });
+          }
+          return;
+        }
         if (env.type !== 'ship:updated') return;
         const payload = env.payload as { shipId?: string; play?: ShipPlayState; data_json?: ShipBuild } | undefined;
         if (payload?.shipId !== shipId) return;
@@ -161,6 +271,7 @@ export function useShipSheet(shipId: string): ShipSheetState {
 
   return {
     loading: loading || authLoading || identityLoading,
-    error, build, derived, ref, play, crew: dto?.crew ?? [], canEdit, dto, dispatch, reload,
+    error, build, derived, ref, play, crew: dto?.crew ?? [], crewMembers, crewError, crewInput,
+    canEdit, dto, dispatch, reload, reloadCrew,
   };
 }

@@ -41,7 +41,7 @@ function toApi(row: CharacterRow) {
 // sync when the build schema (schemaVersion) changes.
 function emptyBuildJson(name: string): string {
   return JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     identity: { name, speciesId: '', backgroundId: '', alignment: 'none' },
     abilities: { base: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, increases: [] },
     levels: [],
@@ -50,6 +50,8 @@ function emptyBuildJson(name: string): string {
     play: { hp: 0, tempHp: 0, hitDiceSpent: 0, forcePointsSpent: 0, techPointsSpent: 0, superiorityDiceSpent: 0, conditions: [], exhaustion: 0, inspiration: false, notes: '' },
     overrides: {},
     houseRuled: [],
+    deployments: [],
+    prestige: 0,
   });
 }
 function getRow(id: string): CharacterRow | null {

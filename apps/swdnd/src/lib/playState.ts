@@ -1,4 +1,5 @@
 // apps/swdnd/src/lib/playState.ts
+import { TECH_DIE_LADDER } from './crew';
 import type { CharacterBuild, DerivedSheet, PlayState, RefPower } from './rules/types';
 
 export type PlayAction =
@@ -18,7 +19,8 @@ export type PlayAction =
   | { t: 'addCondition'; c: string }
   | { t: 'removeCondition'; c: string }
   | { t: 'setExhaustion'; n: number }
-  | { t: 'toggleInspiration' };
+  | { t: 'toggleInspiration' }
+  | { t: 'setTechDie'; sides: number | null };
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -93,6 +95,12 @@ export function applyPlayAction(
       break;
     case 'toggleInspiration':
       p.inspiration = !p.inspiration;
+      break;
+    case 'setTechDie':
+      // null clears the manual override → the sheet falls back to the
+      // rank-derived base. Off-ladder sizes are ignored.
+      if (action.sides === null) p.techDie = undefined;
+      else if (TECH_DIE_LADDER.includes(action.sides)) p.techDie = action.sides;
       break;
   }
   return p;
