@@ -158,6 +158,43 @@ function publishShipUpdated(row: StarshipRow): void {
   publishToRoom(room, { type: 'ship:updated', room, payload: { shipId: row.id, name: row.name, play: doc.play } });
 }
 
+const CrewPutBody = z
+  .object({ characterId: z.string(), role: RoleEnum })
+  .openapi('SwdndPutStarshipCrew');
+
+const CrewDeleteBody = z
+  .object({ characterId: z.string(), role: RoleEnum.optional() })
+  .openapi('SwdndDeleteStarshipCrew');
+
+const crewPutRoute = createRoute({
+  method: 'put', path: '/swdnd/starships/{id}/crew', tags: ['swdnd'],
+  summary: 'Assign a character to a crew role (idempotent); broadcasts to the campaign room',
+  request: {
+    params: z.object({ id: z.string() }),
+    body: { content: { 'application/json': { schema: CrewPutBody } } },
+  },
+  responses: {
+    200: { description: 'Updated starship', content: { 'application/json': { schema: Starship } } },
+    400: { description: 'Character not in this campaign', content: { 'application/json': { schema: ErrorBody } } },
+    403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorBody } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+
+const crewDeleteRoute = createRoute({
+  method: 'delete', path: '/swdnd/starships/{id}/crew', tags: ['swdnd'],
+  summary: 'Remove a character from one crew role, or from all roles when role is omitted',
+  request: {
+    params: z.object({ id: z.string() }),
+    body: { content: { 'application/json': { schema: CrewDeleteBody } } },
+  },
+  responses: {
+    200: { description: 'Updated starship', content: { 'application/json': { schema: Starship } } },
+    403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorBody } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+
 export function registerStarshipRoutes(app: OpenAPIHono): void {
   app.openapi(listRoute, (c) => {
     const { id } = c.req.valid('param');
@@ -246,5 +283,43 @@ export function registerStarshipRoutes(app: OpenAPIHono): void {
     assertShipWriteAccess(c, id);
     swdndDb.run('DELETE FROM starship WHERE id = ?', [id]);
     return c.json({ ok: true }, 200);
+  });
+
+  app.openapi(crewPutRoute, (c) => {
+    const { id } = c.req.valid('param');
+    const { characterId, role } = c.req.valid('json');
+    const row = getRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Starship not found' });
+    assertShipWriteAccess(c, id);
+
+    const character = swdndDb
+      .query<{ campaign_id: string }, [string]>('SELECT campaign_id FROM character WHERE id = ?')
+      .get(characterId);
+    if (!character || character.campaign_id !== row.campaign_id) {
+      throw new HTTPException(400, { message: 'Crew character not found in this campaign' });
+    }
+    // PK is (ship_id, character_id, role) -> re-assigning the same role is a no-op.
+    swdndDb.run('INSERT OR IGNORE INTO starship_crew (ship_id, character_id, role) VALUES (?, ?, ?)',
+      [id, characterId, role]);
+
+    publishShipUpdated(row);
+    return c.json(toApi(row), 200);
+  });
+
+  app.openapi(crewDeleteRoute, (c) => {
+    const { id } = c.req.valid('param');
+    const { characterId, role } = c.req.valid('json');
+    const row = getRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Starship not found' });
+    assertShipWriteAccess(c, id);
+
+    if (role) {
+      swdndDb.run('DELETE FROM starship_crew WHERE ship_id = ? AND character_id = ? AND role = ?', [id, characterId, role]);
+    } else {
+      swdndDb.run('DELETE FROM starship_crew WHERE ship_id = ? AND character_id = ?', [id, characterId]);
+    }
+
+    publishShipUpdated(row);
+    return c.json(toApi(row), 200);
   });
 }

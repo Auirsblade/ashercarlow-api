@@ -313,3 +313,85 @@ describe('swdnd starship write + delete', () => {
     expect(left?.n).toBe(0);
   });
 });
+
+describe('swdnd starship crew roster', () => {
+  let campaignId: string;
+  let tokenA: string;
+  let tokenB: string;
+  let charA: string;
+  let charB: string;
+  let shipId: string;
+
+  beforeAll(async () => {
+    delete process.env.ASHERCARLOW_AUTH_TOKEN;
+    swdndDb.exec('DELETE FROM starship_crew; DELETE FROM starship; DELETE FROM character; DELETE FROM player; DELETE FROM campaign;');
+    campaignId = ((await (await app.request('/swdnd/campaigns', json('POST', { name: 'R' }))).json()) as any).id;
+    const pA = (await (await app.request(`/swdnd/campaigns/${campaignId}/players`, json('POST', { name: 'A' }))).json()) as any;
+    const pB = (await (await app.request(`/swdnd/campaigns/${campaignId}/players`, json('POST', { name: 'B' }))).json()) as any;
+    tokenA = pA.access_token;
+    tokenB = pB.access_token;
+    charA = ((await (await app.request(`/swdnd/campaigns/${campaignId}/characters?token=${tokenA}`, json('POST', { name: 'Ace' }))).json()) as any).id;
+    charB = ((await (await app.request(`/swdnd/campaigns/${campaignId}/characters?token=${tokenB}`, json('POST', { name: 'Bee' }))).json()) as any).id;
+    shipId = ((await (await app.request(`/swdnd/campaigns/${campaignId}/starships`,
+      json('POST', { name: 'Ghost', crew: { characterId: charA, role: 'pilot' } }))).json()) as any).id;
+  });
+
+  it('PUT adds a crew member and is idempotent on repeat', async () => {
+    const first = await app.request(`/swdnd/starships/${shipId}/crew`, json('PUT', { characterId: charB, role: 'gunner' }));
+    expect(first.status).toBe(200);
+    expect(((await first.json()) as any).crew.map((m: any) => `${m.character_name}:${m.role}`).sort())
+      .toEqual(['Ace:pilot', 'Bee:gunner']);
+
+    const again = await app.request(`/swdnd/starships/${shipId}/crew`, json('PUT', { characterId: charB, role: 'gunner' }));
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as any).crew).toHaveLength(2);
+  });
+
+  it('a character may hold several roles on the same ship', async () => {
+    const res = await app.request(`/swdnd/starships/${shipId}/crew`, json('PUT', { characterId: charB, role: 'mechanic' }));
+    expect(((await res.json()) as any).crew).toHaveLength(3);
+  });
+
+  it('DELETE with a role removes just that role; without one removes every role', async () => {
+    const one = await app.request(`/swdnd/starships/${shipId}/crew`, json('DELETE', { characterId: charB, role: 'mechanic' }));
+    expect(((await one.json()) as any).crew).toHaveLength(2);
+
+    const all = await app.request(`/swdnd/starships/${shipId}/crew`, json('DELETE', { characterId: charB }));
+    expect(((await all.json()) as any).crew.map((m: any) => m.character_name)).toEqual(['Ace']);
+  });
+
+  it('rejects a character from another campaign and 404s an unknown ship', async () => {
+    const other = ((await (await app.request('/swdnd/campaigns', json('POST', { name: 'Other' }))).json()) as any).id;
+    const outsider = ((await (await app.request(`/swdnd/campaigns/${other}/characters`, json('POST', { name: 'Outsider' }))).json()) as any).id;
+    expect((await app.request(`/swdnd/starships/${shipId}/crew`, json('PUT', { characterId: outsider, role: 'pilot' }))).status).toBe(400);
+    expect((await app.request('/swdnd/starships/nope/crew', json('PUT', { characterId: charA, role: 'pilot' }))).status).toBe(404);
+  });
+
+  it('crew edits the roster; a non-crew player cannot', async () => {
+    await withAuthEnv(async () => {
+      // Assert non-crew player B is refused FIRST, while B genuinely crews
+      // nothing on this ship. (Ordering matters: assertShipWriteAccess grants
+      // write access to any player owning ANY character currently on the
+      // crew -- per access.ts's documented "crew edits EVERYTHING" rule -- so
+      // running A's add of charB before these checks would make B's own
+      // token legitimately crew and turn these 403s into 200s.)
+      expect((await app.request(`/swdnd/starships/${shipId}/crew`,
+        json('PUT', { characterId: charB, role: 'operator' }, { 'X-Player-Token': tokenB }))).status).toBe(403);
+      expect((await app.request(`/swdnd/starships/${shipId}/crew`,
+        json('DELETE', { characterId: charA }, { 'X-Player-Token': tokenB }))).status).toBe(403);
+
+      const byCrew = await app.request(`/swdnd/starships/${shipId}/crew`,
+        json('PUT', { characterId: charB, role: 'technician' }, { 'X-Player-Token': tokenA }));
+      expect(byCrew.status).toBe(200);
+    });
+    // clean the extra role back off so the cascade test below is unambiguous
+    await app.request(`/swdnd/starships/${shipId}/crew`, json('DELETE', { characterId: charB }));
+  });
+
+  it('deleting a character cascades its crew rows away and leaves the ship standing', async () => {
+    expect((await app.request(`/swdnd/characters/${charA}`, json('DELETE'))).status).toBe(200);
+    const ship = (await (await app.request(`/swdnd/starships/${shipId}`)).json()) as any;
+    expect(ship.id).toBe(shipId);
+    expect(ship.crew).toEqual([]);
+  });
+});
