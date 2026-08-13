@@ -10,6 +10,7 @@ import Skills from './Skills';
 import Combat from './Combat';
 import Gear from './Gear';
 import Features from './Features';
+import Deployments from './Deployments';
 import Powers from './Powers';
 import RollToast, { useRolls } from './RollToast';
 import TabbedShell from './TabbedShell';
@@ -69,6 +70,7 @@ export default function Sheet({ characterId }: { characterId: string }) {
       <Combat build={s.build} derived={s.derived} ref={s.ref} onRoll={roll} onRollDamage={rollDamage} />
       <Gear build={s.build} ref={s.ref} />
       <Features build={s.build} ref={s.ref} />
+      <Deployments build={s.build} play={s.play} editable={s.canEdit} dispatch={s.dispatch} />
     </div>
   );
   const colPowers = (
