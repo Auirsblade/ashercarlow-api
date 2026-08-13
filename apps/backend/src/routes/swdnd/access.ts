@@ -92,7 +92,8 @@ export function assertCampaignMember(c: Context, campaignId: string): void {
 
 /**
  * Does this player own ANY character on this ship's crew? One indexed join
- * (idx_starship_crew_character + character PK). Non-throwing so the creation
+ * (the starship_crew PRIMARY KEY (ship_id, character_id, role) autoindex
+ * seeks on ship_id + character's own PK). Non-throwing so the creation
  * bootstrap can distinguish "no crew given" (400) from "not yours" (403).
  */
 export function playerCrewsShip(playerId: string, shipId: string): boolean {

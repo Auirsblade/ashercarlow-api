@@ -110,15 +110,27 @@ describe('assertShipWriteAccess', () => {
 
   it('throws 403 for a player whose characters are not on the crew', () => {
     process.env.ASHERCARLOW_AUTH_TOKEN = 'admin-secret';
-    expect(() => mod.assertShipWriteAccess(shipReq({ 'x-player-token': 'tok-2' }), 's1')).toThrow();
+    let caught: unknown;
+    try {
+      mod.assertShipWriteAccess(shipReq({ 'x-player-token': 'tok-2' }), 's1');
+    } catch (err) {
+      caught = err;
+    }
+    expect((caught as { status?: number } | undefined)?.status).toBe(403);
   });
 
   it('throws 403 with no token at all', () => {
     process.env.ASHERCARLOW_AUTH_TOKEN = 'admin-secret';
-    expect(() => mod.assertShipWriteAccess(shipReq(), 's1')).toThrow();
+    let caught: unknown;
+    try {
+      mod.assertShipWriteAccess(shipReq(), 's1');
+    } catch (err) {
+      caught = err;
+    }
+    expect((caught as { status?: number } | undefined)?.status).toBe(403);
   });
 
-  it('playerCrewsShip answers without throwing', () => {
+  it('playerCrewsShip returns true for crew member, false otherwise', () => {
     expect(mod.playerCrewsShip('p1', 's1')).toBe(true);
     expect(mod.playerCrewsShip('p2', 's1')).toBe(false);
     expect(mod.playerCrewsShip('p1', 'nope')).toBe(false);
