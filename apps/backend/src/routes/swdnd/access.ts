@@ -91,6 +91,39 @@ export function assertCampaignMember(c: Context, campaignId: string): void {
 }
 
 /**
+ * Does this player own ANY character on this ship's crew? One indexed join
+ * (idx_starship_crew_character + character PK). Non-throwing so the creation
+ * bootstrap can distinguish "no crew given" (400) from "not yours" (403).
+ */
+export function playerCrewsShip(playerId: string, shipId: string): boolean {
+  const row = swdndDb
+    .query<{ one: number }, [string, string]>(
+      `SELECT 1 AS one FROM starship_crew sc
+         JOIN character ch ON ch.id = sc.character_id
+        WHERE sc.ship_id = ? AND ch.player_id = ?
+        LIMIT 1`,
+    )
+    .get(shipId, playerId);
+  return !!row;
+}
+
+/**
+ * Throw 403 unless the requester may write this ship: dev mode (no admin token
+ * configured), the admin, or a player owning any character on the ship's crew.
+ *
+ * Crew edits EVERYTHING -- build, play state, and the roster alike. One write
+ * rule; the table trusts itself. Accepted consequence: a crew member can remove
+ * the last crew entry and strand the ship for players (the admin can recover it).
+ */
+export function assertShipWriteAccess(c: Context, shipId: string): void {
+  if (!process.env.ASHERCARLOW_AUTH_TOKEN) return; // dev mode
+  if (isAdmin(c)) return;
+  const player = resolvePlayerByToken(playerTokenFrom(c));
+  if (player && playerCrewsShip(player.id, shipId)) return;
+  throw new HTTPException(403, { message: 'Not allowed to modify this starship' });
+}
+
+/**
  * WS upgrade auth on a RAW Request (no Hono context): dev mode admits anyone;
  * otherwise require the admin bearer/cookie or a player token belonging to
  * this campaign. Closes the foundation's unauthenticated-upgrade deferral.
