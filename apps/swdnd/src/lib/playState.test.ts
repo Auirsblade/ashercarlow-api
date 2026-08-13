@@ -89,3 +89,11 @@ test('spendSuperiority clamps to derived diceMax (0 when no superiority)', () =>
   const withSup = derived({ superiority: { level: 3, diceMax: 4, die: 'd8', knownMax: 4 } });
   expect(applyPlayAction(build(), withSup, { t: 'spendSuperiority' }).superiorityDiceSpent).toBe(1);
 });
+
+test('setTechDie stores a ladder size; null clears the manual override', () => {
+  expect(applyPlayAction(build(), derived(), { t: 'setTechDie', sides: 6 }).techDie).toBe(6);
+  expect(applyPlayAction(build(), derived(), { t: 'setTechDie', sides: 0 }).techDie).toBe(0); // unusable
+  expect(applyPlayAction(build({ techDie: 10 }), derived(), { t: 'setTechDie', sides: null }).techDie).toBeUndefined();
+  // Off-ladder sizes are rejected rather than stored.
+  expect(applyPlayAction(build({ techDie: 8 }), derived(), { t: 'setTechDie', sides: 7 }).techDie).toBe(8);
+});
