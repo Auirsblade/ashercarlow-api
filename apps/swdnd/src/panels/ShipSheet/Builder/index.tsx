@@ -6,8 +6,10 @@ import type { ShipStepKey } from '../../../lib/shipValidation';
 import ShipStepRail from './ShipStepRail';
 import EquipmentStep from './steps/Equipment';
 import HullStep from './steps/Hull';
+import ModificationsStep from './steps/Modifications';
 import SizeStep from './steps/Size';
 import TierStep from './steps/Tier';
+import WeaponsStep from './steps/Weapons';
 
 export default function ShipBuilder({ shipId }: { shipId: string }) {
   const b = useShipBuilder(shipId);
@@ -70,7 +72,12 @@ export default function ShipBuilder({ shipId }: { shipId: string }) {
           {active === 'equipment' && (
             <EquipmentStep build={b.build} ref={b.ref} editable={b.canEdit} dispatch={b.dispatch} />
           )}
-          {/* weapons / modifications steps land in Task 26 */}
+          {active === 'weapons' && (
+            <WeaponsStep build={b.build} ref={b.ref} derived={b.derived} editable={b.canEdit} dispatch={b.dispatch} />
+          )}
+          {active === 'modifications' && (
+            <ModificationsStep build={b.build} ref={b.ref} derived={b.derived} editable={b.canEdit} dispatch={b.dispatch} />
+          )}
         </div>
       </div>
     </div>
