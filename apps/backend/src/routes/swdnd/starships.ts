@@ -2,7 +2,8 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
 import { swdndDb } from '../../db/swdnd';
-import { assertAdmin, playerTokenFrom, resolvePlayerByToken } from './access';
+import { publishToRoom, roomForCampaign } from '../../lib/swdnd-realtime';
+import { assertAdmin, assertShipWriteAccess, playerTokenFrom, resolvePlayerByToken } from './access';
 
 export const SHIP_ROLES = ['coordinator', 'gunner', 'mechanic', 'operator', 'pilot', 'technician'] as const;
 const RoleEnum = z.enum(SHIP_ROLES);
@@ -122,6 +123,41 @@ const postRoute = createRoute({
   },
 });
 
+const PatchBody = z
+  .object({ name: z.string().min(1).optional(), data_json: z.record(z.any()).optional() })
+  .openapi('SwdndPatchStarship');
+
+const patchRoute = createRoute({
+  method: 'patch', path: '/swdnd/starships/{id}', tags: ['swdnd'],
+  summary: 'Update a starship build/play state; broadcasts to the campaign room',
+  request: {
+    params: z.object({ id: z.string() }),
+    body: { content: { 'application/json': { schema: PatchBody } } },
+  },
+  responses: {
+    200: { description: 'Updated', content: { 'application/json': { schema: Starship } } },
+    403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorBody } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+
+const deleteRoute = createRoute({
+  method: 'delete', path: '/swdnd/starships/{id}', tags: ['swdnd'], summary: 'Delete a starship',
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    200: { description: 'Deleted', content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } } },
+    403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorBody } } },
+    404: { description: 'Not found', content: { 'application/json': { schema: ErrorBody } } },
+  },
+});
+
+/** Thin payload, same philosophy as character:updated — id, name, play state. */
+function publishShipUpdated(row: StarshipRow): void {
+  const doc = JSON.parse(row.data_json) as { play?: unknown };
+  const room = roomForCampaign(row.campaign_id);
+  publishToRoom(room, { type: 'ship:updated', room, payload: { shipId: row.id, name: row.name, play: doc.play } });
+}
+
 export function registerStarshipRoutes(app: OpenAPIHono): void {
   app.openapi(listRoute, (c) => {
     const { id } = c.req.valid('param');
@@ -184,5 +220,31 @@ export function registerStarshipRoutes(app: OpenAPIHono): void {
     })();
 
     return c.json(toApi(getRow(shipId)!), 201);
+  });
+
+  app.openapi(patchRoute, (c) => {
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const row = getRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Starship not found' });
+    assertShipWriteAccess(c, id);
+
+    const now = new Date().toISOString();
+    const name = body.name ?? row.name;
+    const dataJson = body.data_json !== undefined ? JSON.stringify(body.data_json) : row.data_json;
+    swdndDb.run('UPDATE starship SET name = ?, data_json = ?, updated_at = ? WHERE id = ?', [name, dataJson, now, id]);
+
+    const updated = getRow(id)!;
+    publishShipUpdated(updated);
+    return c.json(toApi(updated), 200);
+  });
+
+  app.openapi(deleteRoute, (c) => {
+    const { id } = c.req.valid('param');
+    const row = getRow(id);
+    if (!row) throw new HTTPException(404, { message: 'Starship not found' });
+    assertShipWriteAccess(c, id);
+    swdndDb.run('DELETE FROM starship WHERE id = ?', [id]);
+    return c.json({ ok: true }, 200);
   });
 }

@@ -184,3 +184,67 @@ describe('swdnd starship creation bootstrap', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('swdnd starship write + delete', () => {
+  let campaignId: string;
+  let tokenA: string;
+  let tokenB: string;
+  let charA: string;
+  let shipId: string;
+
+  beforeAll(async () => {
+    delete process.env.ASHERCARLOW_AUTH_TOKEN;
+    swdndDb.exec('DELETE FROM starship_crew; DELETE FROM starship; DELETE FROM character; DELETE FROM player; DELETE FROM campaign;');
+    campaignId = ((await (await app.request('/swdnd/campaigns', json('POST', { name: 'W' }))).json()) as any).id;
+    const pA = (await (await app.request(`/swdnd/campaigns/${campaignId}/players`, json('POST', { name: 'A' }))).json()) as any;
+    const pB = (await (await app.request(`/swdnd/campaigns/${campaignId}/players`, json('POST', { name: 'B' }))).json()) as any;
+    tokenA = pA.access_token;
+    tokenB = pB.access_token;
+    charA = ((await (await app.request(`/swdnd/campaigns/${campaignId}/characters?token=${tokenA}`, json('POST', { name: 'Ace' }))).json()) as any).id;
+    shipId = ((await (await app.request(`/swdnd/campaigns/${campaignId}/starships`,
+      json('POST', { name: 'Ghost', crew: { characterId: charA, role: 'pilot' } }))).json()) as any).id;
+  });
+
+  it('PATCH replaces the whole document and renames', async () => {
+    const doc = { schemaVersion: 1, identity: { name: 'Ghost II', sizeId: 'medium', tier: 2 }, play: { hull: 17 } };
+    const res = await app.request(`/swdnd/starships/${shipId}`, json('PATCH', { name: 'Ghost II', data_json: doc }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.name).toBe('Ghost II');
+    expect(body.data_json.identity.tier).toBe(2);
+    expect(body.crew).toHaveLength(1);
+  });
+
+  it('PATCH/DELETE 404 an unknown ship', async () => {
+    expect((await app.request('/swdnd/starships/nope', json('PATCH', { name: 'X' }))).status).toBe(404);
+    expect((await app.request('/swdnd/starships/nope', json('DELETE'))).status).toBe(404);
+  });
+
+  it('access matrix: crew member writes, non-crew player and anon are 403, admin bearer always writes', async () => {
+    await withAuthEnv(async () => {
+      const crewWrite = await app.request(`/swdnd/starships/${shipId}`,
+        json('PATCH', { name: 'Crewed' }, { 'X-Player-Token': tokenA }));
+      expect(crewWrite.status).toBe(200);
+
+      expect((await app.request(`/swdnd/starships/${shipId}`,
+        json('PATCH', { name: 'Nope' }, { 'X-Player-Token': tokenB }))).status).toBe(403);
+      expect((await app.request(`/swdnd/starships/${shipId}`, json('PATCH', { name: 'Nope' }))).status).toBe(403);
+
+      const admin = await app.request(`/swdnd/starships/${shipId}`,
+        json('PATCH', { name: 'Admin' }, { Authorization: 'Bearer test-admin-secret' }));
+      expect(admin.status).toBe(200);
+
+      expect((await app.request(`/swdnd/starships/${shipId}`,
+        json('DELETE', undefined, { 'X-Player-Token': tokenB }))).status).toBe(403);
+    });
+  });
+
+  it('DELETE removes the ship and cascades its crew rows', async () => {
+    const doomed = ((await (await app.request(`/swdnd/campaigns/${campaignId}/starships`,
+      json('POST', { name: 'Doomed', crew: { characterId: charA, role: 'gunner' } }))).json()) as any).id;
+    expect((await app.request(`/swdnd/starships/${doomed}`, json('DELETE'))).status).toBe(200);
+    expect((await app.request(`/swdnd/starships/${doomed}`)).status).toBe(404);
+    const left = swdndDb.query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM starship_crew WHERE ship_id = ?').get(doomed);
+    expect(left?.n).toBe(0);
+  });
+});
