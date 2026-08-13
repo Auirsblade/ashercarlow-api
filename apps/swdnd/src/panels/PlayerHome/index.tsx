@@ -5,6 +5,7 @@ import {
   createCharacter, deleteCharacter, getCharacter, getPlayerByToken, loadReference,
   type CharacterDto, type PlayerDto,
 } from '../../lib/characters';
+import { listStarships, type StarshipDto } from '../../lib/starships';
 import { classSummary } from '../../lib/sheetView';
 import { computeSheet } from '../../lib/rules';
 import { stepStatus, STEP_ORDER } from '../../lib/validation';
@@ -36,6 +37,7 @@ export default function PlayerHome() {
 
   const [player, setPlayer] = useState<PlayerDto | null>(null);
   const [rows, setRows] = useState<RowData[]>([]);
+  const [ships, setShips] = useState<StarshipDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
@@ -53,6 +55,10 @@ export default function PlayerHome() {
           .filter((r): r is PromiseFulfilledResult<CharacterDto> => r.status === 'fulfilled')
           .map((r) => r.value);
         setRows(dtos.map((d) => toRow(d, ref)));
+        const ownIds = new Set(me.characters.map((c) => c.id));
+        // A player sees the ships their own characters crew — nothing else.
+        const allShips = await listStarships(me.player.campaign_id).catch(() => [] as StarshipDto[]);
+        setShips(allShips.filter((s) => s.crew.some((m) => ownIds.has(m.character_id))));
         setError(null);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load'))
@@ -104,6 +110,32 @@ export default function PlayerHome() {
               ) : (
                 <button type="button" className="text-[10px] text-ht-muted" onClick={() => setConfirmDelete(dto.id)}>delete</button>
               )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="ht-glow mb-3 mt-4 rounded-md p-3">
+        <div className="ht-name text-sm font-bold">Your ships</div>
+        <div className="text-[10px] text-ht-muted">ships your characters crew</div>
+      </div>
+      <div className="flex flex-col gap-2">
+        {ships.length === 0 && (
+          <div className="text-[11px] text-ht-muted">
+            You are not crewing a ship yet — the DM (or a crewmate) can add one of your characters to a roster.
+          </div>
+        )}
+        {ships.map((s) => (
+          <div key={s.id} className="ht-panel flex flex-wrap items-center gap-3 p-3">
+            <div className="min-w-[140px]">
+              <div className="text-ht-bright">{s.name}</div>
+              <div className="text-[10px] text-ht-muted">
+                {s.crew.filter((m) => m.character_name).map((m) => `${m.character_name} · ${m.role}`).join(' / ') || 'no crew'}
+              </div>
+            </div>
+            <div className="ml-auto flex items-center gap-2 text-[11px]">
+              <Link className="ht-step" to={`/ship/${s.id}?token=${encodeURIComponent(token)}`}>ship</Link>
+              <Link className="ht-step" to={`/ship/${s.id}/build?token=${encodeURIComponent(token)}`}>refit</Link>
             </div>
           </div>
         ))}
