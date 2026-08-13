@@ -141,7 +141,21 @@ export function useShipSheet(shipId: string): ShipSheetState {
         if (!alive) return;
         const members = rows.flatMap((row, i) => {
           const cdto = dtos[i];
-          return cdto ? [{ role: row.role, dto: cdto }] : [];
+          if (!cdto) return [];
+          const role = normalizeShipRole(row.role);
+          if (!role) {
+            // Explicit drop, not a silent one: starship_crew.role is
+            // unconstrained TEXT (only the write-path PUT validates against
+            // RoleEnum), so a row inserted outside that path can carry a
+            // value outside the ShipRole union even though ShipCrewMember
+            // types it as ShipRole. Normalizing here -- where crewMembers is
+            // set -- keeps the exported crewMembers.role sound everywhere
+            // downstream (crewInput below, and the ship sheet's UI) instead
+            // of leaving that to every consumer.
+            console.debug(`[useShipSheet] dropping crew member ${cdto.id} with unrecognized role "${row.role}"`);
+            return [];
+          }
+          return [{ role, dto: cdto }];
         });
         setCrewMembers(members);
       })
@@ -151,19 +165,10 @@ export function useShipSheet(shipId: string): ShipSheetState {
 
   const crewInput = useMemo(() => {
     if (!ref || crewMembers.length === 0) return undefined;
-    const members: CrewMemberInput[] = [];
-    for (const m of crewMembers) {
-      const role = normalizeShipRole(m.role);
-      if (!role) {
-        // Explicit drop, not a silent one: an unrecognized role would
-        // otherwise be a key crewInputFrom's Record<ShipRole, number> never
-        // matches, so it'd disappear anyway -- log it so a bad DB row is
-        // visible instead of just "this crew member's stats don't apply".
-        console.debug(`[useShipSheet] dropping crew member ${m.dto.id} with unrecognized role "${m.role}"`);
-        continue;
-      }
-      members.push({ role, build: m.dto.data_json });
-    }
+    // crewMembers' roles are already normalized+validated where the state is
+    // set (the load effect above) -- no unsound role, and no render-phase
+    // console.debug, left for this memo to do.
+    const members: CrewMemberInput[] = crewMembers.map((m) => ({ role: m.role, build: m.dto.data_json }));
     return crewInputFrom(members, ref.deployments);
   }, [crewMembers, ref]);
 

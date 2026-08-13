@@ -8,6 +8,8 @@ import TabbedShell from '../../CharacterSheet/Sheet/TabbedShell';
 import ShipCoreBar from './ShipCoreBar';
 import ShipWeapons from './ShipWeapons';
 import CrewStrip from './CrewStrip';
+import PowerDice from './PowerDice';
+import CrewAbilities from './CrewAbilities';
 
 export default function ShipSheetView({ shipId }: { shipId: string }) {
   const s = useShipSheet(shipId);
@@ -46,6 +48,15 @@ export default function ShipSheetView({ shipId }: { shipId: string }) {
     log(label, r.formula, r.rolls, r.total);
   };
 
+  // PowerDice reports a reactor-recovery roll it already made (a dice-pool
+  // formula like "1d2", not a d20 check) -- `roll` above is d20-shaped and
+  // wrong for this, so this adapts `log` to the (label, formula, total)
+  // shape PowerDice's onRoll expects instead. No individual die breakdown to
+  // attach: PowerDice already rolled it, this call is reporting-only.
+  const onPowerRoll = (label: string, formula: string, total: number) => {
+    log(label, formula, [], total);
+  };
+
   // useShipSheet's dispatch closes over `play` (a plain setState, not a
   // functional updater): two dispatch() calls issued back-to-back in the same
   // handler would both compute from that same stale play, and the first
@@ -78,6 +89,8 @@ export default function ShipSheetView({ shipId }: { shipId: string }) {
         shipId={shipId} campaignId={s.dto?.campaign_id ?? null} crew={s.crew}
         canEdit={s.canEdit} token={token} onReload={s.reload}
       />
+      <PowerDice derived={derived} play={play} editable={s.canEdit} dispatch={s.dispatch} onRoll={onPowerRoll} />
+      <CrewAbilities crewMembers={s.crewMembers} ref={s.ref} />
     </div>
   );
   const colNotes = (

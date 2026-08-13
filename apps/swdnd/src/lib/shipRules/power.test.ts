@@ -84,3 +84,40 @@ test('derivePower reads tier, coupling and reactor off the build', () => {
   const bare = { ...emptyShipBuild('Bare'), equipment: [] } as unknown as ShipBuild;
   expect(derivePower(bare, ref)).toMatchObject({ coupling: null, capacity: { central: 0, perSystem: 0 } });
 });
+
+test('derivePower honors an installed row\'s own mapped capacity/recovery over the name table (Task 6 ADJUDICATED)', () => {
+  // Coaxium Coupling / Fusial Reactor: real pack rows whose NAMES don't match
+  // any of the direct/distributed/hub-spoke or fuel-cell/ionization/power-core
+  // keywords, so couplingKindOf/reactorKindOf both fall through to null. Which
+  // entry IS the coupling/reactor comes from entry.kind, not the name scan --
+  // so their own centralCapacity/systemCapacity/powerDiceRecovery must still
+  // be honored instead of silently reading as zero/absent.
+  const ref = {
+    equipment: {
+      coaxium: {
+        id: 'coaxium', name: 'Coaxium Coupling', kind: 'coupling',
+        centralCapacity: 4, systemCapacity: 2, powerDiceRecovery: null,
+      },
+      fusial: {
+        id: 'fusial', name: 'Fusial Reactor', kind: 'reactor',
+        centralCapacity: null, systemCapacity: null, powerDiceRecovery: '1d4',
+      },
+    },
+  } as unknown as ShipReferenceData;
+  const build = {
+    ...emptyShipBuild('Falcon'),
+    equipment: [
+      { id: 'e1', ref: 'coaxium', kind: 'coupling' },
+      { id: 'e2', ref: 'fusial', kind: 'reactor' },
+    ],
+  } as unknown as ShipBuild;
+
+  // Sanity: the names genuinely don't resolve to a known topology/reactor kind.
+  expect(couplingKindOf('Coaxium Coupling')).toBeNull();
+  expect(reactorKindOf('Fusial Reactor')).toBeNull();
+
+  const power = derivePower(build, ref);
+  expect(power.coupling).toBeNull();                              // topology label stays name-derived
+  expect(power.capacity).toEqual({ central: 4, perSystem: 2 });    // capacity honored regardless
+  expect(power.recovery).toMatchObject({ kind: null, formula: '1d4', label: '1d4 dice' });
+});

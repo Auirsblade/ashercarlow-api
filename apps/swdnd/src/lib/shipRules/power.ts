@@ -3,7 +3,7 @@
 // topology, RECOVERY rate from the reactor. Everything here is display data —
 // dice move only when a player taps a counter.
 import { POWER_SYSTEMS } from './constants';
-import type { PowerDicePool, PowerSystem, ShipBuild, ShipPlayState, ShipReferenceData } from './types';
+import type { PowerDicePool, PowerSystem, RefShipEquipment, ShipBuild, ShipPlayState, ShipReferenceData } from './types';
 
 export type CouplingKind = 'direct' | 'distributed' | 'hub-spoke';
 export type ReactorKind = 'fuel-cell' | 'ionization' | 'power-core';
@@ -65,6 +65,12 @@ export function reactorRecovery(kind: ReactorKind | null): ReactorRecovery {
   return kind ? { kind, ...RECOVERY[kind] } : { kind: null, formula: '0', label: 'no reactor' };
 }
 
+/** Renders a dice-pool formula the same way the RECOVERY table's own labels do. */
+function recoveryLabelFor(formula: string): string {
+  if (formula === '0') return 'no known recovery';
+  return formula === '1' ? '1 die' : `${formula.replace('-', '−')} dice`;
+}
+
 export function emptyPowerDice(): PowerDicePool {
   const systems = {} as Record<PowerSystem, number>;
   for (const s of POWER_SYSTEMS) systems[s] = 0;
@@ -82,23 +88,50 @@ export function powerDiceOf(play: ShipPlayState): PowerDicePool {
 }
 
 /**
- * The only function here that touches reference data: the installed coupling
- * and reactor are identified by their pack row NAMES (three of each, stable).
- * `RefShipEquipment.kind` already separates 'coupling' from 'reactor', but the
- * name is still what distinguishes Direct from Distributed from Hub & Spoke.
+ * The only function here that touches reference data. WHICH installed entry
+ * is the coupling/reactor comes from `entry.kind` (authoritative — set at
+ * install time), not from scanning every equipped item's name. The pack row
+ * NAME still decides the topology LABEL (Direct / Distributed / Hub & Spoke,
+ * fuel-cell / ionization / power-core) since that's cosmetic and the three
+ * per kind are stable -- but a row whose name doesn't match any of those
+ * keywords (e.g. "Coaxium Coupling", "Fusial Reactor": real pack rows) is
+ * still a genuinely installed coupling/reactor, and its OWN mapped
+ * centralCapacity/systemCapacity/powerDiceRecovery fields win over the
+ * name-keyed table so capacity/recovery never silently reads as empty
+ * (Task 6, ADJUDICATED).
  */
 export function derivePower(build: ShipBuild, ref: ShipReferenceData): DerivedPower {
-  let coupling: CouplingKind | null = null;
-  let reactor: ReactorKind | null = null;
+  let couplingRow: RefShipEquipment | null = null;
+  let reactorRow: RefShipEquipment | null = null;
   for (const entry of build.equipment) {
-    const name = ref.equipment[entry.ref]?.name ?? '';
-    coupling ??= couplingKindOf(name);
-    reactor ??= reactorKindOf(name);
+    if (entry.kind === 'coupling') couplingRow ??= ref.equipment[entry.ref] ?? null;
+    else if (entry.kind === 'reactor') reactorRow ??= ref.equipment[entry.ref] ?? null;
   }
+
+  const coupling = couplingRow ? couplingKindOf(couplingRow.name) : null;
+  const reactorKind = reactorRow ? reactorKindOf(reactorRow.name) : null;
+  const tableCapacity = powerCapacity(coupling);
+  const tableRecovery = reactorRecovery(reactorKind);
+
+  const capacity: PowerCapacity = couplingRow
+    ? {
+        central: couplingRow.centralCapacity ?? tableCapacity.central,
+        perSystem: couplingRow.systemCapacity ?? tableCapacity.perSystem,
+      }
+    : tableCapacity;
+
+  const recovery: ReactorRecovery = reactorRow
+    ? {
+        kind: reactorKind,
+        formula: reactorRow.powerDiceRecovery ?? tableRecovery.formula,
+        label: recoveryLabelFor(reactorRow.powerDiceRecovery ?? tableRecovery.formula),
+      }
+    : tableRecovery;
+
   return {
     die: powerDieForTier(build.identity.tier),
     coupling,
-    capacity: powerCapacity(coupling),
-    recovery: reactorRecovery(reactor),
+    capacity,
+    recovery,
   };
 }
