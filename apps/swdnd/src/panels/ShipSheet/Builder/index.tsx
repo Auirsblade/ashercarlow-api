@@ -4,6 +4,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useShipBuilder } from '../../../hooks/useShipBuilder';
 import type { ShipStepKey } from '../../../lib/shipValidation';
 import ShipStepRail from './ShipStepRail';
+import EquipmentStep from './steps/Equipment';
+import HullStep from './steps/Hull';
 import SizeStep from './steps/Size';
 import TierStep from './steps/Tier';
 
@@ -62,7 +64,13 @@ export default function ShipBuilder({ shipId }: { shipId: string }) {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
           {active === 'size' && <SizeStep build={b.build} ref={b.ref} editable={b.canEdit} dispatch={b.dispatch} />}
           {active === 'tier' && <TierStep build={b.build} derived={b.derived} editable={b.canEdit} dispatch={b.dispatch} />}
-          {/* hull / weapons / equipment / modifications steps land in Tasks 25-26 */}
+          {active === 'hull' && (
+            <HullStep build={b.build} ref={b.ref} derived={b.derived} editable={b.canEdit} dispatch={b.dispatch} />
+          )}
+          {active === 'equipment' && (
+            <EquipmentStep build={b.build} ref={b.ref} editable={b.canEdit} dispatch={b.dispatch} />
+          )}
+          {/* weapons / modifications steps land in Task 26 */}
         </div>
       </div>
     </div>
