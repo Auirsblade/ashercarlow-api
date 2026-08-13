@@ -1,6 +1,26 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { swdndDb } from '../../db/swdnd';
 import { createApiApp } from '../../lib/openapi';
+import * as realtime from '../../lib/swdnd-realtime';
+
+// Captured once at module load, before any mock.module() call below can
+// overwrite the live bindings -- these are what we restore to afterward so
+// the mock doesn't leak into other test files sharing this bun test process.
+const realPublishToRoom = realtime.publishToRoom;
+const realRoomForCampaign = realtime.roomForCampaign;
+const realSetRealtimeServer = realtime.setRealtimeServer;
+const realParseEnvelope = realtime.parseEnvelope;
+const realSwdndWebsocket = realtime.swdndWebsocket;
+
+function restoreRealtimeModule(): void {
+  mock.module('../../lib/swdnd-realtime', () => ({
+    publishToRoom: realPublishToRoom,
+    roomForCampaign: realRoomForCampaign,
+    setRealtimeServer: realSetRealtimeServer,
+    parseEnvelope: realParseEnvelope,
+    swdndWebsocket: realSwdndWebsocket,
+  }));
+}
 
 beforeAll(() => {
   delete process.env.ASHERCARLOW_AUTH_TOKEN;
@@ -192,7 +212,23 @@ describe('swdnd starship write + delete', () => {
   let charA: string;
   let shipId: string;
 
+  // publishToRoom is a silent no-op under bun test (serverRef stays null until
+  // Bun.serve wires it -- see swdnd-realtime.ts), so nothing pins the
+  // ship:updated broadcast contract without intercepting it. Only publishToRoom
+  // is faked; roomForCampaign and everything else stays real.
+  let publishedEnvelopes: Array<{ type: string; room: string; payload?: unknown }> = [];
+
   beforeAll(async () => {
+    mock.module('../../lib/swdnd-realtime', () => ({
+      publishToRoom: (room: string, env: { type: string; room: string; payload?: unknown }) => {
+        publishedEnvelopes.push(env);
+      },
+      roomForCampaign: realRoomForCampaign,
+      setRealtimeServer: realSetRealtimeServer,
+      parseEnvelope: realParseEnvelope,
+      swdndWebsocket: realSwdndWebsocket,
+    }));
+
     delete process.env.ASHERCARLOW_AUTH_TOKEN;
     swdndDb.exec('DELETE FROM starship_crew; DELETE FROM starship; DELETE FROM character; DELETE FROM player; DELETE FROM campaign;');
     campaignId = ((await (await app.request('/swdnd/campaigns', json('POST', { name: 'W' }))).json()) as any).id;
@@ -205,6 +241,14 @@ describe('swdnd starship write + delete', () => {
       json('POST', { name: 'Ghost', crew: { characterId: charA, role: 'pilot' } }))).json()) as any).id;
   });
 
+  afterAll(() => {
+    restoreRealtimeModule();
+  });
+
+  beforeEach(() => {
+    publishedEnvelopes = [];
+  });
+
   it('PATCH replaces the whole document and renames', async () => {
     const doc = { schemaVersion: 1, identity: { name: 'Ghost II', sizeId: 'medium', tier: 2 }, play: { hull: 17 } };
     const res = await app.request(`/swdnd/starships/${shipId}`, json('PATCH', { name: 'Ghost II', data_json: doc }));
@@ -213,6 +257,27 @@ describe('swdnd starship write + delete', () => {
     expect(body.name).toBe('Ghost II');
     expect(body.data_json.identity.tier).toBe(2);
     expect(body.crew).toHaveLength(1);
+  });
+
+  it('PATCH broadcasts ship:updated to the campaign room with the exact {shipId, name, play} payload', async () => {
+    const doc = {
+      schemaVersion: 1,
+      identity: { name: 'Ghost III', sizeId: 'medium', tier: 3 },
+      play: { hull: 9, shields: 4, hullDiceSpent: 1, shieldDiceSpent: 0, ammoSpent: {}, conditions: [], systemDamage: 0, notes: 'holed' },
+    };
+    const res = await app.request(`/swdnd/starships/${shipId}`, json('PATCH', { name: 'Ghost III', data_json: doc }));
+    expect(res.status).toBe(200);
+
+    expect(publishedEnvelopes).toHaveLength(1);
+    const [env] = publishedEnvelopes;
+    expect(env.type).toBe('ship:updated');
+    expect(env.room).toBe(`campaign:${campaignId}`);
+
+    const payload = env.payload as Record<string, unknown>;
+    // Exact key set -- catches an added/renamed/dropped field (e.g. shipId -> id,
+    // or the whole data_json leaking through) even though it wouldn't change length.
+    expect(Object.keys(payload).sort()).toEqual(['name', 'play', 'shipId'].sort());
+    expect(payload).toEqual({ shipId, name: 'Ghost III', play: doc.play });
   });
 
   it('PATCH/DELETE 404 an unknown ship', async () => {
