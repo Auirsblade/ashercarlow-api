@@ -49,10 +49,8 @@ test('a full Consular level-1 build reaches all-done and computes correctly', ()
   const derived = computeSheet(b, ref);
   const status = stepStatus(b, ref, derived);
   for (const k of STEP_ORDER) {
-    if (k === 'deployments') continue; // opt-in crew content — untouched is a valid resting state, not "incomplete"
     if (status[k].applicable) expect(`${k}:${status[k].state}`).toBe(`${k}:done`);
   }
-  expect(status.deployments.state).toBe('untouched');
   // wis 15 + 2 species = 17 (+3); consular L1: hp 6+conMod(1)=7, force pool 4+3=7, known 9 = POWERS_KNOWN.force.full[1]
   expect(derived.abilities.wis).toEqual({ score: 17, mod: 3 });
   expect(derived.maxHp).toBe(7);

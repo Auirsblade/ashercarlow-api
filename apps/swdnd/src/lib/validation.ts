@@ -127,13 +127,15 @@ export function stepStatus(
   const powersInfo: StepInfo = { state: powersState, summary, applicable };
 
   // Deployments are optional crew content: they can be empty forever without
-  // ever asking for attention. The summary stays reference-free because
-  // deployment names live in the on-demand deployment reference, not in
-  // ReferenceData — the step component names them.
+  // ever asking for attention. Empty reads 'done'/'optional' (the feats
+  // precedent above) rather than 'untouched', so the step never blocks the
+  // "all steps complete" badge for non-crew characters. The summary stays
+  // reference-free because deployment names live in the on-demand deployment
+  // reference, not in ReferenceData — the step component names them.
   const ranked = deploymentsOf(build).filter((d) => d.rank > 0);
   const prestige = prestigeOf(build);
   const deploymentsInfo: StepInfo = ranked.length === 0 && prestige === 0
-    ? info('untouched', '—')
+    ? info('done', 'optional')
     : info('done', `${ranked.length} deployment${ranked.length === 1 ? '' : 's'} · ${prestige} prestige`);
 
   return {

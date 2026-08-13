@@ -1,6 +1,6 @@
 // apps/swdnd/src/lib/validation.test.ts
 import { test, expect } from 'bun:test';
-import { emptyBuild, type DerivedSheet, type ReferenceData, type RefClass, type RefSpecies } from './rules/types';
+import { emptyBuild, type CharacterBuild, type DerivedSheet, type ReferenceData, type RefClass, type RefSpecies } from './rules/types';
 import { computeSheet } from './rules';
 import { stepStatus, STEP_ORDER } from './validation';
 
@@ -32,7 +32,7 @@ const derived = (forceKnownMax = 9, superiority: DerivedSheet['superiority'] = n
   superiority,
 } as unknown as DerivedSheet);
 
-test('empty build: identity steps untouched, feats optional-done', () => {
+test('empty build: identity steps untouched, feats & deployments optional-done', () => {
   const s = stepStatus(emptyBuild('x'), ref, derived(0));
   expect(STEP_ORDER).toEqual(['species', 'background', 'class', 'abilities', 'skills', 'feats', 'equipment', 'powers', 'deployments']);
   expect(s.species.state).toBe('untouched');
@@ -42,6 +42,7 @@ test('empty build: identity steps untouched, feats optional-done', () => {
   expect(s.feats.state).toBe('done'); // optional
   expect(s.equipment.state).toBe('untouched');
   expect(s.powers.applicable).toBe(false); // no casting, no superiority
+  expect(s.deployments).toEqual({ state: 'done', summary: 'optional', applicable: true });
 });
 
 test('species with unallocated free points needs attention', () => {
@@ -153,12 +154,12 @@ test('feats step unchanged for a pure L1 build', () => {
   expect(stepStatus(b, ref, computeSheet(b, ref)).feats).toMatchObject({ state: 'done', summary: 'optional' });
 });
 
-test('deployments step is optional: untouched when empty, never attention', () => {
+test('deployments step is optional: done/optional when empty, never attention', () => {
   const empty = stepStatus(emptyBuild('x'), ref, derived(0));
   expect(STEP_ORDER).toEqual([
     'species', 'background', 'class', 'abilities', 'skills', 'feats', 'equipment', 'powers', 'deployments',
   ]);
-  expect(empty.deployments).toEqual({ state: 'untouched', summary: '—', applicable: true });
+  expect(empty.deployments).toEqual({ state: 'done', summary: 'optional', applicable: true });
 
   const one = stepStatus(
     { ...emptyBuild('x'), deployments: [{ deploymentId: 'gunner-row', rank: 3 }] },
@@ -182,4 +183,10 @@ test('deployments step is optional: untouched when empty, never attention', () =
   for (const build of [emptyBuild('x'), { ...emptyBuild('x'), deployments: [{ deploymentId: 'g', rank: 5 }], prestige: 99 }]) {
     expect(stepStatus(build, ref, derived(0)).deployments.state).not.toBe('attention');
   }
+});
+
+test('deployments step tolerates pre-v2 documents missing the fields entirely', () => {
+  const preV2 = { ...emptyBuild('x'), deployments: undefined, prestige: undefined } as CharacterBuild;
+  expect(() => stepStatus(preV2, ref, derived(0))).not.toThrow();
+  expect(stepStatus(preV2, ref, derived(0)).deployments).toEqual({ state: 'done', summary: 'optional', applicable: true });
 });
