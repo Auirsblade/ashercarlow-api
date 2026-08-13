@@ -24,7 +24,7 @@ export interface SheetState {
 const SAVE_DEBOUNCE_MS = 400;
 
 export function useCharacterSheet(characterId: string): SheetState {
-  const { authed } = useAuth();
+  const { authed, loading: authLoading } = useAuth();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
 
@@ -105,5 +105,8 @@ export function useCharacterSheet(characterId: string): SheetState {
     [canEdit, build, derived, play, characterId, token],
   );
 
-  return { loading, error, build, derived, ref, play, canEdit, dto, dispatch };
+  // Folded with authLoading (same "authLoading || hook loading" shape as
+  // DMScreen/index.tsx:23-25's authLoading || dm.loading) so an admin-only
+  // canEdit answer never flashes false before the auth cookie check settles.
+  return { loading: loading || authLoading, error, build, derived, ref, play, canEdit, dto, dispatch };
 }

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getPlayerByToken } from '../lib/characters';
 import { getStarship, loadShipReference, patchStarship, type StarshipDto } from '../lib/starships';
+import { connectCampaign } from '../lib/ws';
 import { useAuth } from '../lib/auth';
 import { resolveShipCanEdit } from '../lib/canEdit';
 import { applyShipBuildAction, type ShipBuildAction } from '../lib/shipBuildState';
@@ -29,7 +30,7 @@ export interface ShipBuilderState {
 const SAVE_DEBOUNCE_MS = 500;
 
 export function useShipBuilder(shipId: string): ShipBuilderState {
-  const { authed } = useAuth();
+  const { authed, loading: authLoading } = useAuth();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
 
@@ -37,6 +38,11 @@ export function useShipBuilder(shipId: string): ShipBuilderState {
   const [build, setBuild] = useState<ShipBuild | null>(null);
   const [ref, setRef] = useState<ShipReferenceData | null>(null);
   const [ownCharacterIds, setOwnCharacterIds] = useState<string[]>([]);
+  // True until the identity lookup below settles, whenever a token is present
+  // — folded into `loading` (same "authLoading || hook loading" shape as
+  // DMScreen/index.tsx:23-25's authLoading || dm.loading) so canEdit never
+  // reads as false just because the getPlayerByToken race hasn't finished.
+  const [identityLoading, setIdentityLoading] = useState(!!token);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -61,12 +67,14 @@ export function useShipBuilder(shipId: string): ShipBuilderState {
   }, [shipId]);
 
   useEffect(() => {
-    if (!token) { setOwnCharacterIds([]); return; }
+    if (!token) { setOwnCharacterIds([]); setIdentityLoading(false); return; }
     let alive = true;
+    setIdentityLoading(true);
     // A failed lookup just means "no player identity" -> read-only, not an error banner.
     getPlayerByToken(token)
       .then((me) => alive && setOwnCharacterIds(me.characters.map((ch) => ch.id)))
-      .catch(() => alive && setOwnCharacterIds([]));
+      .catch(() => alive && setOwnCharacterIds([]))
+      .finally(() => alive && setIdentityLoading(false));
     return () => { alive = false; };
   }, [token]);
 
@@ -75,6 +83,31 @@ export function useShipBuilder(shipId: string): ShipBuilderState {
     () => (build && ref && derived ? shipStepStatus(build, ref, derived) : null),
     [build, ref, derived],
   );
+
+  useEffect(() => {
+    const campaignId = dto?.campaign_id;
+    if (!campaignId) return;
+    const sock = connectCampaign(
+      campaignId,
+      (env) => {
+        if (env.type !== 'ship:updated') return;
+        const payload = env.payload as { shipId?: string; data_json?: ShipBuild } | undefined;
+        if (payload?.shipId !== shipId || !payload.data_json) return;
+        // The builder owns the build-half while open (last-write-wins there
+        // is accepted — see below), but a local edit still means "don't
+        // stomp what the user is mid-typing", same guard as useShipSheet's.
+        if (saveTimer.current) return;
+        // Re-base ONLY the play subtree: a refit made here must not revert
+        // live hull/damage happening on the Sheet (or another tab) in
+        // parallel. The build half is intentionally NOT taken from the wire
+        // — the builder owns it while open, so last-write-wins there.
+        setBuild((b) => (b ? { ...b, play: payload.data_json!.play } : b));
+      },
+      undefined,
+      token,
+    );
+    return () => sock.close();
+  }, [dto?.campaign_id, shipId, token]);
 
   const canEdit = resolveShipCanEdit({
     admin: authed, token, playerCharacterIds: ownCharacterIds, crew: dto?.crew ?? [],
@@ -100,5 +133,8 @@ export function useShipBuilder(shipId: string): ShipBuilderState {
     [canEdit, build, ref, derived, shipId, token],
   );
 
-  return { loading, error, build, derived, ref, status, canEdit, dto, saving, dispatch };
+  return {
+    loading: loading || authLoading || identityLoading,
+    error, build, derived, ref, status, canEdit, dto, saving, dispatch,
+  };
 }
