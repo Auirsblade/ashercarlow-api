@@ -1,7 +1,7 @@
 // apps/swdnd/src/lib/shipValidation.test.ts
 import { expect, test } from 'bun:test';
 import { computeShip } from './shipRules';
-import { emptyShipBuild, type RefShipArmor, type RefShipModification, type RefShipSize, type RefShipWeapon, type ShipReferenceData } from './shipRules/types';
+import { emptyShipBuild, type RefShipArmor, type RefShipEquipment, type RefShipModification, type RefShipSize, type RefShipWeapon, type ShipReferenceData } from './shipRules/types';
 import { SHIP_STEP_ORDER, shipStepStatus } from './shipValidation';
 
 const small: RefShipSize = {
@@ -22,6 +22,10 @@ const weaponRow = (id: string): RefShipWeapon => ({
 const modRow = (id: string, system: string): RefShipModification => ({
   id, name: id, system, grade: 0, prerequisite: null, freeSlot: false, freeSuite: false, baseCost: null, description: '',
 });
+const equipmentRow = (over: Partial<RefShipEquipment> & { id: string; kind: RefShipEquipment['kind'] }): RefShipEquipment => ({
+  name: over.id, powerDiceRecovery: null, hyperdriveClass: null, centralCapacity: null, systemCapacity: null,
+  price: null, description: '', ...over,
+});
 
 const ref: ShipReferenceData = {
   sizes: { sm: small },
@@ -29,7 +33,10 @@ const ref: ShipReferenceData = {
     deflect: armorRow({ id: 'deflect', name: 'Deflection Armor', dexCap: 2, damageReduction: 3 }),
     directional: armorRow({ id: 'directional', name: 'Directional Shield', kind: 'shield', baseAc: 0, capacityCoefficient: 1, regenCoefficient: 1 }),
   },
-  equipment: {},
+  equipment: {
+    fusial: equipmentRow({ id: 'fusial', name: 'Fusial Reactor', kind: 'reactor' }),
+    coaxium: equipmentRow({ id: 'coaxium', name: 'Coaxium Coupling', kind: 'coupling' }),
+  },
   weapons: { laser: weaponRow('laser'), ion: weaponRow('ion'), pod: weaponRow('pod') },
   modifications: { eng: modRow('eng', 'Engineering'), uni: modRow('uni', 'Universal'), lounge: modRow('lounge', 'Suite') },
 };
@@ -104,15 +111,23 @@ test('weapons report hardpoint capacity and go to attention when over budget', (
   expect(status(b).weapons.state).toBe('done');
 });
 
-test('equipment reports the installed armor and shield by name', () => {
+test('equipment reports the installed reactor/hyperdrive/coupling by name, not hull/shields', () => {
   const b = ship();
   b.identity.sizeId = 'sm';
+  // Armor + shield are hullInfo's concern (see the hull-step test above); alone they
+  // must leave the equipment step untouched.
   b.equipment = [
     { id: 'a1', ref: 'deflect', kind: 'armor' },
     { id: 's1', ref: 'directional', kind: 'shield' },
   ];
+  expect(status(b).equipment).toMatchObject({ state: 'untouched', summary: '—' });
+
+  b.equipment.push(
+    { id: 'r1', ref: 'fusial', kind: 'reactor' },
+    { id: 'c1', ref: 'coaxium', kind: 'coupling' },
+  );
   expect(status(b).equipment).toMatchObject({
-    state: 'done', summary: 'Deflection Armor · Directional Shield',
+    state: 'done', summary: 'Fusial Reactor · Coaxium Coupling',
   });
 });
 

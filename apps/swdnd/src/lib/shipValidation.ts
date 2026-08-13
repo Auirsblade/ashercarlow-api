@@ -3,7 +3,7 @@
 // ("2/4 hardpoints", "suite 1/2") and go to `attention` only when a budget is
 // exceeded. Over-budget is a warning, never a block — the ⌂ house-rule unlock
 // silences it, exactly like character validation.
-import { installedArmor, installedShield } from './shipRules/defense';
+import { installedShield } from './shipRules/defense';
 import type { DerivedShip, ShipBuild, ShipReferenceData } from './shipRules/types';
 import type { StepInfo, StepState } from './validation';
 
@@ -54,8 +54,12 @@ export function shipStepStatus(
         `${derived.hardpointsUsed}/${derived.hardpointsMax} hardpoints`,
       );
 
-  const armor = installedArmor(build, ref);
-  const parts = [armor?.name, shield?.name].filter(Boolean) as string[];
+  // Equipment: reactor / hyperdrive / coupling — hull/shields are hullInfo's job, not this one's.
+  const equipmentOf = (kind: 'reactor' | 'hyperdrive' | 'coupling') => {
+    const entry = build.equipment.find((e) => e.kind === kind);
+    return entry ? ref.equipment[entry.ref]?.name : undefined;
+  };
+  const parts = [equipmentOf('reactor'), equipmentOf('hyperdrive'), equipmentOf('coupling')].filter(Boolean) as string[];
   const equipmentInfo = parts.length === 0 ? info('untouched', '—') : info('done', parts.join(' · '));
 
   const modSummary =

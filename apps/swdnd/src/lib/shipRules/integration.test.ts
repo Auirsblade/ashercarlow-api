@@ -6,7 +6,7 @@ import { applyShipBuildAction, type ShipBuildAction } from '../shipBuildState';
 import { applyShipPlayAction } from '../shipPlayState';
 import { shipStepStatus } from '../shipValidation';
 import { computeShip } from './index';
-import { emptyShipBuild, type RefShipArmor, type RefShipModification, type RefShipSize, type RefShipWeapon, type ShipReferenceData } from './types';
+import { emptyShipBuild, type RefShipArmor, type RefShipEquipment, type RefShipModification, type RefShipSize, type RefShipWeapon, type ShipReferenceData } from './types';
 
 const small: RefShipSize = {
   id: 'sm', name: 'Small Starship', key: 'small',
@@ -24,7 +24,16 @@ const ref: ShipReferenceData = {
     deflect: armorRow({ id: 'deflect', name: 'Deflection Armor', dexCap: 2, damageReduction: 3 }),
     fortress: armorRow({ id: 'fortress', name: 'Fortress Shield', kind: 'shield', baseAc: 0, capacityCoefficient: 1.5, regenCoefficient: 0.667 }),
   },
-  equipment: {},
+  equipment: {
+    fusial: {
+      id: 'fusial', name: 'Fusial Reactor', kind: 'reactor', powerDiceRecovery: '1d4',
+      hyperdriveClass: null, centralCapacity: null, systemCapacity: null, price: null, description: '',
+    } satisfies RefShipEquipment,
+    coaxium: {
+      id: 'coaxium', name: 'Coaxium Coupling', kind: 'coupling', powerDiceRecovery: null,
+      hyperdriveClass: null, centralCapacity: 4, systemCapacity: 2, price: null, description: '',
+    } satisfies RefShipEquipment,
+  },
   weapons: {
     laser: {
       id: 'laser', name: 'Twin laser cannon', category: 'primary',
@@ -62,6 +71,8 @@ test('a Small tier-2 fighter, assembled through actions, computes every stat', (
     { t: 'allocateTierPoint', tier: 2, ability: 'con', delta: 1 },
     { t: 'installEquipment', ref: 'deflect', kind: 'armor', id: 'a1' },
     { t: 'installEquipment', ref: 'fortress', kind: 'shield', id: 's1' },
+    { t: 'installEquipment', ref: 'fusial', kind: 'reactor', id: 'r1' },
+    { t: 'installEquipment', ref: 'coaxium', kind: 'coupling', id: 'c1' },
     { t: 'installEquipment', ref: 'laser', kind: 'weapon', mount: 'fixed-forward', id: 'w1' },
     { t: 'installEquipment', ref: 'torp', kind: 'weapon', mount: 'turret', id: 'w2' },
     { t: 'toggleModification', ref: 'scrambler' },
@@ -125,7 +136,8 @@ test('a Small tier-2 fighter, assembled through actions, computes every stat', (
   expect(status.tier).toMatchObject({ state: 'done', summary: 'tier 2' });
   expect(status.hull).toMatchObject({ state: 'done', summary: 'hull 32 · shields 48' });
   expect(status.weapons).toMatchObject({ state: 'done', summary: '2/3 hardpoints' });
-  expect(status.equipment).toMatchObject({ state: 'done', summary: 'Deflection Armor · Fortress Shield' });
+  // equipment reports the reactor/hyperdrive/coupling layer, not hull/shields (that's status.hull's job above).
+  expect(status.equipment).toMatchObject({ state: 'done', summary: 'Fusial Reactor · Coaxium Coupling' });
   expect(status.modifications).toMatchObject({ state: 'done', summary: '1/3 slots · suite 0/1' });
 });
 
