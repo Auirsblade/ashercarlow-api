@@ -13,6 +13,7 @@ import AbilitiesStep from './steps/Abilities';
 import FeatsStep from './steps/Feats';
 import EquipmentStep from './steps/Equipment';
 import PowersStep from './steps/Powers';
+import DeploymentsStep from './steps/Deployments';
 
 export default function Builder({ characterId }: { characterId: string }) {
   const b = useBuilder(characterId);
@@ -70,6 +71,7 @@ export default function Builder({ characterId }: { characterId: string }) {
           {active === 'powers' && (
             <PowersStep build={b.build} derived={b.derived} ref={b.ref} editable={b.canEdit} dispatch={b.dispatch} />
           )}
+          {active === 'deployments' && <DeploymentsStep build={b.build} editable={b.canEdit} dispatch={b.dispatch} />}
         </div>
       </div>
     </div>
