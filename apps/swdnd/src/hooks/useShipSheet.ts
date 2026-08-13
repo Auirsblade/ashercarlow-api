@@ -25,11 +25,13 @@ export interface ShipSheetState {
   play: ShipPlayState | null;
   crew: ShipCrewMember[];
   crewMembers: Array<{ role: ShipRole; dto: CharacterDto }>;
+  crewError: string | null;
   crewInput: CrewInput | undefined;
   canEdit: boolean;
   dto: StarshipDto | null;
   dispatch: (action: ShipPlayAction) => void;
   reload: () => void;
+  reloadCrew: () => void;
 }
 
 // starship_crew.role is unconstrained TEXT in the DB (only the write-path
@@ -116,6 +118,13 @@ export function useShipSheet(shipId: string): ShipSheetState {
   }, [token]);
 
   const [crewMembers, setCrewMembers] = useState<Array<{ role: ShipRole; dto: CharacterDto }>>([]);
+  const [crewError, setCrewError] = useState<string | null>(null);
+  // Bumped by reloadCrew() to force the crew-load effect below to re-run even
+  // when crewKey is unchanged (a retry after a transient fetch failure, not a
+  // roster change) -- same "nonce forces a re-run" shape as Deployments.tsx's
+  // `attempt` state.
+  const [crewReloadNonce, setCrewReloadNonce] = useState(0);
+  const reloadCrew = useCallback(() => setCrewReloadNonce((n) => n + 1), []);
   // Mirrors `crewMembers`, so the WS callback below (recreated only on
   // [dto?.campaign_id, shipId, token, reload]) can read the current roster
   // instead of the stale snapshot it would otherwise close over.
@@ -130,13 +139,18 @@ export function useShipSheet(shipId: string): ShipSheetState {
     const rows = dto?.crew ?? [];
     if (rows.length === 0) {
       setCrewMembers([]);
+      setCrewError(null);
       return;
     }
     let alive = true;
+    let failedCount = 0;
     // One request per crewed character and nothing else: crewInputFrom derives
     // proficiency from the build document itself (crewProficiency), so the ship
     // sheet never pays for the ten-request character reference loader.
-    Promise.all(rows.map((row) => getCharacter(row.character_id).catch(() => null)))
+    Promise.all(rows.map((row) => getCharacter(row.character_id).catch(() => {
+      failedCount += 1;
+      return null;
+    })))
       .then((dtos) => {
         if (!alive) return;
         const members = rows.flatMap((row, i) => {
@@ -158,10 +172,18 @@ export function useShipSheet(shipId: string): ShipSheetState {
           return [{ role, dto: cdto }];
         });
         setCrewMembers(members);
+        // A failed member fetch used to just vanish from crewMembers with no
+        // signal -- CrewAbilities silently lost the entry and a gunner bonus
+        // reverted to the suffix form with nothing telling the user why. Set
+        // (or clear, on a fully successful load) crewError so the sheet can
+        // surface it instead.
+        setCrewError(failedCount > 0
+          ? `crew data incomplete — ${failedCount} member(s) failed to load`
+          : null);
       })
       .catch(() => { /* crew stats are additive: a failed load leaves the ship uncrewed */ });
     return () => { alive = false; };
-  }, [crewKey]);
+  }, [crewKey, crewReloadNonce]);
 
   const crewInput = useMemo(() => {
     if (!ref || crewMembers.length === 0) return undefined;
@@ -249,7 +271,7 @@ export function useShipSheet(shipId: string): ShipSheetState {
 
   return {
     loading: loading || authLoading || identityLoading,
-    error, build, derived, ref, play, crew: dto?.crew ?? [], crewMembers, crewInput,
-    canEdit, dto, dispatch, reload,
+    error, build, derived, ref, play, crew: dto?.crew ?? [], crewMembers, crewError, crewInput,
+    canEdit, dto, dispatch, reload, reloadCrew,
   };
 }

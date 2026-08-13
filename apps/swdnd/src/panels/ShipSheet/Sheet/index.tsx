@@ -90,6 +90,12 @@ export default function ShipSheetView({ shipId }: { shipId: string }) {
         canEdit={s.canEdit} token={token} onReload={s.reload}
       />
       <PowerDice derived={derived} play={play} editable={s.canEdit} dispatch={s.dispatch} onRoll={onPowerRoll} />
+      {s.crewError && (
+        <div className="flex items-center justify-between gap-2 font-mono text-[10px] text-red-300">
+          <span>⚠ {s.crewError}</span>
+          <button type="button" className="ht-step" onClick={s.reloadCrew}>retry</button>
+        </div>
+      )}
       <CrewAbilities crewMembers={s.crewMembers} ref={s.ref} />
     </div>
   );
