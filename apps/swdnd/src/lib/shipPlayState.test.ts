@@ -31,6 +31,21 @@ test('repairs and restores clamp to their maxima', () => {
   expect(run(hurt, { t: 'restoreShields', n: -5 }).shields).toBe(2);
 });
 
+test('patchHull spends a hull die and applies its rolled result in a single dispatch', () => {
+  const hurt = ship({ hull: 10 });
+  expect(run(hurt, { t: 'patchHull', rolled: 6 })).toMatchObject({ hull: 16, hullDiceSpent: 1 });
+  expect(run(hurt, { t: 'patchHull', rolled: 999 })).toMatchObject({ hull: 40, hullDiceSpent: 1 }); // clamped
+  expect(run(ship({ hullDiceSpent: 5 }), { t: 'patchHull', rolled: 6 }).hullDiceSpent).toBe(5);      // capped
+  expect(run(ship({ hull: 10 }), { t: 'patchHull', rolled: -3 }).hull).toBe(10);                     // no negative heal
+});
+
+test('regenerateShields spends a shield die and restores the fixed rate, never rolled', () => {
+  const hurt = ship({ shields: 5 });
+  expect(run(hurt, { t: 'regenerateShields' })).toMatchObject({ shields: 13, shieldDiceSpent: 1 }); // +shieldRegen (8)
+  expect(run(ship({ shields: 15 }), { t: 'regenerateShields' }).shields).toBe(20);                  // clamped to max
+  expect(run(ship({ shieldDiceSpent: 5 }), { t: 'regenerateShields' }).shieldDiceSpent).toBe(5);     // capped
+});
+
 test('exact-entry setters clamp into range', () => {
   expect(run(ship(), { t: 'setHull', n: 17 }).hull).toBe(17);
   expect(run(ship(), { t: 'setHull', n: -4 }).hull).toBe(0);

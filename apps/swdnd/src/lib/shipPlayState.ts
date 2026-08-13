@@ -6,6 +6,20 @@ export type ShipPlayAction =
   | { t: 'damage'; n: number }
   | { t: 'repairHull'; n: number }
   | { t: 'restoreShields'; n: number }
+  /**
+   * Compound: spend a hull die AND apply its already-rolled result in one
+   * dispatch. useShipSheet's dispatch closes over `play` (not a functional
+   * setState), so two dispatches back-to-back in the same handler (spend,
+   * then heal) would both read the same stale play and the first would be
+   * dropped. The caller rolls the die itself (it lands in the roll log) and
+   * passes the total in.
+   */
+  | { t: 'patchHull'; rolled: number }
+  /**
+   * Compound: spend a shield die AND restore the fixed shieldRegen rate —
+   * never rolled, unlike patchHull. Same single-dispatch requirement as above.
+   */
+  | { t: 'regenerateShields' }
   | { t: 'setHull'; n: number }
   | { t: 'setShields'; n: number }
   | { t: 'spendHullDie' }
@@ -53,6 +67,14 @@ export function applyShipPlayAction(
       break;
     case 'restoreShields':
       p.shields = clamp(p.shields + Math.max(0, action.n), 0, derived.maxShields);
+      break;
+    case 'patchHull':
+      p.hullDiceSpent = clamp(p.hullDiceSpent + 1, 0, derived.hullDice.count);
+      p.hull = clamp(p.hull + Math.max(0, action.rolled), 0, derived.maxHull);
+      break;
+    case 'regenerateShields':
+      p.shieldDiceSpent = clamp(p.shieldDiceSpent + 1, 0, derived.shieldDice.count);
+      p.shields = clamp(p.shields + derived.shieldRegen, 0, derived.maxShields);
       break;
     case 'setHull':
       p.hull = clamp(action.n, 0, derived.maxHull);
