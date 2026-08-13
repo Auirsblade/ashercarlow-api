@@ -259,7 +259,7 @@ describe('swdnd starship write + delete', () => {
     expect(body.crew).toHaveLength(1);
   });
 
-  it('PATCH broadcasts ship:updated to the campaign room with the exact {shipId, name, play} payload', async () => {
+  it('PATCH broadcasts ship:updated to the campaign room with the exact {shipId, name, play, data_json} payload', async () => {
     const doc = {
       schemaVersion: 1,
       identity: { name: 'Ghost III', sizeId: 'medium', tier: 3 },
@@ -275,9 +275,9 @@ describe('swdnd starship write + delete', () => {
 
     const payload = env.payload as Record<string, unknown>;
     // Exact key set -- catches an added/renamed/dropped field (e.g. shipId -> id,
-    // or the whole data_json leaking through) even though it wouldn't change length.
-    expect(Object.keys(payload).sort()).toEqual(['name', 'play', 'shipId'].sort());
-    expect(payload).toEqual({ shipId, name: 'Ghost III', play: doc.play });
+    // or data_json silently disappearing again) even though it wouldn't change length.
+    expect(Object.keys(payload).sort()).toEqual(['data_json', 'name', 'play', 'shipId'].sort());
+    expect(payload).toEqual({ shipId, name: 'Ghost III', play: doc.play, data_json: doc });
   });
 
   it('PATCH/DELETE 404 an unknown ship', async () => {
@@ -393,7 +393,7 @@ describe('swdnd starship crew roster', () => {
     expect((await app.request('/swdnd/starships/nope/crew', json('PUT', { characterId: charA, role: 'pilot' }))).status).toBe(404);
   });
 
-  it('a successful PUT and a successful crew DELETE each broadcast exactly one ship:updated envelope with the exact {shipId, name, play} payload', async () => {
+  it('a successful PUT and a successful crew DELETE each broadcast exactly one ship:updated envelope with the exact {shipId, name, play, data_json} payload', async () => {
     const before = (await (await app.request(`/swdnd/starships/${shipId}`)).json()) as any;
 
     const put = await app.request(`/swdnd/starships/${shipId}/crew`, json('PUT', { characterId: charB, role: 'coordinator' }));
@@ -403,8 +403,10 @@ describe('swdnd starship crew roster', () => {
     expect(putEnv.type).toBe('ship:updated');
     expect(putEnv.room).toBe(`campaign:${campaignId}`);
     const putPayload = putEnv.payload as Record<string, unknown>;
-    expect(Object.keys(putPayload).sort()).toEqual(['name', 'play', 'shipId'].sort());
-    expect(putPayload).toEqual({ shipId, name: before.name, play: before.data_json.play });
+    expect(Object.keys(putPayload).sort()).toEqual(['data_json', 'name', 'play', 'shipId'].sort());
+    // Crew mutations never touch data_json -- the broadcast doc is the ship's
+    // build/play document, untouched, not the crew roster.
+    expect(putPayload).toEqual({ shipId, name: before.name, play: before.data_json.play, data_json: before.data_json });
 
     publishedEnvelopes = [];
     // Deletes exactly the role just added -- nets to a no-op on the roster so
@@ -417,8 +419,8 @@ describe('swdnd starship crew roster', () => {
     expect(delEnv.type).toBe('ship:updated');
     expect(delEnv.room).toBe(`campaign:${campaignId}`);
     const delPayload = delEnv.payload as Record<string, unknown>;
-    expect(Object.keys(delPayload).sort()).toEqual(['name', 'play', 'shipId'].sort());
-    expect(delPayload).toEqual({ shipId, name: before.name, play: before.data_json.play });
+    expect(Object.keys(delPayload).sort()).toEqual(['data_json', 'name', 'play', 'shipId'].sort());
+    expect(delPayload).toEqual({ shipId, name: before.name, play: before.data_json.play, data_json: before.data_json });
   });
 
   it('crew edits the roster; a non-crew player cannot', async () => {

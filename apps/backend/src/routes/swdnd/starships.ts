@@ -151,11 +151,17 @@ const deleteRoute = createRoute({
   },
 });
 
-/** Thin payload, same philosophy as character:updated — id, name, play state. */
+/**
+ * id, name, play state (for cheap play-only merges), and the full parsed
+ * document (data_json) so a build-half change — a refit, a crew edit that
+ * rides no build fields, whatever — never leaves a viewer's copy stale.
+ * `play` is kept alongside `data_json` even though it's a strict subset:
+ * existing consumers key off it directly without reparsing the whole doc.
+ */
 function publishShipUpdated(row: StarshipRow): void {
   const doc = JSON.parse(row.data_json) as { play?: unknown };
   const room = roomForCampaign(row.campaign_id);
-  publishToRoom(room, { type: 'ship:updated', room, payload: { shipId: row.id, name: row.name, play: doc.play } });
+  publishToRoom(room, { type: 'ship:updated', room, payload: { shipId: row.id, name: row.name, play: doc.play, data_json: doc } });
 }
 
 const CrewPutBody = z
