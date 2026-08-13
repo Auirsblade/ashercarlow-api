@@ -173,3 +173,27 @@ test('installEquipment refuses an unresolvable ref regardless of the claimed kin
   const b = dispatch(base(), { t: 'installEquipment', ref: 'ghost-ref', kind: 'weapon', id: 'x1' });
   expect(b.equipment).toEqual([]);
 });
+
+// --- Review round 1, Important #1: the delta -1 branch of allocateTierPoint
+// spliced the increase and broke before any pool bookkeeping, while every
+// other max-changing path reconciles play.hull/shields. Allocating then
+// de-allocating a CON point left play.hull stuck above the (now lower) max.
+
+test('allocateTierPoint reconciles play.hull on de-allocate, not just allocate', () => {
+  const b0 = base();
+  b0.abilities.base = { ...b0.abilities.base, con: 13 }; // odd score: +1 crosses a modifier boundary
+  let b = dispatch(b0, { t: 'setTier', tier: 2 });
+  b.play.hull = computeShip(b, ref).maxHull; // ship starts full
+  const originalMax = computeShip(b, ref).maxHull;
+  const originalHull = b.play.hull;
+
+  const allocated = dispatch(b, { t: 'allocateTierPoint', tier: 2, ability: 'con', delta: 1 });
+  const grownMax = computeShip(allocated, ref).maxHull;
+  expect(grownMax).toBeGreaterThan(originalMax);   // sanity: the point actually moved the max
+  expect(allocated.play.hull).toBe(grownMax);      // stayed full while growing
+
+  const deallocated = dispatch(allocated, { t: 'allocateTierPoint', tier: 2, ability: 'con', delta: -1 });
+  expect(computeShip(deallocated, ref).maxHull).toBe(originalMax);
+  expect(deallocated.play.hull).toBe(originalHull);        // back to where it started
+  expect(deallocated.play.hull).toBeLessThanOrEqual(computeShip(deallocated, ref).maxHull);
+});

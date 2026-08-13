@@ -11,7 +11,12 @@ export type ShipBuildAction =
   | { t: 'setTier'; tier: number }
   | { t: 'setBaseAbilities'; base: Record<ShipAbilityKey, number> }
   | { t: 'allocateTierPoint'; tier: number; ability: ShipAbilityKey; delta: 1 | -1 }
-  | { t: 'installEquipment'; ref: string; kind: ShipEquipmentKind; mount?: WeaponMount; id?: string }
+  | {
+      t: 'installEquipment'; ref: string;
+      /** Ignored — kind is derived from the ref row (see deriveEquipmentKind); kept for caller-shape stability. */
+      kind: ShipEquipmentKind;
+      mount?: WeaponMount; id?: string;
+    }
   | { t: 'removeEquipment'; id: string }
   | { t: 'setMount'; id: string; mount: WeaponMount }
   | { t: 'toggleModification'; ref: string }
@@ -110,15 +115,17 @@ export function applyShipBuildAction(
     case 'allocateTierPoint': {
       const tierRef = `t${action.tier}`;
       if (action.tier > b.identity.tier || action.tier < 1) break;
+      const beforeHull = maxHull(build, ref);
+      const beforeShields = maxShields(build, ref);
       if (action.delta === -1) {
         const idx = b.abilities.increases.findIndex((i) => i.ref === tierRef && i.ability === action.ability);
-        if (idx >= 0) b.abilities.increases.splice(idx, 1);
+        if (idx < 0) break; // nothing removed -> maxima unchanged, no pool bookkeeping needed
+        b.abilities.increases.splice(idx, 1);
+        applyPoolDeltas(b, ref, beforeHull, beforeShields);
         break;
       }
       const spent = b.abilities.increases.filter((i) => i.ref === tierRef).reduce((s, i) => s + i.amount, 0);
       if (spent >= TIER_POINT_BUDGET) break;
-      const beforeHull = maxHull(build, ref);
-      const beforeShields = maxShields(build, ref);
       b.abilities.increases.push({ source: 'tier', ref: tierRef, ability: action.ability, amount: 1 });
       applyPoolDeltas(b, ref, beforeHull, beforeShields);
       break;
