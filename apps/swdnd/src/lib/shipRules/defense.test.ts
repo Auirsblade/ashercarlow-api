@@ -11,13 +11,21 @@ const medium: RefShipSize = {
   spaceSpeed: 300, turnSpeed: 200, hardpointMult: 1.5,
   modBaseCap: 30, modMaxSuitesBase: 3, modMaxSuitesMult: 1, description: '',
 };
+// Only used to pin the rounding mode on shieldRegen with a die small enough
+// that floor(die * coefficient) and round(die * coefficient) actually differ.
+const small: RefShipSize = {
+  id: 'sm', name: 'Small Starship', key: 'small',
+  hullDie: 6, hullDiceStart: 3, shieldDie: 4, shieldDiceStart: 3,
+  spaceSpeed: 350, turnSpeed: 250, hardpointMult: 1,
+  modBaseCap: 20, modMaxSuitesBase: -1, modMaxSuitesMult: 1, description: '',
+};
 const armor = (over: Partial<RefShipArmor> & { id: string }): RefShipArmor => ({
   name: over.id, kind: 'armor', baseAc: 10, dexCap: null, damageReduction: 0,
   capacityCoefficient: null, regenCoefficient: null, price: null, description: '', ...over,
 });
 
 const ref: ShipReferenceData = {
-  sizes: { med: medium },
+  sizes: { med: medium, sm: small },
   armor: {
     light: armor({ id: 'light', name: 'Lightweight Armor', dexCap: null, damageReduction: 0 }),
     deflect: armor({ id: 'deflect', name: 'Deflection Armor', dexCap: 2, damageReduction: 3 }),
@@ -29,9 +37,9 @@ const ref: ShipReferenceData = {
   equipment: {}, weapons: {}, modifications: {},
 };
 
-function ship(opts: { tier?: number; dex?: number; con?: number; str?: number; install?: Array<[string, 'armor' | 'shield']> } = {}) {
+function ship(opts: { tier?: number; dex?: number; con?: number; str?: number; size?: string; install?: Array<[string, 'armor' | 'shield']> } = {}) {
   const b = emptyShipBuild('Ghost');
-  b.identity.sizeId = 'med';
+  b.identity.sizeId = opts.size ?? 'med';
   b.identity.tier = opts.tier ?? 0;
   b.abilities.base = { str: opts.str ?? 10, dex: opts.dex ?? 10, con: opts.con ?? 10, int: 10, wis: 10, cha: 10 };
   b.equipment = (opts.install ?? []).map(([r, kind], i) => ({ id: `e${i}`, ref: r, kind }));
@@ -77,15 +85,21 @@ test('max shields need a shield generator and scale by its capacity coefficient'
   expect(maxShields(ship({ str: 16 }), ref)).toBe(0);
   // base = diceTotal(8,5) + str mod * 5 = 28 + 15 = 43
   expect(maxShields(ship({ str: 16, install: [['directional', 'shield']] }), ref)).toBe(43);
-  expect(maxShields(ship({ str: 16, install: [['fortress', 'shield']] }), ref)).toBe(64);   // floor(43 * 1.5)
-  expect(maxShields(ship({ str: 16, install: [['quick', 'shield']] }), ref)).toBe(28);      // floor(43 * 0.667)
+  // round(43 * 1.5) = round(64.5) = 65 (rounds, not floors -> not 64)
+  expect(maxShields(ship({ str: 16, install: [['fortress', 'shield']] }), ref)).toBe(65);
+  // round(43 * 0.667) = round(28.681) = 29 (rounds, not floors -> not 28)
+  expect(maxShields(ship({ str: 16, install: [['quick', 'shield']] }), ref)).toBe(29);
 });
 
 test('shield regen is the max shield die value scaled by the regen coefficient', () => {
   expect(shieldRegen(ship(), ref)).toBe(0);                                        // no generator
-  expect(shieldRegen(ship({ install: [['directional', 'shield']] }), ref)).toBe(8); // 8 * 1
-  expect(shieldRegen(ship({ install: [['fortress', 'shield']] }), ref)).toBe(5);    // floor(8 * 0.667)
-  expect(shieldRegen(ship({ install: [['quick', 'shield']] }), ref)).toBe(12);      // floor(8 * 1.5)
+  expect(shieldRegen(ship({ install: [['directional', 'shield']] }), ref)).toBe(8); // round(8 * 1) = 8
+  expect(shieldRegen(ship({ install: [['fortress', 'shield']] }), ref)).toBe(5);    // round(8 * 0.667) = round(5.336) = 5
+  expect(shieldRegen(ship({ install: [['quick', 'shield']] }), ref)).toBe(12);      // round(8 * 1.5) = 12
+  // Rounding mode pin: on a d4 shield die, round and floor genuinely disagree.
+  // round(4 * 0.667) = round(2.668) = 3 -- floor would give 2. No min-1 floor
+  // either (that only mattered for the old floor-based formula).
+  expect(shieldRegen(ship({ size: 'sm', install: [['fortress', 'shield']] }), ref)).toBe(3);
 });
 
 test('an unknown size yields zeroes rather than NaN', () => {

@@ -62,6 +62,8 @@ export function maxHull(build: ShipBuild, ref: ShipReferenceData): number {
  * Shield dice total + Str modifier per die, scaled by the installed generator's
  * capacity coefficient (Directional x1, Fortress x3/2, Quick-Charge x2/3).
  * No generator installed -> the ship has no shields at all.
+ * Rounded (not floored) per the vendor SW5E engine:
+ * vendor/sw5e/module/documents/actor/actor.mjs:1198 — `Math.round(base * capMult)`.
  */
 export function maxShields(build: ShipBuild, ref: ShipReferenceData): number {
   const shield = installedShield(build, ref);
@@ -70,17 +72,20 @@ export function maxShields(build: ShipBuild, ref: ShipReferenceData): number {
   if (count === 0) return 0;
   const strMod = shipAbilityModifier(totalShipAbilityScores(build).str);
   const base = diceTotal(die, count) + strMod * count;
-  return Math.max(0, Math.floor(base * (shield.capacityCoefficient ?? 1)));
+  return Math.max(0, Math.round(base * (shield.capacityCoefficient ?? 1)));
 }
 
 /**
  * Regen rate = the maximum value of one shield die scaled by the generator's
  * regen coefficient (Directional x1, Fortress x2/3, Quick-Charge x3/2).
+ * Rounded, same convention as maxShields (vendor actor.mjs:1198). No min-1 floor:
+ * the vendor has none — a zero capacity multiplier means shields are depleted
+ * (vendor/sw5e/module/documents/actor/actor.mjs:1394), not clamped to a minimum.
  */
 export function shieldRegen(build: ShipBuild, ref: ShipReferenceData): number {
   const shield = installedShield(build, ref);
   if (!shield) return 0;
   const { die } = shipShieldDice(build, ref);
   if (die === 0) return 0;
-  return Math.max(1, Math.floor(die * (shield.regenCoefficient ?? 1)));
+  return Math.round(die * (shield.regenCoefficient ?? 1));
 }
