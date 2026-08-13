@@ -42,6 +42,21 @@ test('mapShipSizeRow derives key from system.identifier, not the system.size sho
   expect(mapShipSizeRow(row).key).toBe('gargantuan');
 });
 
+// modMaxSuitesBase is legitimately -1 on Small (see the comment on the
+// mapper) — assert it explicitly so a future `|| 0` regression fails loudly.
+// Fixture verbatim from the real pack row (id 6BN8l5E8QtYt103T, "Small Starship").
+test('mapShipSizeRow preserves a negative modMaxSuitesBase (Small, verbatim from the pack)', () => {
+  const row = {
+    id: '6BN8l5E8QtYt103T', name: 'Small Starship',
+    raw_json: JSON.stringify({ system: {
+      identifier: 'small', hullDice: 'd6', hullDiceStart: 3, shldDice: 'd6', shldDiceStart: 3,
+      baseSpaceSpeed: 300, baseTurnSpeed: 250, hardpointMult: 1,
+      modBaseCap: 20, modMaxSuitesBase: -1, modMaxSuitesMult: 1,
+    } }),
+  };
+  expect(mapShipSizeRow(row).modMaxSuitesBase).toBe(-1);
+});
+
 test('mapShipArmorRow reads AC, Dex cap and damage reduction for armor', () => {
   const deflection = {
     id: 'aG6mKPerYCFmkI00', name: 'Deflection Armor',
@@ -72,8 +87,11 @@ test('mapShipArmorRow classifies ssshield rows and reads both coefficients', () 
     armor: { value: 0, type: 'ssshield', dex: null },
     attributes: { capx: { value: 1.5 }, dmgred: { value: null }, regrateco: { value: 0.667 } },
   } }) };
+  // Every real ssshield row stores armor.value: 0 — assert it explicitly. A
+  // `Number(v ?? 10) || 10` fallback would coerce this legit 0 to 10 and give
+  // every shielded ship +10 AC downstream.
   expect(mapShipArmorRow(fortress)).toMatchObject({
-    kind: 'shield', capacityCoefficient: 1.5, regenCoefficient: 0.667, damageReduction: 0,
+    kind: 'shield', baseAc: 0, capacityCoefficient: 1.5, regenCoefficient: 0.667, damageReduction: 0,
   });
   const quick = { id: 'q', name: 'Quick-Charge Shield', raw_json: JSON.stringify({ system: {
     armor: { value: 0, type: 'ssshield', dex: null },
@@ -135,6 +153,26 @@ test('mapShipWeaponRow normalises the category, ranges, save and ammo flags', ()
     weaponType: 'secondary (starship)', save: { ability: 'con', dc: 13, scaling: 'flat' },
   } }) };
   expect(mapShipWeaponRow(ion)).toMatchObject({ category: 'secondary', saveAbility: 'con' });
+});
+
+// Real launchers (Assault rocket pod launcher, Rocket pod launcher) omit
+// `properties.amm` entirely — it's undefined, not false — even though both
+// carry ammo.types and a reload value. `usesAmmo` must fall back to
+// `ammoTypes.length > 0` or these silently read as ammo-less. Fixture
+// verbatim from the real pack row (id AnrF720ut7gCd87W, "Rocket pod launcher").
+test('mapShipWeaponRow infers usesAmmo from ammoTypes when properties.amm is absent', () => {
+  const rocketPod = { id: 'AnrF720ut7gCd87W', name: 'Rocket pod launcher', raw_json: JSON.stringify({ system: {
+    weaponType: 'tertiary (starship)',
+    damage: { parts: [['0d0 + @mod', '']] },
+    range: { value: null, long: null },
+    ammo: { target: '', value: null, use: null, types: ['ssmissile'] },
+    save: { ability: '', dc: null, scaling: 'power' },
+    attackBonus: '',
+    properties: { rel: 12, aut: false, spc: true },
+  } }) };
+  expect(mapShipWeaponRow(rocketPod)).toMatchObject({
+    category: 'tertiary', usesAmmo: true, reload: 12, ammoTypes: ['ssmissile'],
+  });
 });
 
 test('mapShipModRow unwraps the {value} envelopes', () => {

@@ -126,7 +126,9 @@ export function mapShipArmorRow(row: ShipRow): RefShipArmor {
   return {
     id: row.id, name: row.name ?? row.id,
     kind: isShield ? 'shield' : 'armor',
-    baseAc: Number(s.armor?.value ?? 10) || 10,
+    // Every real ssshield row stores armor.value: 0 — `Number(v ?? 10) || 10`
+    // would coerce that legit 0 to 10 via `||`. Preserve 0, default only when absent.
+    baseAc: numOrNull(s.armor?.value) ?? 10,
     dexCap: s.armor?.dex == null ? null : Number(s.armor.dex),
     damageReduction: Number(attrs.dmgred?.value ?? 0) || 0,
     capacityCoefficient: numOrNull(attrs.capx?.value),
@@ -169,6 +171,7 @@ export function mapShipWeaponRow(row: ShipRow): RefShipWeapon {
   const s = system(row);
   const props = (s.properties ?? {}) as Record<string, unknown>;
   const size = s.weaponSize;
+  const ammoTypes = Array.isArray(s.ammo?.types) ? (s.ammo.types as string[]) : [];
   return {
     id: row.id, name: row.name ?? row.id,
     category: weaponCategoryOf(s.weaponType),
@@ -177,8 +180,11 @@ export function mapShipWeaponRow(row: ShipRow): RefShipWeapon {
     rangeLong: numOrNull(s.range?.long),
     saveAbility: shipAbilityOf(s.save?.ability),
     reload: typeof props.rel === 'number' ? props.rel : null,
-    usesAmmo: props.amm === true,
-    ammoTypes: Array.isArray(s.ammo?.types) ? (s.ammo.types as string[]) : [],
+    // Real launchers (Assault rocket pod launcher, Rocket pod launcher) omit
+    // properties.amm entirely, even though they carry ammo.types + a reload
+    // value — fall back to ammoTypes.length so those aren't misread as ammo-less.
+    usesAmmo: props.amm === true || ammoTypes.length > 0,
+    ammoTypes,
     weaponSize: typeof size === 'string' && size ? size : null,
     // attackBonus is sometimes the STRING "0" in the pack.
     attackBonus: Number(s.attackBonus ?? 0) || 0,
