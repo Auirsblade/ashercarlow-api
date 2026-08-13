@@ -24,11 +24,35 @@ export default function AdminDrawer({ campaign, players, cards, actions, campaig
   const [copied, setCopied] = useState<string | null>(null);
   const [ships, setShips] = useState<StarshipDto[]>([]);
   const [newShipName, setNewShipName] = useState('');
+  const [confirmDeleteShip, setConfirmDeleteShip] = useState<string | null>(null);
+  const [shipError, setShipError] = useState<string | null>(null);
 
   const reloadShips = () => {
     void listStarships(campaignId).then(setShips).catch(() => setShips([]));
   };
   useEffect(reloadShips, [campaignId]);
+
+  const addShip = async () => {
+    if (!newShipName.trim()) return;
+    try {
+      // Admin creation may start with an empty roster.
+      await createStarship(campaignId, newShipName.trim());
+      setNewShipName('');
+      setShipError(null);
+      reloadShips();
+    } catch (e) {
+      setShipError(e instanceof Error ? e.message : 'Failed to create ship');
+    }
+  };
+  const removeShip = async (id: string) => {
+    try {
+      await deleteStarship(id);
+      setShipError(null);
+      reloadShips();
+    } catch (e) {
+      setShipError(e instanceof Error ? e.message : 'Failed to delete ship');
+    }
+  };
 
   const copyInvite = async (p: PlayerDto) => {
     const link = `${window.location.origin}/player?token=${encodeURIComponent(p.access_token)}`;
@@ -135,6 +159,7 @@ export default function AdminDrawer({ campaign, players, cards, actions, campaig
 
         <div className="ht-panel mt-3 p-3 text-[11px]">
           <div className="ht-label mb-2">Starships</div>
+          {shipError && <div className="mb-2 text-[11px] text-red-400">{shipError}</div>}
           {ships.length === 0 && <div className="text-ht-muted">No ships in this campaign yet.</div>}
           {ships.map((s) => (
             <div key={s.id} className="flex flex-wrap items-center gap-2 py-1">
@@ -142,13 +167,27 @@ export default function AdminDrawer({ campaign, players, cards, actions, campaig
               <span className="text-[10px] text-ht-muted">
                 {s.crew.length === 0 ? 'no crew' : s.crew.map((m) => m.character_name).join(', ')}
               </span>
-              <span className="ml-auto flex gap-2">
+              <span className="ml-auto flex items-center gap-2">
                 <PanelLink to={{ kind: 'ship', id: s.id }} current={{ kind: 'dm', id: campaignId }} className="ht-step">
                   ship
                 </PanelLink>
                 <Link className="ht-step" to={`/ship/${s.id}/build`}>refit</Link>
-                <button type="button" className="text-[10px] text-ht-muted"
-                  onClick={() => void deleteStarship(s.id).then(reloadShips)}>delete</button>
+                {confirmDeleteShip === s.id ? (
+                  <span className="flex items-center gap-1 text-[10px]">
+                    <button
+                      type="button"
+                      className="ht-step text-red-400"
+                      onClick={() => { setConfirmDeleteShip(null); void removeShip(s.id); }}
+                    >
+                      confirm ✕
+                    </button>
+                    <button type="button" className="ht-step" onClick={() => setConfirmDeleteShip(null)}>keep</button>
+                  </span>
+                ) : (
+                  <button type="button" className="text-[10px] text-ht-muted" onClick={() => setConfirmDeleteShip(s.id)}>
+                    delete
+                  </button>
+                )}
               </span>
             </div>
           ))}
@@ -159,20 +198,7 @@ export default function AdminDrawer({ campaign, players, cards, actions, campaig
               value={newShipName}
               onChange={(e) => setNewShipName(e.target.value)}
             />
-            <button
-              type="button"
-              className="ht-step"
-              onClick={() => {
-                if (!newShipName.trim()) return;
-                // Admin creation may start with an empty roster.
-                void createStarship(campaignId, newShipName.trim()).then(() => {
-                  setNewShipName('');
-                  reloadShips();
-                });
-              }}
-            >
-              + create ship
-            </button>
+            <button type="button" className="ht-step" onClick={() => void addShip()}>+ create ship</button>
           </div>
         </div>
       </div>
