@@ -94,4 +94,69 @@ describe('swdnd tokens', () => {
   });
 });
 
+describe('ship tokens', () => {
+  let shipId: string;
+  let shipTokenId: string;
+
+  beforeAll(() => {
+    shipId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    swdndDb.run(
+      'INSERT INTO starship (id, campaign_id, name, data_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [shipId, campaignId, 'Krayt', '{}', now, now],
+    );
+  });
+
+  it('creates a ship token with ship_id, facing and a multi-hex footprint', async () => {
+    const res = await app.request(`/swdnd/scenes/${sceneId}/tokens`, json('POST', {
+      name: 'Krayt', ship_id: shipId, faction: 'friendly', scale: 4, facing: 2, q: 3, r: -1,
+    }));
+    expect(res.status).toBe(201);
+    const t = (await res.json()) as any;
+    shipTokenId = t.id;
+    expect(t.ship_id).toBe(shipId);
+    expect(t.facing).toBe(2);
+    expect(t.scale).toBe(4);
+  });
+
+  it('plain tokens report ship_id null and facing 0', async () => {
+    const t = (await (await app.request(`/swdnd/scenes/${sceneId}/tokens`, json('POST', { name: 'Rock' }))).json()) as any;
+    expect(t.ship_id).toBeNull();
+    expect(t.facing).toBe(0);
+  });
+
+  it('position PATCH rotates without moving, and moves without resetting facing', async () => {
+    let res = await app.request(`/swdnd/tokens/${shipTokenId}/position`, json('PATCH', { facing: 5 }));
+    expect(res.status).toBe(200);
+    let t = (await res.json()) as any;
+    expect(t.facing).toBe(5);
+    expect(t.q).toBe(3);
+    expect(t.r).toBe(-1);
+
+    res = await app.request(`/swdnd/tokens/${shipTokenId}/position`, json('PATCH', { q: 0, r: 0 }));
+    t = (await res.json()) as any;
+    expect(t.q).toBe(0);
+    expect(t.facing).toBe(5);
+  });
+
+  it('rejects out-of-range facing and scale', async () => {
+    expect((await app.request(`/swdnd/tokens/${shipTokenId}/position`, json('PATCH', { facing: 6 }))).status).toBe(400);
+    expect((await app.request(`/swdnd/scenes/${sceneId}/tokens`, json('POST', { name: 'Too big', scale: 17 }))).status).toBe(400);
+    expect((await app.request(`/swdnd/scenes/${sceneId}/tokens`, json('POST', { name: 'Gargantuan', scale: 16 }))).status).toBe(201);
+  });
+
+  it('deleting the starship cascades its tokens away', async () => {
+    const doomedShip = crypto.randomUUID();
+    const now = new Date().toISOString();
+    swdndDb.run(
+      'INSERT INTO starship (id, campaign_id, name, data_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [doomedShip, campaignId, 'Doomed', '{}', now, now],
+    );
+    const t = (await (await app.request(`/swdnd/scenes/${sceneId}/tokens`, json('POST', { name: 'Doomed', ship_id: doomedShip }))).json()) as any;
+    swdndDb.run('DELETE FROM starship WHERE id = ?', [doomedShip]);
+    const list = (await (await app.request(`/swdnd/scenes/${sceneId}/tokens`)).json()) as any[];
+    expect(list.map((x) => x.id)).not.toContain(t.id);
+  });
+});
+
 afterAll(() => { delete process.env.ASHERCARLOW_AUTH_TOKEN; });
