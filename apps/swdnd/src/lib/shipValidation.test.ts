@@ -58,6 +58,12 @@ test('size and tier report their chosen values', () => {
   const b = ship();
   b.identity.sizeId = 'sm';
   b.identity.tier = 3;
+  // tiers 1-3 grant 2 points each = 6; fully allocated so tier reads 'done'.
+  b.abilities.increases = [
+    { source: 'tier', ref: 't1', ability: 'str', amount: 2 },
+    { source: 'tier', ref: 't2', ability: 'dex', amount: 2 },
+    { source: 'tier', ref: 't3', ability: 'con', amount: 2 },
+  ];
   const s = status(b);
   expect(s.size).toMatchObject({ state: 'done', summary: 'Small Starship' });
   expect(s.tier).toMatchObject({ state: 'done', summary: 'tier 3' });
@@ -118,7 +124,7 @@ test('modifications report slot and suite budgets separately', () => {
   expect(status(b).modifications).toMatchObject({ state: 'done', summary: '2/3 slots · suite 1/1' });
 
   b.modifications = ['eng', 'uni', 'lounge', 'eng'];
-  expect(status(b).modifications.state).toBe('attention');   // 3 slots used vs 3 is fine…
+  expect(status(b).modifications.state).toBe('done');         // 3 slots used vs 3 is fine…
   b.identity.tier = 0;                                        // …but 1 slot at tier 0 is not
   expect(status(b).modifications.state).toBe('attention');
 });

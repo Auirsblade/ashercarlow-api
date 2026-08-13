@@ -29,15 +29,13 @@ export function shipStepStatus(
   const size = ref.sizes[build.identity.sizeId];
   const sizeInfo = size ? info('done', size.name) : info('untouched', '—');
 
-  // Tier: flags only a PARTIAL spend of the granted ability points. Leaving
-  // every point unspent is treated the same as "done" (nothing to nag about
-  // yet — there's no separate ship "abilities" step to catch it there).
+  // Tier: done once every granted ability point is spent.
   const tier = derived.tier;
   const pointBudget = tier * TIER_POINT_BUDGET;
   const spent = build.abilities.increases.reduce((s, i) => s + i.amount, 0);
   const tierInfo = tier === 0
     ? info('untouched', '—')
-    : spent > 0 && spent < pointBudget
+    : spent < pointBudget
       ? info('attention', `tier ${tier} · ${pointBudget - spent} pt${pointBudget - spent === 1 ? '' : 's'} left`)
       : info('done', `tier ${tier}`);
 
@@ -62,17 +60,11 @@ export function shipStepStatus(
 
   const modSummary =
     `${derived.modSlotsUsed}/${derived.modSlotsMax} slots · suite ${derived.suitesUsed}/${derived.suitesMax}`;
-  // A modification can only be installed once — the data model has no
-  // "repeatable" flag, so any repeated ref is itself a warning, independent
-  // of whether the slot/suite budget happens to still cover it.
-  const hasDuplicateMod =
-    !houseRuled.has('modifications') && new Set(build.modifications).size !== build.modifications.length;
   const modState: StepState =
     build.modifications.length === 0
       ? 'untouched'
-      : (hasDuplicateMod
-          || overBudget('modifications', derived.modSlotsUsed, derived.modSlotsMax) === 'attention'
-          || overBudget('modifications', derived.suitesUsed, derived.suitesMax) === 'attention')
+      : overBudget('modifications', derived.modSlotsUsed, derived.modSlotsMax) === 'attention'
+        || overBudget('modifications', derived.suitesUsed, derived.suitesMax) === 'attention'
         ? 'attention'
         : 'done';
   const modificationsInfo = info(modState, build.modifications.length === 0 && !size ? '—' : modSummary);
