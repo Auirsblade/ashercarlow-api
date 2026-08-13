@@ -6791,3 +6791,24 @@ Append a short review section to this plan file noting the two VERIFY outcomes f
 git add docs/superpowers/plans/2026-08-12-starship-spine.md
 git commit -m "docs(swdnd): record starship spine plan outcomes"
 ```
+
+---
+
+## Review — outcomes (recorded 2026-08-13, Task 31)
+
+**Final state:** 31/31 tasks complete + 1 verification-found gap fix. Suite **454 pass / 0 fail** across 68 files (baseline was 329/54). `tsc -b && vite build` clean. OpenAPI serves the four ship paths under the `swdnd` tag. Full 10-step walkthrough performed in-browser against a prod-mode (auth-enforced) local stack — all steps pass.
+
+**Task 9 VERIFY outcomes:** hardpoint and modification-slot budget formulas have **no pack source** — implemented as this plan's stated `(size, tier)` defaults, warn-don't-block only. The vendor engine scales hardpoints/suites by STR/CON modifier instead; recorded in `constants.ts` comments as open discrepancies for the plan owner. Suite budget IS pack-sourced and verified exact.
+
+**Plan text corrected during execution** (rules/data ground truth governed, per controller rulings; all fixes reviewed):
+- Huge/Gargantuan gain **2** hull/shield dice per tier (vendor `actor.mjs:777,802,809`) — plan said 1.
+- Shield capacity/regen round via **Math.round** (vendor `actor.mjs:1198`); no min-1 regen floor — plan floored and clamped.
+- Weapon `ran` property is range-in-feet, not boolean (rider); shield rows map `baseAc: 0`; two amm-less launchers `usesAmmo: true` — plan's mappers coerced all three wrong against real rows.
+- Task 20's sample code was right and its two test assertions wrong (zero-spend nudges; at-cap is done) — tests fixed, sample restored.
+- Task 26's prerequisite check became a soft block (resolvable-name prereqs only, ⌂ bypass, prose prereqs informational) — plan's version permanently locked 81 mods.
+- Regenerate Shields is **fixed-rate, unrolled** (SOTG passive regen; vendor formula is a constant); Patch rolls. Plan's sheet sample rolled both.
+- Several plan-authored test gaps closed in fix rounds: vacuous 403 asserts, unpinned prod admin gates, unobservable `ship:updated` broadcasts (now pinned with exact key-set asserts + leak-checked module mocks).
+
+**Verification-found gap:** crew assignment had no UI (wrappers existed, zero call sites; empty-state copy pointed at a nonexistent refit control). Added a canEdit-gated crew editor on the ship sheet (`CrewStrip`) with roster-refreshing `reload()` guarded against clobbering pending edits.
+
+**Deferred to the whole-branch review:** the ledger at `.superpowers/sdd/2026-08-12-starship-spine/progress.md` carries ~45 triaged minors, the builder stale-play-snapshot Important (multi-user damage revert), the canEdit async-window flash (all four hooks), and two user decisions (budget-formula fidelity family; `usesAmmo` breadth).
