@@ -1,12 +1,12 @@
 // apps/swdnd/src/lib/validation.ts
 import type { CharacterBuild, DerivedSheet, ReferenceData } from './rules/types';
-import { classesTaken, classLevelOrdinal } from './rules/core';
+import { classesTaken, classLevelOrdinal, deploymentsOf, prestigeOf } from './rules/core';
 
 export type StepKey =
   | 'species' | 'background' | 'class' | 'abilities'
-  | 'skills' | 'feats' | 'equipment' | 'powers';
+  | 'skills' | 'feats' | 'equipment' | 'powers' | 'deployments';
 export const STEP_ORDER: StepKey[] = [
-  'species', 'background', 'class', 'abilities', 'skills', 'feats', 'equipment', 'powers',
+  'species', 'background', 'class', 'abilities', 'skills', 'feats', 'equipment', 'powers', 'deployments',
 ];
 
 export type StepState = 'done' | 'attention' | 'untouched';
@@ -126,6 +126,16 @@ export function stepStatus(
   }
   const powersInfo: StepInfo = { state: powersState, summary, applicable };
 
+  // Deployments are optional crew content: they can be empty forever without
+  // ever asking for attention. The summary stays reference-free because
+  // deployment names live in the on-demand deployment reference, not in
+  // ReferenceData — the step component names them.
+  const ranked = deploymentsOf(build).filter((d) => d.rank > 0);
+  const prestige = prestigeOf(build);
+  const deploymentsInfo: StepInfo = ranked.length === 0 && prestige === 0
+    ? info('untouched', '—')
+    : info('done', `${ranked.length} deployment${ranked.length === 1 ? '' : 's'} · ${prestige} prestige`);
+
   return {
     species: speciesInfo,
     background: backgroundInfo,
@@ -135,5 +145,6 @@ export function stepStatus(
     feats: featsInfo,
     equipment: equipmentInfo,
     powers: powersInfo,
+    deployments: deploymentsInfo,
   };
 }
