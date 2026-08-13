@@ -26,6 +26,7 @@ export default function SizeStep({
       detail={(s) => s.description || 'No description in the pack.'}
       isSelected={(s) => s.id === build.identity.sizeId}
       onSelect={(s) => dispatch({ t: 'setSize', sizeId: s.id })}
+      selectLabel={(s) => (s.id === build.identity.sizeId ? '◈ selected' : '✓ select chassis')}
       editable={editable}
       header={
         <div className="ht-label px-1">

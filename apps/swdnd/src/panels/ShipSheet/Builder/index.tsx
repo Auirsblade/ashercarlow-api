@@ -27,6 +27,8 @@ export default function ShipBuilder({ shipId }: { shipId: string }) {
     );
   }
 
+  const isHouseRuled = (b.build.houseRuled ?? []).includes(active);
+
   return (
     <div className="@container ht-screen flex h-full min-h-0 flex-col p-3 font-mono text-ht-text">
       {b.error && (
@@ -44,11 +46,11 @@ export default function ShipBuilder({ shipId }: { shipId: string }) {
         <span className="text-[10px] text-ht-muted">tier {b.derived.tier}</span>
         <button
           type="button"
-          className="ht-step text-[10px]"
+          className={`ht-step text-[10px] ${isHouseRuled ? 'ht-tile-active' : ''}`}
           title="house-rule this step: silence its budget warning"
           onClick={() => b.dispatch({ t: 'toggleHouseRule', step: active })}
         >
-          ⌂ {(b.build.houseRuled ?? []).includes(active) ? 'locked' : 'unlock'}
+          ⌂ house rule {isHouseRuled ? 'on' : 'off'}
         </button>
         <span className="ml-auto text-[10px] text-ht-muted">
           {b.saving ? 'saving…' : 'auto-saved ✓'} · <Link className="text-ht-accent" to={sheetHref}>◂ back to ship</Link>
