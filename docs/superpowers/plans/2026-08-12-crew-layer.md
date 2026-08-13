@@ -44,11 +44,12 @@ Sub-project 1 is merged before this plan runs. Every name below has been **pre-a
 | `ShipBuild`, `ShipPlayState`, `ShipEquipmentEntry`, `DerivedShip`, `ShipReferenceData`, `emptyShipBuild(name)` | `apps/swdnd/src/lib/shipRules/types.ts` | spec §1/§2/§3; `ShipBuild.identity.tier: number`, `ShipBuild.equipment: ShipEquipmentEntry[]` with `{ id, ref, kind, mount? }` and `kind: ShipEquipmentKind = 'armor' \| 'shield' \| 'reactor' \| 'coupling' \| 'hyperdrive' \| 'weapon'` |
 | ship equipment reference map | `ShipReferenceData` | field named **`equipment`**: `Record<string, RefShipEquipment>` (reactors, couplings, hyperdrives); `RefShipEquipment` already carries `{ id, name, kind }` where `kind` is `'reactor' \| 'hyperdrive' \| 'coupling' \| 'other'`. Note `ShipReferenceData.armor` holds hull armor **and** shields. |
 | `computeShip(build, ref)` | `apps/swdnd/src/lib/shipRules/index.ts` | pure, synchronous |
-| `shipWeaponProfiles(build, ref)` | `apps/swdnd/src/lib/shipRules/weapons.ts` | returns `ShipWeaponProfile[]` carrying `attackShipMod` (Wis mod + the weapon's own bonus), `attackText` (`'+3 + your proficiency'`) and `saveDc: number \| null` (`8 + Wis` on save weapons, `null` on attack weapons) |
+| `shipWeaponProfiles(build, ref)` | `apps/swdnd/src/lib/shipRules/weapons.ts` | returns `ShipWeaponProfile[]` carrying `attackShipMod` (Wis mod + the weapon's own bonus), `attackText` (`'+3 + your proficiency'`) and `saveDc: number \| null` — on save weapons, the pack's own `RefShipWeapon.saveDc` wins when present (e.g. a flat-scaling ion cannon printed at DC 13); `8 + Wis` is only the fallback for rows that omit it; `null` on attack weapons |
 | `loadShipReference()`, module-local `ShipRow` / `system(row)` / `descriptionOf(s)` / `byId(rows)` | `apps/swdnd/src/lib/starships.ts` | mirrors `lib/characters.ts:60-81,228-231` (the ship module names its row type `ShipRow`, not `Row`) |
 | ship crew rows on `GET /swdnd/starships/{id}` | `apps/backend/src/routes/swdnd/starships.ts` | `crew: Array<{ character_id: string; character_name: string; role: ShipRole }>` |
 | `applyShipPlayAction(build, derived, action)` | `apps/swdnd/src/lib/shipPlayState.ts` | mirrors `lib/playState.ts:25` |
-| `useShipSheet(shipId)` | `apps/swdnd/src/hooks/useShipSheet.ts` | returns `{ loading, error, build, derived, ref, play, canEdit, dto, crew, dispatch }` |
+| `useShipSheet(shipId)` | `apps/swdnd/src/hooks/useShipSheet.ts` | returns `{ loading, error, build, derived, ref, play, canEdit, dto, crew, dispatch, reload }` — `reload` is a cheap DTO-only GET (no reference refetch), also called from the WS handler; `loading` already folds in `authLoading` + `identityLoading`; a `latestBuildRef` mirrors `build` so the debounced PATCH always composes from the freshest known document |
+| `ship:updated` WS payload | published in `apps/backend/src/routes/swdnd/starships.ts`, consumed in `useShipSheet.ts` | exactly 4 keys: `{ shipId: string; name: string; play: ShipPlayState; data_json: ShipBuild }` — key-exact backend tests exist; any crew-plan code reading or re-asserting this payload must expect all 4 keys |
 | `emptyShipBuildJson(name)` | `apps/backend/src/routes/swdnd/starships.ts` | hand-duplicated empty ship document with the keep-in-sync comment |
 | ShipSheet play view | `apps/swdnd/src/panels/ShipSheet/Sheet/index.tsx` | composes sections and owns a `roll(label, formula)`-style helper wired to `postRoll` |
 
@@ -63,6 +64,7 @@ Sub-project 1 is merged before this plan runs. Every name below has been **pre-a
 - The pack contains **no prestige rules** — prestige is a bare tracked number.
 - `schemaVersion: 1` is asserted in exactly two tests: `apps/swdnd/src/lib/rules/types.test.ts:7` and `apps/backend/src/routes/swdnd/characters.test.ts:31`.
 - Baseline before the spine: `bun test` → 329 pass, 0 fail, 54 files.
+- **Task 1 Step 1 confirmation pass (re-run against the spine's final-review fix wave, post-harmonization):** the Spine contract table and Tasks 7/9 below were re-checked against shipped code and corrected in place — `useShipSheet` gained `reload`/`latestBuildRef`/folded loading (table row + no task-body change needed), `ship:updated`'s 4-key payload got its own table row (no task body asserted the old shape, so no further edit needed), `RefShipWeapon.saveDc` pack-DC-precedence is now stated precisely in the table and Task 7's DC composition + tests were corrected so crew proficiency never modifies a flat pack DC, and Task 9's WS-handler edit was re-based onto the hook's actual early-return-guard shape (the drafted "beside the branch" framing was unreachable as written) with a `crewMembersRef` added to avoid a stale-closure bug. Two other reported deltas were checked and found **not** to touch this plan: `RefWeapon.weaponType` is a character-engine field (`lib/rules/types.ts`) unrelated to the ship-side `RefShipWeapon` this plan touches; `useShipBuilder`'s campaign-WS subscription is never referenced by any task here.
 
 ## File structure
 
@@ -1196,31 +1198,35 @@ git commit -m "feat(swdnd): power dice — tier die size, coupling capacity, rea
   - `function computeShip(build: ShipBuild, ref: ShipReferenceData, crew?: CrewInput): DerivedShip`
   - `function shipWeaponProfiles(build: ShipBuild, ref: ShipReferenceData, crew?: CrewInput): ShipWeaponProfile[]`
   - `ShipWeaponProfile` gains `attackBonus: number` (ship part + crew proficiency) and `crewProficiencyApplied: boolean`; the spine's existing `attackShipMod` / `attackText` stay untouched so the breakdown still renders
-  - `ShipWeaponProfile.saveDc` keeps its spine type `number | null` — the crew's proficiency folds into it on save weapons; attack weapons stay `null`
+  - `ShipWeaponProfile.saveDc` keeps its spine type `number | null` — crew proficiency folds in ONLY on the `8 + Wis` spec fallback (rows with no pack `saveDc`); a weapon carrying an explicit pack DC (e.g. the Heavy ion cannon at DC 13) is left exactly as the spine computed it — crew proficiency never modifies a flat pack DC (controller ruling). Attack weapons stay `null`
   - `DerivedShip` gains `power: DerivedPower`
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `apps/swdnd/src/lib/shipRules/weapons.test.ts`, reusing that file's spine fixtures: the `ship({ wis })` builder and the module-level `ref`, whose `laser` weapon is attack-based (no `saveAbility`) and whose `ion` weapon is save-based with its own `attackBonus: 1`.
+Append to `apps/swdnd/src/lib/shipRules/weapons.test.ts`, reusing that file's spine fixtures: the `ship({ wis })` builder and the module-level `ref`, whose `laser` weapon is attack-based (no `saveAbility`), whose `ion` weapon is save-based with its own `attackBonus: 1` and no pack `saveDc` (so it exercises the `8 + Wis` fallback), and whose `heavyIon` weapon is save-based with an explicit pack `saveDc: 13` (so it exercises the controller ruling that crew proficiency never touches a flat pack DC).
 
 ```ts
 test('a deployed gunner adds their proficiency to attack and save DC', () => {
   // Ship Wis 16 → +3. Gunner proficiency +4.
   const b = ship({ wis: 16 });
   b.equipment = [
-    { id: 'w1', ref: 'laser', kind: 'weapon' },   // attack weapon: saveDc stays null
-    { id: 'w2', ref: 'ion', kind: 'weapon' },     // save weapon: 8 + Wis
+    { id: 'w1', ref: 'laser', kind: 'weapon' },     // attack weapon: saveDc stays null
+    { id: 'w2', ref: 'ion', kind: 'weapon' },       // save weapon, no pack DC: 8 + Wis (+ crew)
+    { id: 'w3', ref: 'heavyIon', kind: 'weapon' },  // save weapon, EXPLICIT pack DC 13
   ];
 
-  const [solo, soloSave] = shipWeaponProfiles(b, ref);
+  const [solo, soloSave, soloPack] = shipWeaponProfiles(b, ref);
   expect(solo.attackBonus).toBe(3);              // ship Wis mod only
   expect(solo.saveDc).toBeNull();                // unchanged: attack weapons have no DC
-  expect(soloSave.saveDc).toBe(11);              // 8 + 3
+  expect(soloSave.saveDc).toBe(11);              // 8 + 3, the fallback formula
+  expect(soloPack.saveDc).toBe(13);              // flat pack DC, unaffected by Wis
   expect(solo.crewProficiencyApplied).toBe(false);
 
-  const [crewed, crewedSave] = shipWeaponProfiles(b, ref, { proficiencyByRole: { gunner: 4 } });
+  const [crewed, crewedSave, crewedPack] = shipWeaponProfiles(b, ref, { proficiencyByRole: { gunner: 4 } });
   expect(crewed.attackBonus).toBe(7);            // 3 + 4
-  expect(crewedSave.saveDc).toBe(15);            // 8 + 3 + 4
+  expect(crewedSave.saveDc).toBe(15);            // 8 + 3 + 4 — fallback composes with crew
+  expect(crewedPack.saveDc).toBe(13);            // flat pack DC — crew proficiency NEVER touches it
+  expect(crewedPack.attackBonus).toBe(7);        // attack bonus still gets crew, independent of the DC rule
   expect(crewed.saveDc).toBeNull();              // still null — crew never invents a DC
   expect(crewed.crewProficiencyApplied).toBe(true);
 
@@ -1258,7 +1264,7 @@ Expected: FAIL — `expect(undefined).toBe(3)` on `crewProficiencyApplied` / `ba
 
 - [ ] **Step 3: Implement**
 
-In `apps/swdnd/src/lib/shipRules/weapons.ts` — take the optional crew argument and fold the gunner's proficiency into the two crew-dependent numbers:
+In `apps/swdnd/src/lib/shipRules/weapons.ts` — take the optional crew argument and fold the gunner's proficiency into the two crew-dependent numbers. DRIFT FIX (Step 1 confirmation): the spine's `saveDc` line already reads `w.saveAbility ? (w.saveDc ?? (8 + wisMod)) : null` — the pack's own DC wins when present. Crew proficiency must compose ONLY into the `8 + wisMod` fallback branch, never onto a flat pack DC (controller ruling):
 
 ```ts
 export function shipWeaponProfiles(
@@ -1271,7 +1277,9 @@ export function shipWeaponProfiles(
   const prof = gunnerProficiency ?? 0;
   // …the spine's existing per-weapon loop, unchanged except for these fields:
   //   attackBonus: attackShipMod + prof,
-  //   saveDc: w.saveAbility ? saveDc + prof : null,   // saveDc is the spine's 8 + Wis
+  //   saveDc: w.saveAbility ? (w.saveDc ?? (8 + wisMod + prof)) : null,
+  //     — pack DC (w.saveDc) is left exactly as the spine computed it; prof
+  //     only ever composes into the 8 + Wis fallback, never a flat pack DC.
   //   crewProficiencyApplied,
   // attackShipMod and attackText keep the spine's values; the sheet renders the
   // "+ your proficiency" suffix only when crewProficiencyApplied is false.
@@ -1533,7 +1541,28 @@ with the accompanying state and derivation:
 
 - [ ] **Step 2: Refresh crew on `character:updated`**
 
-In the existing WS effect, beside the `ship:updated` branch (which keeps its armed-save-timer guard exactly as the spine wrote it), add:
+DRIFT FIX (Step 1 confirmation): this step originally described the new branch
+as sitting "beside" a `ship:updated` branch, as though the WS callback
+dispatched on `env.type` with parallel `if` blocks. The shipped callback
+instead opens with an early-return guard — `if (env.type !== 'ship:updated')
+return;` — so a `character:updated` branch appended AFTER that guard would be
+unreachable dead code; it must be inserted BEFORE it. Separately, that
+callback is only recreated when `[dto?.campaign_id, shipId, token, reload]`
+change, so closing over `crewMembers` directly would read a stale snapshot
+from whenever the effect last ran (usually the empty initial array) — mirror
+the hook's existing `latestBuildRef` pattern with a `crewMembersRef` instead
+of widening the effect's dependency array (which would reconnect the socket
+on every crew refresh).
+
+Add a ref that mirrors `crewMembers`, beside the `crewMembers` state from Step 1:
+
+```ts
+  const crewMembersRef = useRef<Array<{ role: ShipRole; dto: CharacterDto }>>([]);
+  useEffect(() => { crewMembersRef.current = crewMembers; }, [crewMembers]);
+```
+
+Then, as the FIRST statement inside the campaign socket callback — before the
+shipped `if (env.type !== 'ship:updated') return;` line — add:
 
 ```ts
         if (env.type === 'character:updated') {
@@ -1542,12 +1571,15 @@ In the existing WS effect, beside the `ship:updated` branch (which keeps its arm
           // independent of local ship edits, so it needs no save-timer guard.
           const payload = env.payload as { characterId?: string } | undefined;
           const id = payload?.characterId;
-          if (!id || !crewMembers.some((m) => m.dto.id === id)) return;
-          void getCharacter(id).then((fresh) => {
-            setCrewMembers((prev) => prev.map((m) => (m.dto.id === id ? { ...m, dto: fresh } : m)));
-          }).catch(() => { /* transient: the next mount recomputes */ });
+          if (id && crewMembersRef.current.some((m) => m.dto.id === id)) {
+            void getCharacter(id).then((fresh) => {
+              setCrewMembers((prev) => prev.map((m) => (m.dto.id === id ? { ...m, dto: fresh } : m)));
+            }).catch(() => { /* transient: the next mount recomputes */ });
+          }
           return;
         }
+        // …the shipped `if (env.type !== 'ship:updated') return;` guard and the
+        // rest of the ship:updated branch follow unchanged…
 ```
 
 Nothing else needs recomputing by hand: `crewMembers` holds only the DTO, so replacing it re-runs the `crewInput` memo (which reads deployments and proficiency straight off `dto.data_json`) and, through it, `computeShip`.
