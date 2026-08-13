@@ -8,6 +8,7 @@ import { registerEncounterRoutes } from './encounters';
 import { registerPlayerRoutes } from './players';
 import { registerRollRoutes } from './rolls';
 import { registerSceneRoutes } from './scenes';
+import { registerStarshipRoutes } from './starships';
 import { registerTemplateRoutes } from './templates';
 import { registerTokenRoutes } from './tokens';
 
@@ -25,7 +26,9 @@ function selfGated(path: string): boolean {
     path.startsWith('/swdnd/characters') ||
     path.startsWith('/swdnd/tokens') || // position PATCH does its own player check; token PATCH/DELETE assertAdmin in-handler
     path.startsWith('/swdnd/templates') || // member-gated delete in-handler
+    path.startsWith('/swdnd/starships') || // ship + crew writes assert assertShipWriteAccess in-handler
     path.endsWith('/characters') ||
+    path.endsWith('/starships') || // creation bootstrap does its own admin/player check in-handler
     path.endsWith('/players') ||
     path.endsWith('/templates') || // member-gated create; clear-all asserts admin in-handler
     path.endsWith('/rolls') // member-gated create in-handler; GET filters hidden in-handler
@@ -48,6 +51,7 @@ export function registerSwdndRoutes(app: OpenAPIHono): void {
   registerPlayerRoutes(app);
   registerRollRoutes(app);
   registerSceneRoutes(app);
+  registerStarshipRoutes(app);
   registerTemplateRoutes(app);
   registerTokenRoutes(app);
 }
