@@ -63,11 +63,11 @@ export default function ShipCoreBar({
           onSet={(v) => dispatch({ t: 'setShields', n: v })}
           onSpendDie={() => dispatch({ t: 'spendShieldDie' })}
           onRegainDie={() => dispatch({ t: 'regainShieldDie' })}
-          action={{
+          action={derived.maxShields > 0 ? {
             label: `⟳ Regenerate (+${derived.shieldRegen})`,
-            title: 'spend a shield die, roll it, and restore the result',
+            title: 'spend a shield die and restore the fixed regen rate (the die is not rolled)',
             onClick: onRegenerateShields,
-          }}
+          } : undefined}
         />
         <PoolBar
           label="Hull" tone="hull" value={play.hull} max={derived.maxHull} editable={editable}

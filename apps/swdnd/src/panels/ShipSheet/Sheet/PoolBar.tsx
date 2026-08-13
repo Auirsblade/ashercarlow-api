@@ -35,7 +35,7 @@ export default function PoolBar({
         <span className="ht-label min-w-[64px]">{label}</span>
         <Stepper value={value} max={max} editable={editable} onDelta={onDelta} onSet={onSet} />
         {action && (
-          <button type="button" className="ht-step ml-auto text-[10px]" disabled={!editable}
+          <button type="button" className="ht-step ml-auto text-[10px]" disabled={!editable || diceRemaining <= 0}
             title={action.title} onClick={action.onClick}>
             {action.label}
           </button>
