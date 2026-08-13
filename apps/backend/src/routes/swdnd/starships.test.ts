@@ -322,7 +322,25 @@ describe('swdnd starship crew roster', () => {
   let charB: string;
   let shipId: string;
 
+  // Same mock harness as the 'swdnd starship write + delete' describe above
+  // (publishToRoom is a silent no-op under bun test until Bun.serve wires a
+  // real server, so nothing pins the crew routes' ship:updated broadcast
+  // without intercepting it). Installed fresh here rather than shared across
+  // describes because that describe's afterAll already tore its instance
+  // down before this one runs.
+  let publishedEnvelopes: Array<{ type: string; room: string; payload?: unknown }> = [];
+
   beforeAll(async () => {
+    mock.module('../../lib/swdnd-realtime', () => ({
+      publishToRoom: (room: string, env: { type: string; room: string; payload?: unknown }) => {
+        publishedEnvelopes.push(env);
+      },
+      roomForCampaign: realRoomForCampaign,
+      setRealtimeServer: realSetRealtimeServer,
+      parseEnvelope: realParseEnvelope,
+      swdndWebsocket: realSwdndWebsocket,
+    }));
+
     delete process.env.ASHERCARLOW_AUTH_TOKEN;
     swdndDb.exec('DELETE FROM starship_crew; DELETE FROM starship; DELETE FROM character; DELETE FROM player; DELETE FROM campaign;');
     campaignId = ((await (await app.request('/swdnd/campaigns', json('POST', { name: 'R' }))).json()) as any).id;
@@ -334,6 +352,14 @@ describe('swdnd starship crew roster', () => {
     charB = ((await (await app.request(`/swdnd/campaigns/${campaignId}/characters?token=${tokenB}`, json('POST', { name: 'Bee' }))).json()) as any).id;
     shipId = ((await (await app.request(`/swdnd/campaigns/${campaignId}/starships`,
       json('POST', { name: 'Ghost', crew: { characterId: charA, role: 'pilot' } }))).json()) as any).id;
+  });
+
+  afterAll(() => {
+    restoreRealtimeModule();
+  });
+
+  beforeEach(() => {
+    publishedEnvelopes = [];
   });
 
   it('PUT adds a crew member and is idempotent on repeat', async () => {
@@ -367,6 +393,34 @@ describe('swdnd starship crew roster', () => {
     expect((await app.request('/swdnd/starships/nope/crew', json('PUT', { characterId: charA, role: 'pilot' }))).status).toBe(404);
   });
 
+  it('a successful PUT and a successful crew DELETE each broadcast exactly one ship:updated envelope with the exact {shipId, name, play} payload', async () => {
+    const before = (await (await app.request(`/swdnd/starships/${shipId}`)).json()) as any;
+
+    const put = await app.request(`/swdnd/starships/${shipId}/crew`, json('PUT', { characterId: charB, role: 'coordinator' }));
+    expect(put.status).toBe(200);
+    expect(publishedEnvelopes).toHaveLength(1);
+    const [putEnv] = publishedEnvelopes;
+    expect(putEnv.type).toBe('ship:updated');
+    expect(putEnv.room).toBe(`campaign:${campaignId}`);
+    const putPayload = putEnv.payload as Record<string, unknown>;
+    expect(Object.keys(putPayload).sort()).toEqual(['name', 'play', 'shipId'].sort());
+    expect(putPayload).toEqual({ shipId, name: before.name, play: before.data_json.play });
+
+    publishedEnvelopes = [];
+    // Deletes exactly the role just added -- nets to a no-op on the roster so
+    // downstream tests in this describe see the same crew state as if this
+    // test didn't run.
+    const del = await app.request(`/swdnd/starships/${shipId}/crew`, json('DELETE', { characterId: charB, role: 'coordinator' }));
+    expect(del.status).toBe(200);
+    expect(publishedEnvelopes).toHaveLength(1);
+    const [delEnv] = publishedEnvelopes;
+    expect(delEnv.type).toBe('ship:updated');
+    expect(delEnv.room).toBe(`campaign:${campaignId}`);
+    const delPayload = delEnv.payload as Record<string, unknown>;
+    expect(Object.keys(delPayload).sort()).toEqual(['name', 'play', 'shipId'].sort());
+    expect(delPayload).toEqual({ shipId, name: before.name, play: before.data_json.play });
+  });
+
   it('crew edits the roster; a non-crew player cannot', async () => {
     await withAuthEnv(async () => {
       // Assert non-crew player B is refused FIRST, while B genuinely crews
@@ -383,6 +437,13 @@ describe('swdnd starship crew roster', () => {
       const byCrew = await app.request(`/swdnd/starships/${shipId}/crew`,
         json('PUT', { characterId: charB, role: 'technician' }, { 'X-Player-Token': tokenA }));
       expect(byCrew.status).toBe(200);
+
+      // Pin the "crew edits everything" grant semantics the reorder above
+      // depends on: now that charB (owned by B) genuinely crews the ship,
+      // B's own token has full write access too -- accepted/documented
+      // behavior (access.ts's assertShipWriteAccess), not a bug.
+      expect((await app.request(`/swdnd/starships/${shipId}/crew`,
+        json('PUT', { characterId: charB, role: 'operator' }, { 'X-Player-Token': tokenB }))).status).toBe(200);
     });
     // clean the extra role back off so the cascade test below is unambiguous
     await app.request(`/swdnd/starships/${shipId}/crew`, json('DELETE', { characterId: charB }));
