@@ -550,11 +550,30 @@ export function fillStockPlay(
 }
 
 /**
+ * Marks a `createShipFromBuild` rejection as coming from the PATCH leg (the
+ * row was already created by POST, but writing the real build failed) as
+ * opposed to the POST leg (nothing was created). Callers use `instanceof` to
+ * tell an orphaned blank-build row apart from an ordinary create failure.
+ */
+export class ShipBuildPatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ShipBuildPatchError';
+  }
+}
+
+/**
  * Add a ship to a campaign fleet by composing the spine's own routes: POST
  * creates the row with an empty build by design, PATCH writes the real one.
- * A failed PATCH leaves an empty-build ship the DM can edit or delete.
+ * A failed PATCH leaves an empty-build ship the DM can edit or delete — tag
+ * that failure with ShipBuildPatchError so callers can distinguish it from a
+ * POST failure (which creates nothing).
  */
 export async function createShipFromBuild(campaignId: string, build: ShipBuild): Promise<StarshipDto> {
   const created = await createStarship(campaignId, build.identity.name);
-  return patchStarship(created.id, { data_json: build });
+  try {
+    return await patchStarship(created.id, { data_json: build });
+  } catch (e) {
+    throw new ShipBuildPatchError(e instanceof Error ? e.message : 'Request failed');
+  }
 }

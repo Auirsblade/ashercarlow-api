@@ -23,7 +23,7 @@ import {
 } from '../lib/encounters';
 import {
   createShipFromBuild, fillStockPlay, getStarship, listStarships, listStockShips, loadShipReference,
-  parseStockShip, shipRefIndex, stockToShipBuild,
+  parseStockShip, shipRefIndex, ShipBuildPatchError, stockToShipBuild,
   type StockShipView,
 } from '../lib/starships';
 import {
@@ -277,18 +277,30 @@ export function useDmScreen(campaignId: string): DmScreenState {
         const scale = shipTokenScale(sref.sizes[build.identity.sizeId]?.key ?? null);
         for (let i = 0; i < g.count; i++) {
           const name = copyName(g.view.name, i);
-          // Same partial-failure shape as addShipToFleet: POST can succeed
-          // while PATCH doesn't, leaving a blank-build, token-less row. Name
-          // it explicitly rather than letting a generic "failed" swallow
-          // which copy (of possibly several) is affected.
+          // Same partial-failure shape as addShipToFleet: createShipFromBuild
+          // tags a PATCH-leg failure with ShipBuildPatchError (row created,
+          // real build never saved) — only that case leaves an orphan,
+          // token-less row worth naming explicitly. A plain POST failure
+          // creates nothing, so let it propagate for wrap()'s generic
+          // handler instead of a misleading orphan-ship warning.
           const ship = await createShipFromBuild(campaignId, { ...build, identity: { ...build.identity, name } })
             .catch((e: unknown) => {
+              if (!(e instanceof ShipBuildPatchError)) throw e;
               throw new Error(
-                `"${name}" may have been created with blank stats and no token (its data failed to save) — check the fleet before retrying.${e instanceof Error ? ` (${e.message})` : ''}`,
+                `"${name}" may have been created with blank stats and no token (its data failed to save) — check the fleet before retrying. (${e.message})`,
               );
             });
           const pos = positions[used++];
-          await createToken(sceneId, shipSpawnBody(ship.id, name, build.play.hull, build.play.hull, pos, 0, scale));
+          // The ship row exists at this point either way; a token-placement
+          // failure here still leaves it stranded off the map, so name it
+          // just as explicitly instead of surfacing the generic 'Request
+          // failed'.
+          await createToken(sceneId, shipSpawnBody(ship.id, name, build.play.hull, build.play.hull, pos, 0, scale))
+            .catch((e: unknown) => {
+              throw new Error(
+                `"${name}" was created but its token failed to place — check the fleet before retrying.${e instanceof Error ? ` (${e.message})` : ''}`,
+              );
+            });
         }
       }
     } finally {
@@ -333,13 +345,16 @@ export function useDmScreen(campaignId: string): DmScreenState {
         try {
           await createShipFromBuild(campaignId, fillStockPlay(base, computeShip(base, sref)));
         } catch (e) {
-          // createShipFromBuild composes POST (row created with a blank build)
-          // then PATCH (writes the real one); a PATCH failure after a
-          // successful POST still leaves a real, blank-build ship in the
-          // fleet. Say so distinctly — a generic "failed" would read as
-          // "nothing happened" and invite a re-click that doubles the ship.
+          // createShipFromBuild tags a PATCH-leg failure with
+          // ShipBuildPatchError (row created via POST with a blank build,
+          // then the real build failed to save) — that's the only case that
+          // leaves a real, blank-build ship in the fleet, so only it gets
+          // the distinct warning. A plain POST failure created nothing; let
+          // it propagate so wrap()'s generic handler surfaces it instead of
+          // a misleading orphan-ship warning.
+          if (!(e instanceof ShipBuildPatchError)) throw e;
           throw new Error(
-            `"${view.name}" may have been created with blank stats (its data failed to save) — check the fleet before retrying.${e instanceof Error ? ` (${e.message})` : ''}`,
+            `"${view.name}" may have been created with blank stats (its data failed to save) — check the fleet before retrying. (${e.message})`,
           );
         } finally {
           // Refresh regardless of outcome so a partially-created row isn't

@@ -1,9 +1,10 @@
 // apps/swdnd/src/lib/starships.test.ts
 import { describe, expect, it, test } from 'bun:test';
 import {
-  fillStockPlay, filterStockShips, mapDeploymentFeatureRow, mapDeploymentRow, mapShipArmorRow, mapShipEquipmentRow,
-  mapShipModRow, mapShipSizeRow, mapShipWeaponRow, parseStockShip, resolveRef, sourceRef, stockShipSizes,
-  stockToShipBuild, type ShipRefIndex, type StockShipItem, type StockShipRow, type StockShipView,
+  createShipFromBuild, fillStockPlay, filterStockShips, mapDeploymentFeatureRow, mapDeploymentRow, mapShipArmorRow,
+  mapShipEquipmentRow, mapShipModRow, mapShipSizeRow, mapShipWeaponRow, parseStockShip, resolveRef,
+  ShipBuildPatchError, sourceRef, stockShipSizes, stockToShipBuild,
+  type ShipRefIndex, type StockShipItem, type StockShipRow, type StockShipView,
 } from './starships';
 import { emptyShipBuild } from './shipRules/types';
 
@@ -522,5 +523,54 @@ describe('fillStockPlay', () => {
   it('leaves a published build untouched', () => {
     const build = stockToShipBuild(shuttleView, idx);
     expect(fillStockPlay(build, { maxHull: 999, maxShields: 999 })).toBe(build);
+  });
+});
+
+describe('createShipFromBuild', () => {
+  // No fetch-mocking helper exists elsewhere in this suite; swapping
+  // globalThis.fetch for the duration of a test is the cheapest way to pin
+  // which leg (POST vs PATCH) produced a given rejection.
+  const withMockFetch = async (
+    responses: Response[],
+    run: () => Promise<unknown>,
+  ): Promise<unknown> => {
+    const original = globalThis.fetch;
+    let call = 0;
+    globalThis.fetch = (async () => responses[call++]) as typeof fetch;
+    try {
+      return await run().catch((e: unknown) => e);
+    } finally {
+      globalThis.fetch = original;
+    }
+  };
+
+  const okResponse = () =>
+    new Response(
+      JSON.stringify({
+        id: 's1', campaign_id: 'c1', name: 'Ship', data_json: emptyShipBuild('Ship'),
+        created_at: '', updated_at: '', crew: [],
+      }),
+      { status: 200 },
+    );
+  const failResponse = (message: string) =>
+    new Response(JSON.stringify({ message }), { status: 500 });
+
+  it('tags a PATCH-leg failure with ShipBuildPatchError, carrying the original message', async () => {
+    const err = await withMockFetch(
+      [okResponse(), failResponse('patch boom')],
+      () => createShipFromBuild('c1', emptyShipBuild('Ship')),
+    );
+    expect(err).toBeInstanceOf(ShipBuildPatchError);
+    expect((err as Error).message).toBe('patch boom');
+  });
+
+  it('leaves a POST-leg failure untagged so the generic handler applies', async () => {
+    const err = await withMockFetch(
+      [failResponse('post boom')],
+      () => createShipFromBuild('c1', emptyShipBuild('Ship')),
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(ShipBuildPatchError);
+    expect((err as Error).message).toBe('post boom');
   });
 });
