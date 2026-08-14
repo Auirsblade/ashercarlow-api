@@ -1,10 +1,11 @@
 // apps/swdnd/src/lib/starships.test.ts
 import { describe, expect, it, test } from 'bun:test';
 import {
-  filterStockShips, mapDeploymentFeatureRow, mapDeploymentRow, mapShipArmorRow, mapShipEquipmentRow,
-  mapShipModRow, mapShipSizeRow, mapShipWeaponRow, parseStockShip, sourceRef, stockShipSizes,
-  type StockShipRow, type StockShipView,
+  fillStockPlay, filterStockShips, mapDeploymentFeatureRow, mapDeploymentRow, mapShipArmorRow, mapShipEquipmentRow,
+  mapShipModRow, mapShipSizeRow, mapShipWeaponRow, parseStockShip, resolveRef, sourceRef, stockShipSizes,
+  stockToShipBuild, type ShipRefIndex, type StockShipItem, type StockShipRow, type StockShipView,
 } from './starships';
+import { emptyShipBuild } from './shipRules/types';
 
 test('mapShipSizeRow pulls dice, speeds and budget inputs (Medium, verbatim from the pack)', () => {
   const row = {
@@ -397,5 +398,129 @@ describe('filterStockShips / stockShipSizes', () => {
   });
   it('lists the sizes present, in canonical order', () => {
     expect(stockShipSizes(list)).toEqual(['Tiny Starship', 'Small Starship', 'Gargantuan Starship']);
+  });
+});
+
+// ---- Stock ship -> ShipBuild ----
+
+const idx: ShipRefIndex = {
+  sizes: { '6BN8l5E8QtYt103T': 'Small Starship', RFKvLuqE13INBxqd: 'Large Starship' },
+  weapons: { A0LPvkVHhH3e2Aeh: 'Heavy blaster cannon', aT793quog1Rf5hjm: 'Rapid-fire laser cannon' },
+  armor: { aG6mKPerYCFmkI00: 'Deflection Armor', M7igMGsBIosGA4dS: 'Quick-Charge Shield' },
+  equipment: { jk7zL3cqhufDKsuh: 'Fuel Cell Reactor', oqB8RltTDjHnaS1Y: 'Direct Power Coupling', EllirPMc7jJSHZpL: 'Hyperdrive, Class 1.5' },
+  modifications: { '6WjkUMegKn0XeCNz': 'Adaptive Ailerons', Th7e9A044Rao7Bhf: 'Co-Pilot Seat' },
+};
+
+const item = (over: Partial<StockShipItem>): StockShipItem =>
+  ({ name: '', ref: null, armorType: '', weaponType: '', ...over });
+
+const shuttleView: StockShipView = {
+  id: 'tRnGAAILKowm8n4T',
+  name: "Aka'jor-class Shuttle",
+  sizeRef: '6BN8l5E8QtYt103T',
+  sizeName: 'Small Starship',
+  tier: 2,
+  abilities: { str: 13, dex: 14, con: 13, int: 8, wis: 12, cha: 14 },
+  hull: 27,
+  shields: 18,
+  source: "Drake's Shipyard",
+  weapons: [item({ name: 'Heavy blaster cannon', ref: 'A0LPvkVHhH3e2Aeh', weaponType: 'primary (starship)' })],
+  equipment: [
+    item({ name: 'Deflection Armor', ref: 'aG6mKPerYCFmkI00', armorType: 'starship' }),
+    item({ name: 'Quick-Charge Shield', ref: 'M7igMGsBIosGA4dS', armorType: 'ssshield' }),
+    item({ name: 'Fuel Cell Reactor', ref: 'jk7zL3cqhufDKsuh', armorType: 'reactor' }),
+    item({ name: 'Direct Power Coupling', ref: 'oqB8RltTDjHnaS1Y', armorType: 'powerc' }),
+    item({ name: 'Hyperdrive, Class 1.5', ref: 'EllirPMc7jJSHZpL', armorType: 'hyper' }),
+    item({ name: 'Lucky Dice', ref: null, armorType: 'trinket' }),   // no ShipBuild kind -> dropped
+  ],
+  modifications: [
+    item({ name: 'Adaptive Ailerons', ref: 'H1PmkigBok9ThtyJ' }),   // stale id, resolvable by name
+    item({ name: 'Co-Pilot Seat', ref: null }),                     // no sourceId at all
+    item({ name: 'Nonexistent Widget', ref: 'zzzzzzzzzzzzzzzz' }),  // unresolvable -> dropped
+  ],
+};
+
+describe('resolveRef', () => {
+  it('prefers the id when it exists in the index', () => {
+    expect(resolveRef(idx.weapons, 'A0LPvkVHhH3e2Aeh', 'anything')).toBe('A0LPvkVHhH3e2Aeh');
+  });
+  it('falls back to a case-insensitive name match (143 of 143 mod ids in the pack are stale)', () => {
+    expect(resolveRef(idx.modifications, 'H1PmkigBok9ThtyJ', 'Adaptive Ailerons')).toBe('6WjkUMegKn0XeCNz');
+    expect(resolveRef(idx.modifications, null, 'co-pilot seat')).toBe('Th7e9A044Rao7Bhf');
+  });
+  it('returns null when neither resolves', () => {
+    expect(resolveRef(idx.modifications, 'nope', 'Nonexistent Widget')).toBeNull();
+    expect(resolveRef(idx.modifications, null, '')).toBeNull();
+  });
+});
+
+describe('stockToShipBuild', () => {
+  const build = stockToShipBuild(shuttleView, idx);
+
+  it('carries identity, size and tier at the current build schema version', () => {
+    // Seeded from emptyShipBuild, so a stock ship is stamped with whatever
+    // schemaVersion (and whatever later-added play fields) the empty document has.
+    expect(build.schemaVersion).toBe(emptyShipBuild('x').schemaVersion);
+    expect(build.identity).toEqual({ name: "Aka'jor-class Shuttle", sizeId: '6BN8l5E8QtYt103T', tier: 2 });
+  });
+
+  it('takes the published ability scores as the base, with no tier increases', () => {
+    expect(build.abilities.base).toEqual({ str: 13, dex: 14, con: 13, int: 8, wis: 12, cha: 14 });
+    expect(build.abilities.increases).toEqual([]);
+  });
+
+  it('installs weapons first with a fixed-forward default mount (the pack has no mountType)', () => {
+    expect(build.equipment[0]).toEqual({ id: 'e1', ref: 'A0LPvkVHhH3e2Aeh', kind: 'weapon', mount: 'fixed-forward' });
+  });
+
+  it('maps equipment kinds from system.armor.type and drops what ShipBuild cannot model', () => {
+    expect(build.equipment.slice(1)).toEqual([
+      { id: 'e2', ref: 'aG6mKPerYCFmkI00', kind: 'armor' },
+      { id: 'e3', ref: 'M7igMGsBIosGA4dS', kind: 'shield' },
+      { id: 'e4', ref: 'jk7zL3cqhufDKsuh', kind: 'reactor' },
+      { id: 'e5', ref: 'oqB8RltTDjHnaS1Y', kind: 'coupling' },
+      { id: 'e6', ref: 'EllirPMc7jJSHZpL', kind: 'hyperdrive' },
+    ]);
+    expect(JSON.stringify(build.equipment)).not.toContain('Lucky Dice');   // trinket: no ShipBuild kind
+    expect(build.equipment).toHaveLength(6);
+  });
+
+  it('resolves modifications by id-then-name and drops the unresolvable', () => {
+    expect(build.modifications).toEqual(['6WjkUMegKn0XeCNz', 'Th7e9A044Rao7Bhf']);
+  });
+
+  it('pins the published hull/shield totals as overrides and starts the ship at full', () => {
+    expect(build.overrides).toEqual({ maxHull: 27, maxShields: 18 });
+    expect(build.play.hull).toBe(27);
+    expect(build.play.shields).toBe(18);
+    expect(build.play.systemDamage).toBe(0);
+    expect(build.play.conditions).toEqual([]);
+    expect(build.play.ammoSpent).toEqual({});
+    expect(build.play.notes).toBe("Stock: Aka'jor-class Shuttle (Drake's Shipyard)");
+  });
+
+  it('omits an override the pack did not publish', () => {
+    const noMax = stockToShipBuild({ ...shuttleView, hull: 38, shields: null }, idx);
+    expect(noMax.overrides).toEqual({ maxHull: 38 });
+    expect(noMax.play.shields).toBe(0);
+  });
+
+  it('falls back to a name match for the size when the size ref is stale', () => {
+    const b = stockToShipBuild({ ...shuttleView, sizeRef: 'stale' }, idx);
+    expect(b.identity.sizeId).toBe('6BN8l5E8QtYt103T');
+  });
+});
+
+describe('fillStockPlay', () => {
+  it('tops up only the pools the pack left at zero', () => {
+    const build = stockToShipBuild({ ...shuttleView, hull: null, shields: null }, idx);
+    const filled = fillStockPlay(build, { maxHull: 21, maxShields: 15 });
+    expect(filled.play.hull).toBe(21);
+    expect(filled.play.shields).toBe(15);
+    expect(filled.overrides).toEqual({});         // still derived, not pinned
+  });
+  it('leaves a published build untouched', () => {
+    const build = stockToShipBuild(shuttleView, idx);
+    expect(fillStockPlay(build, { maxHull: 999, maxShields: 999 })).toBe(build);
   });
 });

@@ -2,7 +2,8 @@
 // Mirrors lib/characters.ts's single-file layout: DTOs + REST wrappers, then
 // row mappers, then the reference loader.
 import { api } from './api';
-import type { ShipBuild, ShipRole } from './shipRules/types';
+import { emptyShipBuild } from './shipRules/types';
+import type { ShipBuild, ShipEquipmentEntry, ShipEquipmentKind, ShipRole } from './shipRules/types';
 
 // ---- REST wrappers ----
 export interface ShipCrewMember {
@@ -411,3 +412,149 @@ export function stockShipSizes(list: StockShipView[]): string[] {
 }
 
 export const listStockShips = () => api<StockShipRow[]>('/swdnd/content/starships');
+
+// ---- Stock ship -> ShipBuild ----
+
+/**
+ * Flat `refId -> name` lookups per reference category. ADAPTER: this is the one
+ * place that knows ShipReferenceData's field names (see PREFLIGHT in the plan);
+ * every conversion below works off this narrow shape so the pure logic and its
+ * tests never touch the engine's view types.
+ */
+export interface ShipRefIndex {
+  sizes: Record<string, string>;
+  weapons: Record<string, string>;
+  armor: Record<string, string>;
+  equipment: Record<string, string>;
+  modifications: Record<string, string>;
+}
+
+const names = (m: Record<string, { name: string }>): Record<string, string> =>
+  Object.fromEntries(Object.entries(m ?? {}).map(([id, v]) => [id, v?.name ?? '']));
+
+/** ADAPTER — rename these five accessors if sub-project 1 named them differently. */
+export function shipRefIndex(ref: ShipReferenceData): ShipRefIndex {
+  return {
+    sizes: names(ref.sizes),
+    weapons: names(ref.weapons),
+    armor: names(ref.armor),
+    equipment: names(ref.equipment),
+    modifications: names(ref.modifications),
+  };
+}
+
+/**
+ * Resolve a pack reference: sourceId first, case-insensitive name second, null
+ * third. The name fallback is load-bearing — every one of the 143 distinct
+ * starship-modification ids embedded in the ship pack is stale against the
+ * current modifications pack, and 5 items carry no sourceId at all.
+ */
+export function resolveRef(
+  index: Record<string, string>,
+  ref: string | null,
+  name: string,
+): string | null {
+  if (ref && index[ref] !== undefined) return ref;
+  const want = name.trim().toLowerCase();
+  if (!want) return null;
+  for (const [id, n] of Object.entries(index)) {
+    if (n.trim().toLowerCase() === want) return id;
+  }
+  return null;
+}
+
+/** system.armor.type on an installed item -> ShipBuild equipment kind.
+ * Anything absent here (trinket, vehicle gear, '') has no ShipBuild kind. */
+const STOCK_EQUIP_KIND: Record<string, ShipEquipmentKind> = {
+  starship: 'armor',
+  ssshield: 'shield',
+  reactor: 'reactor',
+  powerc: 'coupling',
+  hyper: 'hyperdrive',
+};
+
+/**
+ * Convert a stock ship into a campaign-ready build. Owns every default the pack
+ * omits: fixed-forward mounts, published scores as the base with no increases,
+ * published pools pinned as overrides, and skip-on-unresolvable throughout
+ * (trinkets and vehicle gear have no ShipBuild equipment kind).
+ *
+ * The document is seeded from emptyShipBuild() rather than written as a literal,
+ * so it always carries the CURRENT schemaVersion and every play field later
+ * sub-projects added (sub-project 2 bumps the ship document to v2 and adds
+ * `play.powerDice`) — a stock ship must not be born on an older schema.
+ */
+export function stockToShipBuild(view: StockShipView, idx: ShipRefIndex): ShipBuild {
+  const equipment: ShipEquipmentEntry[] = [];
+  let n = 0;
+
+  for (const w of view.weapons) {
+    const ref = resolveRef(idx.weapons, w.ref, w.name);
+    if (!ref) continue;
+    equipment.push({ id: `e${++n}`, ref, kind: 'weapon', mount: 'fixed-forward' });
+  }
+  for (const e of view.equipment) {
+    const kind = STOCK_EQUIP_KIND[e.armorType];
+    if (!kind) continue;
+    // starship_armor holds both armor and shields; everything else is starship_equipment.
+    const table = kind === 'armor' || kind === 'shield' ? idx.armor : idx.equipment;
+    const ref = resolveRef(table, e.ref, e.name);
+    if (!ref) continue;
+    equipment.push({ id: `e${++n}`, ref, kind });
+  }
+
+  const modifications = view.modifications
+    .map((m) => resolveRef(idx.modifications, m.ref, m.name))
+    .filter((r): r is string => r !== null);
+
+  const sizeId =
+    (view.sizeRef && idx.sizes[view.sizeRef] !== undefined ? view.sizeRef : null)
+    ?? resolveRef(idx.sizes, null, view.sizeName)
+    ?? '';
+
+  const seed = emptyShipBuild(view.name);
+  return {
+    ...seed,
+    identity: { name: view.name, sizeId, tier: view.tier },
+    abilities: { base: { ...view.abilities }, increases: [] },
+    equipment,
+    modifications,
+    play: {
+      ...seed.play,
+      hull: view.hull ?? 0,
+      shields: view.shields ?? 0,
+      notes: `Stock: ${view.name}${view.source ? ` (${view.source})` : ''}`,
+    },
+    overrides: {
+      ...(view.hull !== null ? { maxHull: view.hull } : {}),
+      ...(view.shields !== null ? { maxShields: view.shields } : {}),
+    },
+    houseRuled: [],
+  };
+}
+
+/** Start an unpublished pool at its derived maximum instead of at zero. */
+export function fillStockPlay(
+  build: ShipBuild,
+  derived: { maxHull: number; maxShields: number },
+): ShipBuild {
+  if (build.play.hull > 0 && build.play.shields > 0) return build;
+  return {
+    ...build,
+    play: {
+      ...build.play,
+      hull: build.play.hull > 0 ? build.play.hull : derived.maxHull,
+      shields: build.play.shields > 0 ? build.play.shields : derived.maxShields,
+    },
+  };
+}
+
+/**
+ * Add a ship to a campaign fleet by composing the spine's own routes: POST
+ * creates the row with an empty build by design, PATCH writes the real one.
+ * A failed PATCH leaves an empty-build ship the DM can edit or delete.
+ */
+export async function createShipFromBuild(campaignId: string, build: ShipBuild): Promise<StarshipDto> {
+  const created = await createStarship(campaignId, build.identity.name);
+  return patchStarship(created.id, { data_json: build });
+}
