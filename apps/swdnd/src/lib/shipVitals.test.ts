@@ -64,6 +64,12 @@ describe('mergeShipPlay', () => {
     const v: Record<string, ShipVitals> = {};
     expect(mergeShipPlay(v, 'nope', { hull: 1 })).toBe(v);
   });
+
+  it('a partial payload defaults absent fields from current vitals, not zero', () => {
+    const v: Record<string, ShipVitals> = { s1: { hull: 31, maxHull: 40, shields: 6, maxShields: 12, conditions: [], systemDamage: 2 } };
+    const next = mergeShipPlay(v, 's1', { conditions: ['Ionized'] });
+    expect(next.s1).toEqual({ hull: 31, maxHull: 40, shields: 6, maxShields: 12, conditions: ['Ionized'], systemDamage: 2 });
+  });
 });
 
 describe('applyPendingShipPlays', () => {

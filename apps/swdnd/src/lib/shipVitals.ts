@@ -71,7 +71,10 @@ export function mergeShipPlay(
   if (!cur) return vitals;
   return {
     ...vitals,
-    [shipId]: { ...shipVitalsFrom(play, cur), maxHull: cur.maxHull, maxShields: cur.maxShields },
+    [shipId]: shipVitalsFrom(
+      { hull: cur.hull, shields: cur.shields, conditions: cur.conditions, systemDamage: cur.systemDamage, ...play },
+      cur,
+    ),
   };
 }
 
