@@ -53,6 +53,8 @@ export const PACK_SOURCES: PackSource[] = [
   { packDir: 'ventures', table: 'ventures' },
   { packDir: 'monsters', table: 'monsters' },
   { packDir: 'monstertraits', table: 'monster_traits' },
+  // 87 pre-built ships (Foundry Actor docs, not Items) — see distillStockShip.
+  { packDir: 'drakes-shipyard', table: 'starships' },
 ];
 
 export interface RefRow {
@@ -62,6 +64,64 @@ export interface RefRow {
   content_type: string | null;
   raw_json: string;
   extra: Record<string, string | number | null>;
+}
+
+const SHIP_ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
+const SHIP_ITEM_SYSTEM_KEYS = ['armor', 'weaponType', 'mountType', 'quantity', 'tier', 'size'] as const;
+
+/**
+ * Stock-ship actors carry ~54 embedded items with full HTML descriptions: 16 MB
+ * of JSON across the pack, which would land in the baked seed image and on the
+ * wire for the DM's ship browser. Every dropped detail already lives in the
+ * reference table the embedded item points at (flags.core.sourceId), so this
+ * stores a SHAPE-PRESERVING projection — identical Foundry field paths,
+ * essentials only (1.1 MB total, ~13 KB/ship; monsters average 25 KB).
+ * Deliberate exception to "raw_json always preserves the full Foundry document".
+ */
+export function distillStockShip(doc: any): Record<string, unknown> {
+  const d = doc && typeof doc === 'object' ? doc : {};
+  const system = d.system ?? {};
+  const attrs = system.attributes ?? {};
+  const hp = attrs.hp ?? {};
+  const ac = attrs.ac ?? {};
+  const details = system.details ?? {};
+
+  const abilities: Record<string, { value: unknown }> = {};
+  for (const k of SHIP_ABILITIES) {
+    if (system.abilities?.[k]) abilities[k] = { value: system.abilities[k].value ?? null };
+  }
+
+  const items = (Array.isArray(d.items) ? d.items : []).map((it: any) => {
+    const sys = it?.system ?? {};
+    const sourceId = it?.flags?.core?.sourceId;
+    const kept: Record<string, unknown> = {};
+    for (const k of SHIP_ITEM_SYSTEM_KEYS) if (k in sys) kept[k] = sys[k];
+    return {
+      _id: it?._id ?? null,
+      name: typeof it?.name === 'string' ? it.name : null,
+      type: typeof it?.type === 'string' ? it.type : null,
+      ...(typeof sourceId === 'string' ? { flags: { core: { sourceId } } } : {}),
+      system: kept,
+    };
+  });
+
+  return {
+    _id: d._id ?? null,
+    name: typeof d.name === 'string' ? d.name : null,
+    type: typeof d.type === 'string' ? d.type : null,
+    system: {
+      abilities,
+      attributes: {
+        ac: { flat: ac.flat ?? null, calc: ac.calc ?? null },
+        hp: { value: hp.value ?? null, max: hp.max ?? null, temp: hp.temp ?? null, tempmax: hp.tempmax ?? null },
+        movement: attrs.movement ?? null,
+        systemDamage: attrs.systemDamage ?? null,
+      },
+      details: { source: details.source ?? null, tier: details.tier ?? null, role: details.role ?? null },
+      traits: { size: system.traits?.size ?? null },
+    },
+    items,
+  };
 }
 
 /** Best-effort extraction; raw_json always preserves the full Foundry document. */
@@ -75,7 +135,9 @@ export function mapFoundryDoc(source: PackSource, doc: any): RefRow {
     const align = system.forceAlignment ?? system.alignment ?? null;
     extra.force_alignment = typeof align === 'string' ? align : null;
   }
-  const source_field = system.source;
+  // Stock ships put their book at system.details.source; every Item pack uses system.source.
+  const isStockShip = source.table === 'starships';
+  const source_field = isStockShip ? system.details?.source : system.source;
   const content_source =
     typeof source_field === 'string'
       ? source_field
@@ -88,7 +150,7 @@ export function mapFoundryDoc(source: PackSource, doc: any): RefRow {
     name: typeof doc?.name === 'string' ? doc.name : null,
     content_source,
     content_type: typeof system.contentType === 'string' ? system.contentType : null,
-    raw_json: JSON.stringify(doc),
+    raw_json: JSON.stringify(isStockShip ? distillStockShip(doc) : doc),
     extra,
   };
 }
