@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
-  entriesFromTokens, nextTurn, prevTurn, removeEntry, sortByRoll, startInitiative, type Initiative,
+  entriesFromTokens, groupCrew, nextTurn, parseInitiative, prevTurn, removeEntry, sortByRoll, startInitiative,
+  ungroupCrew, type Initiative,
 } from './initiative';
 
 const init = (over: Partial<Initiative> = {}): Initiative => ({
@@ -74,5 +75,108 @@ describe('entriesFromTokens', () => {
       { id: 't2', name: 'Sneak', hidden: 1 },
     ]);
     expect(entries).toEqual([{ tokenId: 't1', name: 'Brakk', roll: 0 }]);
+  });
+});
+
+describe('parseInitiative', () => {
+  it('accepts legacy documents with no crew key', () => {
+    const parsed = parseInitiative({ order: [{ tokenId: 'a', name: 'A', roll: 12 }], activeIndex: 0, round: 3 });
+    expect(parsed).toEqual({ order: [{ tokenId: 'a', name: 'A', roll: 12 }], activeIndex: 0, round: 3 });
+  });
+
+  it('keeps crew arrays and drops junk members', () => {
+    const parsed = parseInitiative({ order: [{ tokenId: 'ship', name: 'Krayt', roll: 9, crew: ['c1', 7, '', 'c2'] }], activeIndex: 0, round: 1 });
+    expect(parsed!.order[0].crew).toEqual(['c1', 'c2']);
+  });
+
+  it('drops malformed entries and defaults missing fields', () => {
+    const parsed = parseInitiative({ order: [null, { name: 'no id' }, { tokenId: 'a' }], activeIndex: 9, round: 0 });
+    expect(parsed).toEqual({ order: [{ tokenId: 'a', name: '', roll: 0 }], activeIndex: 0, round: 1 });
+  });
+
+  it('clamps activeIndex into range and returns null for non-documents', () => {
+    const parsed = parseInitiative({ order: [{ tokenId: 'a', name: 'A', roll: 1 }, { tokenId: 'b', name: 'B', roll: 2 }], activeIndex: 5, round: 2 });
+    expect(parsed!.activeIndex).toBe(1);
+    expect(parseInitiative(null)).toBeNull();
+    expect(parseInitiative({ order: 'nope' })).toBeNull();
+    expect(parseInitiative('{}')).toBeNull();
+  });
+});
+
+describe('groupCrew', () => {
+  const base = () => ({
+    order: [
+      { tokenId: 'ship', name: 'Krayt', roll: 20 },
+      { tokenId: 'pilot', name: 'Pilot', roll: 14 },
+      { tokenId: 'gunner', name: 'Gunner', roll: 9 },
+      { tokenId: 'droid', name: 'Droid', roll: 4 },
+    ],
+    activeIndex: 0,
+    round: 1,
+  });
+
+  it('nests crew under the ship and takes the lowest crew roll as the slot', () => {
+    const next = groupCrew(base(), 'ship', ['pilot', 'gunner']);
+    expect(next.order.map((e) => e.tokenId)).toEqual(['ship', 'droid']);
+    expect(next.order[0].crew).toEqual(['pilot', 'gunner']);
+    expect(next.order[0].roll).toBe(9);
+  });
+
+  it('a second grouping keeps the running minimum', () => {
+    const once = groupCrew(base(), 'ship', ['gunner']);
+    expect(once.order[0].roll).toBe(9);
+    const twice = groupCrew(once, 'ship', ['pilot']);
+    expect(twice.order[0].roll).toBe(9);
+    expect(twice.order[0].crew).toEqual(['gunner', 'pilot']);
+  });
+
+  it('keeps the same combatant active across the reshuffle', () => {
+    const init = { ...base(), activeIndex: 3 }; // droid
+    const next = groupCrew(init, 'ship', ['pilot', 'gunner']);
+    expect(next.order[next.activeIndex].tokenId).toBe('droid');
+  });
+
+  it('an active crew member hands the turn to its ship slot', () => {
+    const init = { ...base(), activeIndex: 1 }; // pilot
+    const next = groupCrew(init, 'ship', ['pilot']);
+    expect(next.order[next.activeIndex].tokenId).toBe('ship');
+  });
+
+  it('is a no-op for an unknown ship, an empty list, or self-grouping', () => {
+    const init = base();
+    expect(groupCrew(init, 'nope', ['pilot'])).toBe(init);
+    expect(groupCrew(init, 'ship', [])).toBe(init);
+    expect(groupCrew(init, 'ship', ['ship'])).toBe(init);
+  });
+});
+
+describe('ungroupCrew', () => {
+  it('re-promotes crew right after the ship, carrying the slot roll', () => {
+    const grouped = groupCrew(
+      { order: [{ tokenId: 'ship', name: 'Krayt', roll: 20 }, { tokenId: 'pilot', name: 'Pilot', roll: 14 }, { tokenId: 'z', name: 'Z', roll: 1 }], activeIndex: 0, round: 1 },
+      'ship', ['pilot'],
+    );
+    const back = ungroupCrew(grouped, 'ship', (id) => (id === 'pilot' ? 'Pilot' : id));
+    expect(back.order.map((e) => e.tokenId)).toEqual(['ship', 'pilot', 'z']);
+    expect(back.order[1]).toEqual({ tokenId: 'pilot', name: 'Pilot', roll: 14 });
+    expect(back.order[0].crew).toBeUndefined();
+  });
+
+  it('is a no-op when the ship has no crew', () => {
+    const init = { order: [{ tokenId: 'ship', name: 'Krayt', roll: 20 }], activeIndex: 0, round: 1 };
+    expect(ungroupCrew(init, 'ship', () => 'x')).toBe(init);
+  });
+});
+
+describe('removeEntry with crew', () => {
+  it('strips a removed token out of crew arrays too', () => {
+    const init = { order: [{ tokenId: 'ship', name: 'Krayt', roll: 9, crew: ['pilot', 'gunner'] }], activeIndex: 0, round: 1 };
+    const next = removeEntry(init, 'gunner');
+    expect(next.order[0].crew).toEqual(['pilot']);
+  });
+
+  it('removing the ship removes its whole slot', () => {
+    const init = { order: [{ tokenId: 'ship', name: 'Krayt', roll: 9, crew: ['pilot'] }, { tokenId: 'z', name: 'Z', roll: 1 }], activeIndex: 0, round: 1 };
+    expect(removeEntry(init, 'ship').order.map((e) => e.tokenId)).toEqual(['z']);
   });
 });

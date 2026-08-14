@@ -143,7 +143,13 @@ const fogRoute = createRoute({
   },
 });
 
-const InitiativeEntry = z.object({ tokenId: z.string(), name: z.string(), roll: z.number() });
+const InitiativeEntry = z.object({
+  tokenId: z.string(),
+  name: z.string(),
+  roll: z.number(),
+  /** Ship entries nest their crew's token ids; the slot is one turn (SOTG). */
+  crew: z.array(z.string()).optional(),
+});
 const Initiative = z.object({
   order: z.array(InitiativeEntry),
   activeIndex: z.number().int().min(0),

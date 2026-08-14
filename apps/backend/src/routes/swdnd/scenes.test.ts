@@ -165,6 +165,25 @@ describe('initiative', () => {
     const res = await app.request('/swdnd/scenes/nope/initiative', json('PATCH', { initiative: null }));
     expect(res.status).toBe(404);
   });
+
+  it('round-trips grouped crew entries', async () => {
+    const sc = await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Grouped' }))).json() as any;
+    const init = {
+      order: [{ tokenId: 'ship', name: 'Krayt', roll: 9, crew: ['pilot', 'gunner'] }, { tokenId: 'foe', name: 'Foe', roll: 7 }],
+      activeIndex: 0, round: 1,
+    };
+    const res = await app.request(`/swdnd/scenes/${sc.id}/initiative`, json('PATCH', { initiative: init }));
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).initiative_json).toEqual(init);
+  });
+
+  it('rejects a non-string crew member', async () => {
+    const sc = await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Bad crew' }))).json() as any;
+    const res = await app.request(`/swdnd/scenes/${sc.id}/initiative`, json('PATCH', {
+      initiative: { order: [{ tokenId: 'ship', name: 'K', roll: 1, crew: [3] }], activeIndex: 0, round: 1 },
+    }));
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('space mode', () => {
