@@ -21,8 +21,7 @@ if (typeof globalThis.localStorage === 'undefined') {
   } as Storage;
 }
 
-// bun:test provides a working localStorage in the test environment; each test
-// leaves the key clean so ordering never matters.
+// Each test leaves the key clean so ordering never matters.
 afterEach(() => clearStoredToken());
 
 describe('playerSession', () => {
@@ -70,7 +69,7 @@ describe('playerSession', () => {
       expect(() => setStoredToken('abc')).not.toThrow();
       expect(() => clearStoredToken()).not.toThrow();
     } finally {
-      Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: original });
+      Object.defineProperty(globalThis, 'localStorage', { configurable: true, writable: true, value: original });
     }
   });
 });
