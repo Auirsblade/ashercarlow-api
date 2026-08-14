@@ -6,7 +6,7 @@ import { connectCampaign, type CampaignSocket, type WsEnvelope } from '../lib/ws
 import {
   activateScene, clearTemplates, createScene, createTemplate, createToken, deleteScene, deleteTemplate,
   deleteToken, deleteTokenImage, listScenes, listTemplates, listTokens, moveToken, patchFog, patchInitiative,
-  patchScene, patchTemplate, patchToken, uploadSceneImage, uploadTokenImage,
+  patchScene, patchTemplate, patchToken, rotateToken, uploadSceneImage, uploadTokenImage,
   type SceneDto, type TemplateDto, type TokenDto,
 } from '../lib/scenes';
 import {
@@ -14,8 +14,15 @@ import {
 } from '../lib/mapState';
 import { applyFogPatch } from '../lib/fog';
 import { addCharacterVitals, applyPendingPlays, buildVitals, mergePlay, type PendingPlays, type Vitals } from '../lib/vitals';
+import { spawnPositions } from '../lib/spawn';
+import { hexKey } from '../lib/hex';
+import { shipTokenScale } from '../lib/shipTokens';
+import {
+  addShipVitals, applyPendingShipPlays, buildShipVitals, crewedShipIds, mergeShipPlay,
+  type PendingShipPlays, type ShipPlayLike, type ShipVitals,
+} from '../lib/shipVitals';
+import { parseInitiative, type Initiative } from '../lib/initiative';
 import type { GridConfig, Hex } from '../lib/hex';
-import type { Initiative } from '../lib/initiative';
 import type { ReferenceData } from '../lib/rules/types';
 
 export interface TabletopState {
@@ -31,6 +38,10 @@ export interface TabletopState {
   ownCharacterIds: Set<string>;
   ownCharacters: { id: string; name: string }[];
   vitals: Record<string, Vitals>;
+  shipVitals: Record<string, ShipVitals>;
+  ownShipIds: Set<string>;
+  /** Campaign ships (spawner), each with the token scale its footprint implies. */
+  ships: { id: string; name: string; scale: number }[];
   templates: TemplateDto[];
   pings: { id: string; x: number; y: number }[];
   rulers: Record<string, { a: Hex; b: Hex }>;   // peer id → live remote ruler
@@ -47,6 +58,11 @@ export interface TabletopState {
     addToken: (body: Partial<TokenDto> & { name: string }) => Promise<void>;
     removeToken: (id: string) => Promise<void>;
     editToken: (id: string, body: Record<string, unknown>) => Promise<void>;
+    setSceneMode: (id: string, mode: 'ground' | 'space') => Promise<void>;
+    rotate: (tokenId: string, facing: number) => Promise<void>;
+    setShipPlay: (shipId: string, edit: (doc: any) => any) => Promise<void>;
+    spawnShip: (shipId: string) => Promise<void>;
+    loadShips: () => void;
     setTokenImage: (id: string, file: File) => Promise<void>;
     clearTokenImage: (id: string) => Promise<void>;
     commitFog: (reveal: string[], hide: string[]) => Promise<void>;
@@ -73,6 +89,14 @@ export function useTabletop(campaignId: string): TabletopState {
   const [ownCharacterIds, setOwnCharacterIds] = useState<Set<string>>(new Set());
   const [ownCharacters, setOwnCharacters] = useState<{ id: string; name: string }[]>([]);
   const [vitals, setVitals] = useState<Record<string, Vitals>>({});
+  const [shipVitals, setShipVitals] = useState<Record<string, ShipVitals>>({});
+  const [ships, setShips] = useState<{ id: string; name: string; scale: number }[]>([]);
+  const [wantShips, setWantShips] = useState(false);
+  /** Full ship documents, needed to build whole-document PATCHes. */
+  const shipDocs = useRef<Record<string, any>>({});
+  const shipMaxima = useRef<(ship: any) => { maxHull: number; maxShields: number }>(() => ({ maxHull: 0, maxShields: 0 }));
+  const shipsLoadedFor = useRef<string | null>(null);
+  const pendingShipPlays = useRef<PendingShipPlays>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const socket = useRef<CampaignSocket | null>(null);
@@ -157,6 +181,14 @@ export function useTabletop(campaignId: string): TabletopState {
     return () => { alive = false; };
   }, [playerToken]);
 
+  // Ships this player crews (own-character ids resolved above, per shipDocs
+  // loaded so far) — kept in state so canMove and the canvas (T9) both see it.
+  const [ownShipIds, setOwnShipIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const docs = Object.values(shipDocs.current) as { id: string; crew?: { character_id: string }[] }[];
+    setOwnShipIds(crewedShipIds(docs, ownCharacterIds));
+  }, [ships, ownCharacterIds]);
+
   // Load campaign characters + reference once and compute each character's
   // maxHp; play.hp/conditions then track character:updated events live.
   useEffect(() => {
@@ -177,6 +209,55 @@ export function useTabletop(campaignId: string): TabletopState {
       .catch(() => { /* vitals stay empty; rings for character tokens simply don't render */ });
     return () => { cancelled = true; };
   }, [campaignId]);
+
+  // Ships load lazily: only in space scenes, when a ship token exists, or when
+  // the DM opens the spawner. loadShipReference() is several content requests
+  // and must not fire on every ground map.
+  const loadShips = useCallback(async () => {
+    const [starships, shipRules] = await Promise.all([
+      import('../lib/starships'),
+      import('../lib/shipRules'),
+    ]);
+    const [list, ref] = await Promise.all([starships.listStarships(campaignId), starships.loadShipReference()]);
+    const maxima = (s: any) => {
+      const d = shipRules.computeShip(s.data_json, ref);
+      return { maxHull: d.maxHull, maxShields: d.maxShields };
+    };
+    shipMaxima.current = maxima;
+    shipDocs.current = Object.fromEntries(list.map((s: any) => [s.id, s]));
+    // The chassis size key ('medium', 'large', …) lives on the reference row, not
+    // on DerivedShip — this is the one place this plan reads it.
+    const sizeKeyOf = (s: any): string | null => ref.sizes[s.data_json?.identity?.sizeId ?? '']?.key ?? null;
+    setShips(list.map((s: any) => ({
+      id: s.id, name: s.name, scale: shipTokenScale(sizeKeyOf(s)),
+    })));
+    shipsLoadedFor.current = campaignId;
+    setShipVitals(applyPendingShipPlays(buildShipVitals(list as any[], maxima), pendingShipPlays.current));
+    pendingShipPlays.current = {};
+    return list;
+  }, [campaignId]);
+
+  const needShips = wantShips
+    || state.scene?.mode === 'space'
+    || Object.values(state.tokens).some((t) => !!t.ship_id);
+
+  useEffect(() => {
+    shipsLoadedFor.current = null;
+    shipDocs.current = {};
+    pendingShipPlays.current = {};
+    setShips([]);
+    setShipVitals({});
+    setWantShips(false);
+  }, [campaignId]);
+
+  useEffect(() => {
+    if (!needShips || shipsLoadedFor.current === campaignId) return;
+    let cancelled = false;
+    loadShips().catch(() => {
+      if (!cancelled) shipsLoadedFor.current = null; // ship rings simply don't render
+    });
+    return () => { cancelled = true; };
+  }, [needShips, campaignId, loadShips]);
 
   useEffect(() => {
     const hadOpenedRef = { current: false };
@@ -207,6 +288,43 @@ export function useTabletop(campaignId: string): TabletopState {
               })
               .catch(() => { /* character not found (e.g. deleted); stay a silent no-op */ });
           }
+          return v;
+        });
+        return;
+      }
+      if (env.type === 'ship:updated') {
+        // The wire payload is {shipId, name, play, data_json} — data_json is the
+        // full parsed document (see publishShipUpdated's doc comment on the
+        // backend), included precisely so a build-half change elsewhere (a
+        // refit, a crew edit) never leaves this hook's shipDocs cache stale.
+        // Fall back to merging just `play` over the cached doc for tolerance
+        // against a payload shape that omits it.
+        const p = env.payload as { shipId?: string; name?: string; play?: ShipPlayLike; data_json?: any };
+        const shipId = p?.shipId;
+        const play = p?.play;
+        if (!shipId || !play) return;
+        const doc = shipDocs.current[shipId];
+        if (doc) {
+          shipDocs.current[shipId] = {
+            ...doc,
+            name: p.name ?? doc.name,
+            data_json: p.data_json ?? { ...doc.data_json, play },
+          };
+        }
+        if (shipsLoadedFor.current === null) {
+          pendingShipPlays.current[shipId] = play; // loader in flight; don't let it clobber this
+          return;
+        }
+        setShipVitals((v) => {
+          if (v[shipId]) return mergeShipPlay(v, shipId, play);
+          // Ship created after load: adopt it, mirroring the character path.
+          import('../lib/starships')
+            .then((m) => m.getStarship(shipId))
+            .then((ship: any) => {
+              shipDocs.current[shipId] = ship;
+              setShipVitals((v2) => mergeShipPlay(addShipVitals(v2, ship, shipMaxima.current), shipId, play));
+            })
+            .catch(() => { /* deleted meanwhile; stay a silent no-op */ });
           return v;
         });
         return;
@@ -298,11 +416,16 @@ export function useTabletop(campaignId: string): TabletopState {
     ownCharacterIds,
     ownCharacters,
     vitals,
+    shipVitals,
+    ownShipIds,
+    ships,
     templates: Object.values(state.templates),
     pings,
     rulers: Object.fromEntries(Object.entries(rulers).map(([k, { a, b }]) => [k, { a, b }])),
-    initiative: (state.scene?.initiative_json as Initiative | null) ?? null,
-    canMove: (t) => authed || (!!t.character_id && ownCharacterIds.has(t.character_id)),
+    initiative: parseInitiative(state.scene?.initiative_json ?? null),
+    canMove: (t) => authed
+      || (!!t.character_id && ownCharacterIds.has(t.character_id))
+      || (!!t.ship_id && ownShipIds.has(t.ship_id)),
     actions: {
       move,
       sendDrag,
@@ -315,6 +438,50 @@ export function useTabletop(campaignId: string): TabletopState {
       addToken: wrap(async (body: Partial<TokenDto> & { name: string }) => { if (state.scene) await createToken(state.scene.id, body); }),
       removeToken: wrap(async (id: string) => { await deleteToken(id); }),
       editToken: wrap(async (id: string, body: Record<string, unknown>) => { await patchToken(id, body); }),
+      // One PATCH: mode and the matching grid calibration (5 ft ground / 50 ft space).
+      setSceneMode: wrap(async (id: string, mode: 'ground' | 'space') => {
+        const grid = state.scene?.id === id ? state.scene.grid_json : null;
+        await patchScene(id, {
+          mode,
+          ...(grid ? { grid: { ...grid, unitsPerHex: mode === 'space' ? 50 : 5, unitLabel: grid.unitLabel || 'ft' } } : {}),
+        });
+      }),
+      rotate: wrap(async (tokenId: string, facing: number) => { await rotateToken(tokenId, facing, playerToken); }),
+      setShipPlay: async (shipId: string, edit: (doc: any) => any) => {
+        const doc = shipDocs.current[shipId];
+        if (!doc) return;
+        const next = edit(doc.data_json);
+        shipDocs.current[shipId] = { ...doc, data_json: next };
+        // Optimistic like commitFog: the condition ring must respond instantly.
+        setShipVitals((v) => mergeShipPlay(v, shipId, next.play));
+        try {
+          const m = await import('../lib/starships');
+          await m.patchStarship(shipId, { data_json: next }, playerToken);
+          setError(null);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Ship update failed');
+          shipsLoadedFor.current = null;
+          void loadShips().catch(() => { /* resync failed; rings go stale until reload */ });
+        }
+      },
+      spawnShip: wrap(async (shipId: string) => {
+        const scene = state.scene;
+        const doc = shipDocs.current[shipId];
+        if (!scene || !doc) return;
+        const taken = new Set(Object.values(state.tokens).map((t) => hexKey({ q: t.q, r: t.r })));
+        const spot = spawnPositions({ q: 0, r: 0 }, taken.size + 1).find((h) => !taken.has(hexKey(h))) ?? { q: 0, r: 0 };
+        await createToken(scene.id, {
+          name: doc.name,
+          ship_id: shipId,
+          faction: 'friendly',
+          color: '#7aa2ff',
+          scale: ships.find((s) => s.id === shipId)?.scale ?? 2,
+          facing: 0,
+          q: spot.q,
+          r: spot.r,
+        });
+      }),
+      loadShips: () => setWantShips(true),
       setTokenImage: wrap(async (id: string, file: File) => { await uploadTokenImage(id, file, playerToken); }),
       clearTokenImage: wrap(async (id: string) => { await deleteTokenImage(id, playerToken); }),
       commitFog: async (reveal: string[], hide: string[]) => {
