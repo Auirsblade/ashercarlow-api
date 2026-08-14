@@ -109,7 +109,7 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
                 onRename={(id, name) => void dm.actions.renameEncounter(id, name)}
                 onSetMonsters={(id, monsters) => void dm.actions.setEncounterMonsters(id, monsters)}
                 onSetShips={(id, ships) => void dm.actions.setEncounterShips(id, ships)}
-                onSpawnAll={(enc) => void dm.actions.spawnEncounter(enc)}
+                onSpawnAll={(enc) => dm.actions.spawnEncounter(enc)}
                 onDelete={(id) => void dm.actions.removeEncounter(id)}
               />
             )}

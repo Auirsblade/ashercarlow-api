@@ -17,7 +17,7 @@ interface Props {
   onRename: (id: string, name: string) => void;
   onSetMonsters: (id: string, monsters: EncounterMonster[]) => void;
   onSetShips: (id: string, ships: EncounterShip[]) => void;
-  onSpawnAll: (enc: EncounterDto) => void;
+  onSpawnAll: (enc: EncounterDto) => Promise<void>;
   onDelete: (id: string) => void;
 }
 
@@ -28,6 +28,16 @@ export default function EncounterList({
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [addPick, setAddPick] = useState<Record<string, string>>({});
   const [shipPick, setShipPick] = useState<Record<string, string>>({});
+  // Guards spawn-all against double-clicks and against a second encounter's
+  // spawn firing while one is in flight — both share the same scene ring, so
+  // one flag for the whole list is the smallest mechanism that covers either.
+  const [spawning, setSpawning] = useState<string | null>(null);
+
+  const runSpawnAll = (enc: EncounterDto) => {
+    if (spawning) return;
+    setSpawning(enc.id);
+    onSpawnAll(enc).finally(() => setSpawning(null));
+  };
   const nameOf = (id: string) => monsters.find((m) => m.id === id)?.name ?? `(unknown ${id})`;
   const shipNameOf = (ref: string) => stockShips.find((s) => s.id === ref)?.name ?? `(unknown ${ref})`;
 
@@ -55,7 +65,14 @@ export default function EncounterList({
               {totalShipCount(enc.ships_json) > 0 ? ` · ${totalShipCount(enc.ships_json)} ships` : ''}
             </span>
             <div className="ml-auto flex items-center gap-2 text-[11px]">
-              <button type="button" className="ht-step" onClick={() => onSpawnAll(enc)}>spawn all</button>
+              <button
+                type="button"
+                className="ht-step disabled:opacity-40"
+                disabled={spawning !== null}
+                onClick={() => runSpawnAll(enc)}
+              >
+                {spawning === enc.id ? 'spawning…' : 'spawn all'}
+              </button>
               {confirmDelete === enc.id ? (
                 <span className="flex items-center gap-1 text-[10px]">
                   <button type="button" className="ht-step text-red-400" onClick={() => { setConfirmDelete(null); onDelete(enc.id); }}>confirm ✕</button>
