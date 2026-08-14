@@ -12,7 +12,7 @@ import { SW5E_CONDITIONS } from '../CharacterSheet/Sheet/ConditionsMenu';
 import SceneCanvas from './SceneCanvas';
 import SceneDrawer from './SceneDrawer';
 import GridCalibrator from './GridCalibrator';
-import ShipConditionsMenu from './ShipConditionsMenu';
+import ShipStatusMenu from './ShipStatusMenu';
 import ShipSpawner from './ShipSpawner';
 import TokenEditor from './TokenEditor';
 import TokenImageControls from './TokenImageControls';
@@ -389,13 +389,13 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
               }}
             >
               {tok.ship_id ? (
-                <ShipConditionsMenu
+                <ShipStatusMenu
                   name={tok.name}
                   vitals={t.shipVitals[tok.ship_id] ?? null}
                   onToggle={(c) => void t.actions.setShipPlay(tok.ship_id!, (doc) => toggleShipCondition(doc, c))}
                   onSystemDamage={(n) => void t.actions.setShipPlay(tok.ship_id!, (doc) => setSystemDamage(doc, n))}
                 />
-              ) : !t.isDm ? null : (
+              ) : !t.isDm ? null : ( // defensive: onTokenContextMenu's gate already ensures t.isDm here when !tok.ship_id
                 <>
                   <div className="ht-label px-2 py-1">{tok.name} · conditions</div>
                   {tok.character_id ? (

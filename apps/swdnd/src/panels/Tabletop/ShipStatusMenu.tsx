@@ -1,11 +1,11 @@
-// apps/swdnd/src/panels/Tabletop/ShipConditionsMenu.tsx — space vocabulary for a
+// apps/swdnd/src/panels/Tabletop/ShipStatusMenu.tsx — space vocabulary for a
 // ship token. Writes land on the SHIP document (ShipPlayState), never on
 // token.conditions_json, so every token of that ship and the ShipSheet agree.
 import { conditionColor } from '../../lib/rings';
 import { MAX_SYSTEM_DAMAGE, SHIP_CONDITION_OPTIONS } from '../../lib/shipTokens';
 import type { ShipVitals } from '../../lib/shipVitals';
 
-export default function ShipConditionsMenu({
+export default function ShipStatusMenu({
   name, vitals, onToggle, onSystemDamage,
 }: {
   name: string;

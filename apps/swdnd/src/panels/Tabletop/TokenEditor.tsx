@@ -73,10 +73,12 @@ export default function TokenEditor({
           </PanelLink>
         </span>
       ) : isShip ? (
-        // hp/max_hp and conditions_json are dead weight on a ship-bound token:
-        // TokenGlyph reads shipVitals (hull/shields/conditions from the ship's
-        // play document, edited via the map's right-click menu or the ship
-        // sheet) and ignores these fields entirely for ship_id tokens.
+        // hp/max_hp and conditions_json aren't the primary source on a ship-bound
+        // token: TokenGlyph reads shipVitals (hull/shields/conditions from the
+        // ship's play document, edited via the map's right-click menu or the ship
+        // sheet) for these fields, falling back to the token's own hp/conditions
+        // only while shipVitals is null — the ship is still loading, or has since
+        // been deleted.
         <span className="flex items-center gap-2 text-[10px] text-ht-muted">
           hull, shields &amp; conditions come from the ship sheet
           <PanelLink
