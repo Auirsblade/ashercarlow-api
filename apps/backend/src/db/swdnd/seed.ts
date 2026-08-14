@@ -23,13 +23,14 @@ function columnNames(db: Database, schema: string, table: string): string[] {
  * A volume seeded before a new reference table existed still reports the same
  * `commit_hash` as the seed, so the version check alone would leave that table
  * empty forever (this is how `starships` reaches already-deployed instances).
- * Tables missing from either side are skipped, matching the copy loop.
+ * Tables with no columns in common between seed and live are skipped, matching
+ * the copy loop's column intersection.
  */
 function backfillNeeded(db: Database): boolean {
   for (const table of CONTENT_TABLES) {
     if (table === 'data_version') continue;
-    if (columnNames(db, 'seed', table).length === 0) continue;
-    if (columnNames(db, 'main', table).length === 0) continue;
+    const liveCols = new Set(columnNames(db, 'main', table));
+    if (!columnNames(db, 'seed', table).some((c) => liveCols.has(c))) continue;
     const seedRows = db.query<{ n: number }, []>(`SELECT count(*) n FROM seed.${table}`).get()?.n ?? 0;
     if (seedRows === 0) continue;
     const liveRows = db.query<{ n: number }, []>(`SELECT count(*) n FROM main.${table}`).get()?.n ?? 0;

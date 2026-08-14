@@ -172,11 +172,18 @@ describe('seedContentFromImage', () => {
     seedContentFromImage(live, seedPath2);
     expect(live.query<{ n: number }, []>('SELECT count(*) n FROM starships').get()!.n).toBe(1);
 
-    // ...and the next boot is a genuine no-op again.
+    // ...and the next boot is a genuine no-op again: a DM edit to seeded content
+    // must survive, not just get silently re-overwritten by an identical seed row.
     live.prepare(
       "INSERT INTO starships (id, name, content_source, content_type, raw_json) VALUES ('local', 'Local', NULL, NULL, '{}')",
     ).run();
+    live.exec("UPDATE starships SET name = 'DM Renamed' WHERE id = 'tRnGAAILKowm8n4T'");
     seedContentFromImage(live, seedPath2);
+    expect(
+      live
+        .query<{ name: string }, []>("SELECT name FROM starships WHERE id = 'tRnGAAILKowm8n4T'")
+        .get()!.name,
+    ).toBe('DM Renamed');
     expect(live.query<{ n: number }, []>('SELECT count(*) n FROM starships').get()!.n).toBe(2);
     expect(speciesCount(live)).toBe(1);
     live.close();
