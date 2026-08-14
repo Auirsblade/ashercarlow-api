@@ -157,6 +157,17 @@ describe('ship tokens', () => {
     const list = (await (await app.request(`/swdnd/scenes/${sceneId}/tokens`)).json()) as any[];
     expect(list.map((x) => x.id)).not.toContain(t.id);
   });
+
+  it('a crewing player may move the ship token over HTTP; a stranger 403s', async () => {
+    const charId = ((await (await app.request(`/swdnd/campaigns/${campaignId}/characters`)).json()) as any[])[0].id;
+    swdndDb.run('INSERT OR REPLACE INTO starship_crew (ship_id, character_id, role) VALUES (?, ?, ?)', [shipId, charId, 'pilot']);
+    await withAuthEnv(async () => {
+      const ok = await app.request(`/swdnd/tokens/${shipTokenId}/position`, json('PATCH', { q: 2, r: 2 }, { 'X-Player-Token': playerToken }));
+      expect(ok.status).toBe(200);
+      const nope = await app.request(`/swdnd/tokens/${shipTokenId}/position`, json('PATCH', { q: 4, r: 4 }, { 'X-Player-Token': otherToken }));
+      expect(nope.status).toBe(403);
+    });
+  });
 });
 
 afterAll(() => { delete process.env.ASHERCARLOW_AUTH_TOKEN; });
