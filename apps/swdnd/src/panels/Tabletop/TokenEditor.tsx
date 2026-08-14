@@ -132,9 +132,11 @@ export default function TokenEditor({
           value={token.scale}
           onChange={(e) => onEdit(token.id, { scale: Number(e.target.value) })}
         >
-          <option value={1}>1</option>
-          <option value={2}>2</option>
-          <option value={3}>3</option>
+          {(() => {
+            const sizes = [1, 2, 3, 4, 6, 8, 16];
+            const opts = sizes.includes(token.scale) ? sizes : [...sizes, token.scale].sort((a, b) => a - b);
+            return opts.map((n) => <option key={n} value={n}>{n}</option>);
+          })()}
         </select>
       </label>
 
