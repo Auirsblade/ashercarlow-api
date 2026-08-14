@@ -101,6 +101,14 @@ describe('parseInitiative', () => {
     expect(parseInitiative({ order: 'nope' })).toBeNull();
     expect(parseInitiative('{}')).toBeNull();
   });
+
+  it('dedupes crew ids and drops self-references', () => {
+    const parsed = parseInitiative({
+      order: [{ tokenId: 'ship', name: 'Krayt', roll: 9, crew: ['pilot', 'pilot', 'ship', 'gunner'] }],
+      activeIndex: 0, round: 1,
+    });
+    expect(parsed!.order[0].crew).toEqual(['pilot', 'gunner']);
+  });
 });
 
 describe('groupCrew', () => {
@@ -148,6 +156,22 @@ describe('groupCrew', () => {
     expect(groupCrew(init, 'ship', [])).toBe(init);
     expect(groupCrew(init, 'ship', ['ship'])).toBe(init);
   });
+
+  it('dedupes crew when re-grouping an id that is already nested', () => {
+    // Malformed/hand-edited doc: 'pilot' is both nested under the ship AND still a top-level entry.
+    const malformed = {
+      order: [
+        { tokenId: 'ship', name: 'Krayt', roll: 20, crew: ['pilot'] },
+        { tokenId: 'pilot', name: 'Pilot', roll: 14 },
+      ],
+      activeIndex: 0,
+      round: 1,
+    };
+    const grouped = groupCrew(malformed, 'ship', ['pilot']);
+    expect(grouped.order[0].crew).toEqual(['pilot']);
+    const back = ungroupCrew(grouped, 'ship', () => 'Pilot');
+    expect(back.order.map((e) => e.tokenId)).toEqual(['ship', 'pilot']);
+  });
 });
 
 describe('ungroupCrew', () => {
@@ -165,6 +189,27 @@ describe('ungroupCrew', () => {
   it('is a no-op when the ship has no crew', () => {
     const init = { order: [{ tokenId: 'ship', name: 'Krayt', roll: 20 }], activeIndex: 0, round: 1 };
     expect(ungroupCrew(init, 'ship', () => 'x')).toBe(init);
+  });
+
+  it('a two-crew round-trip returns both crew at the absorbed minimum roll (documented lossy behavior)', () => {
+    const grouped = groupCrew(
+      {
+        order: [
+          { tokenId: 'ship', name: 'Krayt', roll: 20 },
+          { tokenId: 'pilot', name: 'Pilot', roll: 14 },
+          { tokenId: 'gunner', name: 'Gunner', roll: 9 },
+        ],
+        activeIndex: 0,
+        round: 1,
+      },
+      'ship', ['pilot', 'gunner'],
+    );
+    const back = ungroupCrew(grouped, 'ship', (id) => (id === 'pilot' ? 'Pilot' : 'Gunner'));
+    expect(back.order.map((e) => e.tokenId)).toEqual(['ship', 'pilot', 'gunner']);
+    // Both crew come back at the absorbed minimum (9), not their original individual rolls (14, 9) — the
+    // per-crew roll is lost once grouped, distinct from the single-crew case where min === that one roll.
+    expect(back.order[1].roll).toBe(9);
+    expect(back.order[2].roll).toBe(9);
   });
 });
 

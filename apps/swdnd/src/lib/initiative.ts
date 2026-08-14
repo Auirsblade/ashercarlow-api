@@ -69,7 +69,9 @@ export function parseInitiative(raw: unknown): Initiative | null {
       name: typeof name === 'string' ? name : '',
       roll: typeof roll === 'number' && Number.isFinite(roll) ? roll : 0,
     };
-    const ids = Array.isArray(crew) ? crew.filter((x): x is string => typeof x === 'string' && !!x) : [];
+    const ids = Array.isArray(crew)
+      ? Array.from(new Set(crew.filter((x): x is string => typeof x === 'string' && !!x && x !== tokenId)))
+      : [];
     if (ids.length) entry.crew = ids;
     order.push(entry);
   }
@@ -84,9 +86,12 @@ export function parseInitiative(raw: unknown): Initiative | null {
 
 /**
  * Nest `crewTokenIds` under the ship's entry: one strip slot for the whole
- * crew. SOTG: the lowest crew roll sets the ship's place in the order (when
- * the ship already had crew, its current slot value is that running minimum).
- * The active creature keeps its turn — a nested crew member hands it to the ship.
+ * crew. SOTG: the ship's roll becomes the crew minimum (when the ship
+ * already had crew, its current slot value is folded into that running
+ * minimum too). This only changes the ship's roll, not its position in
+ * `order` — the DM's existing ⇅ sort button re-applies the new roll to the
+ * order. The active creature keeps its turn — a nested crew member hands it
+ * to the ship.
  */
 export function groupCrew(init: Initiative, shipTokenId: string, crewTokenIds: string[]): Initiative {
   const ship = init.order.find((e) => e.tokenId === shipTokenId);
@@ -103,7 +108,7 @@ export function groupCrew(init: Initiative, shipTokenId: string, crewTokenIds: s
     .map((e) => (e.tokenId === shipTokenId
       ? {
           ...e,
-          crew: [...(e.crew ?? []), ...moved.map((m) => m.tokenId)],
+          crew: Array.from(new Set([...(e.crew ?? []), ...moved.map((m) => m.tokenId)])),
           roll: hadCrew ? Math.min(e.roll, ...rolls) : Math.min(...rolls),
         }
       : e));
