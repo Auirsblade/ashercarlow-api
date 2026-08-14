@@ -40,8 +40,17 @@ export interface TabletopState {
   vitals: Record<string, Vitals>;
   shipVitals: Record<string, ShipVitals>;
   ownShipIds: Set<string>;
-  /** Campaign ships (spawner), each with the token scale its footprint implies. */
-  ships: { id: string; name: string; scale: number }[];
+  /**
+   * Campaign ships for the spawner: `list` is the roster (each with the token
+   * scale its footprint implies), `loading` is true while a fetch is in
+   * flight, and `spawning` holds the ids currently mid-spawn-request so the
+   * spawner can disable that ship's button (T10 review, Findings 2 & 3).
+   */
+  ships: {
+    list: { id: string; name: string; scale: number }[];
+    loading: boolean;
+    spawning: Set<string>;
+  };
   templates: TemplateDto[];
   pings: { id: string; x: number; y: number }[];
   rulers: Record<string, { a: Hex; b: Hex }>;   // peer id → live remote ruler
@@ -91,7 +100,15 @@ export function useTabletop(campaignId: string): TabletopState {
   const [vitals, setVitals] = useState<Record<string, Vitals>>({});
   const [shipVitals, setShipVitals] = useState<Record<string, ShipVitals>>({});
   const [ships, setShips] = useState<{ id: string; name: string; scale: number }[]>([]);
-  const [wantShips, setWantShips] = useState(false);
+  // Bumped by actions.loadShips() so the ship-load effect below re-runs even
+  // when needShips was already true (e.g. re-clicking after a failed load) —
+  // a boolean latch couldn't do this: re-clicking left it at the same value,
+  // so the effect's deps never changed (T10 review, Finding 1).
+  const [shipLoadNonce, setShipLoadNonce] = useState(0);
+  // True only while the ship-load effect has a genuine fetch in flight, so
+  // ShipSpawner can tell "still loading" apart from "loaded and empty"
+  // (T10 review, Finding 2).
+  const [shipsLoading, setShipsLoading] = useState(false);
   /** Full ship documents, needed to build whole-document PATCHes. */
   const shipDocs = useRef<Record<string, any>>({});
   const shipMaxima = useRef<(ship: any) => { maxHull: number; maxShields: number }>(() => ({ maxHull: 0, maxShields: 0 }));
@@ -105,6 +122,15 @@ export function useTabletop(campaignId: string): TabletopState {
   // a stale re-base apart from a fresh one and leave local optimistic play alone
   // while more PATCHes for that ship are still in flight (T8 review, Finding 2).
   const pendingShipPatch = useRef<Record<string, number>>({});
+  // Per-ship spawn-in-flight guard. A ref (mutated synchronously, not via
+  // setState) so a second click landing before React re-renders still sees
+  // the first click's write — spawnShip closes over render-time state, and
+  // two clicks racing inside the token:created round-trip used to both
+  // compute the same open hex and stack two tokens (T10 review, Finding 3).
+  // spawningShipIds mirrors it in state purely so ShipSpawner can disable
+  // the button; spawningShips.current is the mutation source of truth.
+  const spawningShips = useRef<Set<string>>(new Set());
+  const [spawningShipIds, setSpawningShipIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const socket = useRef<CampaignSocket | null>(null);
@@ -250,7 +276,7 @@ export function useTabletop(campaignId: string): TabletopState {
     return list;
   }, [campaignId]);
 
-  const needShips = wantShips
+  const needShips = shipLoadNonce > 0
     || state.scene?.mode === 'space'
     || Object.values(state.tokens).some((t) => !!t.ship_id);
 
@@ -260,21 +286,34 @@ export function useTabletop(campaignId: string): TabletopState {
     shipDocs.current = {};
     pendingShipPlays.current = {};
     pendingShipPatch.current = {};
+    spawningShips.current = new Set();
     setShips([]);
     setShipVitals({});
-    setWantShips(false);
+    setShipLoadNonce(0);
+    setShipsLoading(false);
+    setSpawningShipIds(new Set());
   }, [campaignId]);
 
   useEffect(() => {
     if (!needShips || shipsLoadedFor.current === campaignId) return;
     const seq = shipLoadSeq.current;
-    loadShips().catch(() => {
-      // Only reset the latch if this load is still the current one — a stale
-      // failure from a load the campaign has since moved past must not undo
-      // a newer (possibly successful) load's state (T8 review, Finding 1).
-      if (seq === shipLoadSeq.current) shipsLoadedFor.current = null; // ship rings simply don't render
-    });
-  }, [needShips, campaignId, loadShips]);
+    setShipsLoading(true);
+    loadShips()
+      .then(() => {
+        if (seq === shipLoadSeq.current) setError(null);
+      })
+      .catch((e: unknown) => {
+        // Only touch state if this load is still the current one — a stale
+        // failure from a load the campaign has since moved past must not undo
+        // a newer (possibly successful) load's state (T8 review, Finding 1).
+        if (seq !== shipLoadSeq.current) return;
+        shipsLoadedFor.current = null; // latch cleared: the next loadShips() click genuinely retries
+        setError(e instanceof Error ? e.message : 'Failed to load ships');
+      })
+      .finally(() => {
+        if (seq === shipLoadSeq.current) setShipsLoading(false);
+      });
+  }, [needShips, campaignId, loadShips, shipLoadNonce]);
 
   useEffect(() => {
     const hadOpenedRef = { current: false };
@@ -445,7 +484,7 @@ export function useTabletop(campaignId: string): TabletopState {
     vitals,
     shipVitals,
     ownShipIds,
-    ships,
+    ships: { list: ships, loading: shipsLoading, spawning: spawningShipIds },
     templates: Object.values(state.templates),
     pings,
     rulers: Object.fromEntries(Object.entries(rulers).map(([k, { a, b }]) => [k, { a, b }])),
@@ -508,23 +547,38 @@ export function useTabletop(campaignId: string): TabletopState {
         }
       },
       spawnShip: wrap(async (shipId: string) => {
-        const scene = state.scene;
-        const doc = shipDocs.current[shipId];
-        if (!scene || !doc) return;
-        const taken = new Set(Object.values(state.tokens).map((t) => hexKey({ q: t.q, r: t.r })));
-        const spot = spawnPositions({ q: 0, r: 0 }, taken.size + 1).find((h) => !taken.has(hexKey(h))) ?? { q: 0, r: 0 };
-        await createToken(scene.id, {
-          name: doc.name,
-          ship_id: shipId,
-          faction: 'friendly',
-          color: '#7aa2ff',
-          scale: ships.find((s) => s.id === shipId)?.scale ?? 2,
-          facing: 0,
-          q: spot.q,
-          r: spot.r,
-        });
+        // spawnShip closes over render-time state (state.tokens, at least),
+        // so two clicks landing inside the same token:created round-trip
+        // would otherwise both compute the same open hex and stack two
+        // tokens for this ship. Checked+set synchronously via the ref (not
+        // setState) so the second click — even from a stale pre-update
+        // closure — still observes the first click's write (T10 review,
+        // Finding 3).
+        if (spawningShips.current.has(shipId)) return;
+        spawningShips.current.add(shipId);
+        setSpawningShipIds(new Set(spawningShips.current));
+        try {
+          const scene = state.scene;
+          const doc = shipDocs.current[shipId];
+          if (!scene || !doc) return;
+          const taken = new Set(Object.values(state.tokens).map((t) => hexKey({ q: t.q, r: t.r })));
+          const spot = spawnPositions({ q: 0, r: 0 }, taken.size + 1).find((h) => !taken.has(hexKey(h))) ?? { q: 0, r: 0 };
+          await createToken(scene.id, {
+            name: doc.name,
+            ship_id: shipId,
+            faction: 'friendly',
+            color: '#7aa2ff',
+            scale: ships.find((s) => s.id === shipId)?.scale ?? 2,
+            facing: 0,
+            q: spot.q,
+            r: spot.r,
+          });
+        } finally {
+          spawningShips.current.delete(shipId);
+          setSpawningShipIds(new Set(spawningShips.current));
+        }
       }),
-      loadShips: () => setWantShips(true),
+      loadShips: () => setShipLoadNonce((n) => n + 1),
       setTokenImage: wrap(async (id: string, file: File) => { await uploadTokenImage(id, file, playerToken); }),
       clearTokenImage: wrap(async (id: string) => { await deleteTokenImage(id, playerToken); }),
       commitFog: async (reveal: string[], hide: string[]) => {
