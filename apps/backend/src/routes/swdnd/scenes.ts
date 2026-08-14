@@ -29,6 +29,7 @@ const Scene = z.object({
   image_w: z.number().nullable(),
   image_h: z.number().nullable(),
   grid_json: Grid,
+  mode: z.enum(['ground', 'space']),
   fog_json: z.array(z.string()),
   initiative_json: z.unknown().nullable(),
   is_active: z.number(),
@@ -40,7 +41,7 @@ const Scene = z.object({
 interface SceneRow {
   id: string; campaign_id: string; name: string;
   image_path: string | null; image_w: number | null; image_h: number | null;
-  grid_json: string; fog_json: string; initiative_json: string | null;
+  grid_json: string; mode: string; fog_json: string; initiative_json: string | null;
   is_active: number; sort: number; created_at: string; updated_at: string;
 }
 
@@ -49,6 +50,7 @@ const PostBody = z.object({ name: z.string().min(1) }).openapi('SwdndPostScene')
 const PatchBody = z.object({
   name: z.string().min(1).optional(),
   grid: Grid.optional(),
+  mode: z.enum(['ground', 'space']).optional(),
   sort: z.number().optional(),
 }).openapi('SwdndPatchScene');
 
@@ -59,6 +61,8 @@ export function sceneOut(row: SceneRow) {
     grid_json: JSON.parse(row.grid_json || '{}'),
     fog_json: JSON.parse(row.fog_json || '[]'),
     initiative_json: row.initiative_json ? JSON.parse(row.initiative_json) : null,
+    // Pre-007 rows (and any hand-edited NULL) read as ground.
+    mode: row.mode === 'space' ? ('space' as const) : ('ground' as const),
   };
 }
 
@@ -139,7 +143,13 @@ const fogRoute = createRoute({
   },
 });
 
-const InitiativeEntry = z.object({ tokenId: z.string(), name: z.string(), roll: z.number() });
+const InitiativeEntry = z.object({
+  tokenId: z.string(),
+  name: z.string(),
+  roll: z.number(),
+  /** Ship entries nest their crew's token ids; the slot is one turn (SOTG). */
+  crew: z.array(z.string()).optional(),
+});
 const Initiative = z.object({
   order: z.array(InitiativeEntry),
   activeIndex: z.number().int().min(0),
@@ -218,10 +228,11 @@ export function registerSceneRoutes(app: OpenAPIHono): void {
     if (!row) throw new HTTPException(404, { message: 'Scene not found' });
     const now = new Date().toISOString();
     swdndDb.run(
-      'UPDATE scene SET name = ?, grid_json = ?, sort = ?, updated_at = ? WHERE id = ?',
+      'UPDATE scene SET name = ?, grid_json = ?, mode = ?, sort = ?, updated_at = ? WHERE id = ?',
       [
         body.name ?? row.name,
         body.grid ? JSON.stringify(body.grid) : row.grid_json,
+        body.mode ?? (row.mode === 'space' ? 'space' : 'ground'),
         body.sort ?? row.sort,
         now, id,
       ],

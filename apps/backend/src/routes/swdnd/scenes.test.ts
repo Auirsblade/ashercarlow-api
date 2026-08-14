@@ -165,4 +165,62 @@ describe('initiative', () => {
     const res = await app.request('/swdnd/scenes/nope/initiative', json('PATCH', { initiative: null }));
     expect(res.status).toBe(404);
   });
+
+  it('round-trips grouped crew entries', async () => {
+    const sc = await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Grouped' }))).json() as any;
+    const init = {
+      order: [{ tokenId: 'ship', name: 'Krayt', roll: 9, crew: ['pilot', 'gunner'] }, { tokenId: 'foe', name: 'Foe', roll: 7 }],
+      activeIndex: 0, round: 1,
+    };
+    const res = await app.request(`/swdnd/scenes/${sc.id}/initiative`, json('PATCH', { initiative: init }));
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).initiative_json).toEqual(init);
+  });
+
+  it('rejects a non-string crew member', async () => {
+    const sc = await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Bad crew' }))).json() as any;
+    const res = await app.request(`/swdnd/scenes/${sc.id}/initiative`, json('PATCH', {
+      initiative: { order: [{ tokenId: 'ship', name: 'K', roll: 1, crew: [3] }], activeIndex: 0, round: 1 },
+    }));
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('space mode', () => {
+  it('new scenes default to ground', async () => {
+    const sc = await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Ground' }))).json() as any;
+    expect(sc.mode).toBe('ground');
+  });
+
+  it('one PATCH flips to space and recalibrates the grid to 50 ft/hex', async () => {
+    const sc = await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Void' }))).json() as any;
+    const res = await app.request(`/swdnd/scenes/${sc.id}`, json('PATCH', {
+      mode: 'space',
+      grid: { orientation: 'pointy', hexSize: 32, originX: 0, originY: 0, unitsPerHex: 50, unitLabel: 'ft' },
+    }));
+    expect(res.status).toBe(200);
+    const s = (await res.json()) as any;
+    expect(s.mode).toBe('space');
+    expect(s.grid_json.unitsPerHex).toBe(50);
+  });
+
+  it('a later PATCH that omits mode leaves it alone', async () => {
+    const sc = await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Void 2' }))).json() as any;
+    await app.request(`/swdnd/scenes/${sc.id}`, json('PATCH', { mode: 'space' }));
+    const again = await (await app.request(`/swdnd/scenes/${sc.id}`, json('PATCH', { name: 'Void 2 — Battle' }))).json() as any;
+    expect(again.mode).toBe('space');
+    expect(again.name).toBe('Void 2 — Battle');
+  });
+
+  it('rejects an unknown mode', async () => {
+    const sc = await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Bad mode' }))).json() as any;
+    expect((await app.request(`/swdnd/scenes/${sc.id}`, json('PATCH', { mode: 'hyperspace' }))).status).toBe(400);
+  });
+
+  it('legacy rows with a NULL mode read back as ground', async () => {
+    const sc = await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Legacy' }))).json() as any;
+    swdndDb.run('UPDATE scene SET mode = NULL WHERE id = ?', [sc.id]);
+    const got = await (await app.request(`/swdnd/scenes/${sc.id}`)).json() as any;
+    expect(got.mode).toBe('ground');
+  });
 });

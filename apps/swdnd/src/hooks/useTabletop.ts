@@ -6,7 +6,7 @@ import { connectCampaign, type CampaignSocket, type WsEnvelope } from '../lib/ws
 import {
   activateScene, clearTemplates, createScene, createTemplate, createToken, deleteScene, deleteTemplate,
   deleteToken, deleteTokenImage, listScenes, listTemplates, listTokens, moveToken, patchFog, patchInitiative,
-  patchScene, patchTemplate, patchToken, uploadSceneImage, uploadTokenImage,
+  patchScene, patchTemplate, patchToken, rotateToken, uploadSceneImage, uploadTokenImage,
   type SceneDto, type TemplateDto, type TokenDto,
 } from '../lib/scenes';
 import {
@@ -14,9 +14,17 @@ import {
 } from '../lib/mapState';
 import { applyFogPatch } from '../lib/fog';
 import { addCharacterVitals, applyPendingPlays, buildVitals, mergePlay, type PendingPlays, type Vitals } from '../lib/vitals';
+import { spawnPositions } from '../lib/spawn';
+import { hexKey } from '../lib/hex';
+import { shipTokenScale } from '../lib/shipTokens';
+import {
+  addShipVitals, applyPendingShipPlays, buildShipVitals, crewedShipIds, mergeShipPlay,
+  type PendingShipPlays, type ShipPlayLike, type ShipVitals,
+} from '../lib/shipVitals';
+import { parseInitiative, type Initiative } from '../lib/initiative';
 import type { GridConfig, Hex } from '../lib/hex';
-import type { Initiative } from '../lib/initiative';
 import type { ReferenceData } from '../lib/rules/types';
+import { isOwnToken } from '../lib/visibility';
 
 export interface TabletopState {
   loading: boolean;
@@ -31,6 +39,19 @@ export interface TabletopState {
   ownCharacterIds: Set<string>;
   ownCharacters: { id: string; name: string }[];
   vitals: Record<string, Vitals>;
+  shipVitals: Record<string, ShipVitals>;
+  ownShipIds: Set<string>;
+  /**
+   * Campaign ships for the spawner: `list` is the roster (each with the token
+   * scale its footprint implies), `loading` is true while a fetch is in
+   * flight, and `spawning` holds the ids currently mid-spawn-request so the
+   * spawner can disable that ship's button (T10 review, Findings 2 & 3).
+   */
+  ships: {
+    list: { id: string; name: string; scale: number }[];
+    loading: boolean;
+    spawning: Set<string>;
+  };
   templates: TemplateDto[];
   pings: { id: string; x: number; y: number }[];
   rulers: Record<string, { a: Hex; b: Hex }>;   // peer id → live remote ruler
@@ -47,6 +68,11 @@ export interface TabletopState {
     addToken: (body: Partial<TokenDto> & { name: string }) => Promise<void>;
     removeToken: (id: string) => Promise<void>;
     editToken: (id: string, body: Record<string, unknown>) => Promise<void>;
+    setSceneMode: (id: string, mode: 'ground' | 'space') => Promise<void>;
+    rotate: (tokenId: string, facing: number) => Promise<void>;
+    setShipPlay: (shipId: string, edit: (doc: any) => any) => Promise<void>;
+    spawnShip: (shipId: string) => Promise<void>;
+    loadShips: () => void;
     setTokenImage: (id: string, file: File) => Promise<void>;
     clearTokenImage: (id: string) => Promise<void>;
     commitFog: (reveal: string[], hide: string[]) => Promise<void>;
@@ -73,6 +99,39 @@ export function useTabletop(campaignId: string): TabletopState {
   const [ownCharacterIds, setOwnCharacterIds] = useState<Set<string>>(new Set());
   const [ownCharacters, setOwnCharacters] = useState<{ id: string; name: string }[]>([]);
   const [vitals, setVitals] = useState<Record<string, Vitals>>({});
+  const [shipVitals, setShipVitals] = useState<Record<string, ShipVitals>>({});
+  const [ships, setShips] = useState<{ id: string; name: string; scale: number }[]>([]);
+  // Bumped by actions.loadShips() so the ship-load effect below re-runs even
+  // when needShips was already true (e.g. re-clicking after a failed load) —
+  // a boolean latch couldn't do this: re-clicking left it at the same value,
+  // so the effect's deps never changed (T10 review, Finding 1).
+  const [shipLoadNonce, setShipLoadNonce] = useState(0);
+  // True only while the ship-load effect has a genuine fetch in flight, so
+  // ShipSpawner can tell "still loading" apart from "loaded and empty"
+  // (T10 review, Finding 2).
+  const [shipsLoading, setShipsLoading] = useState(false);
+  /** Full ship documents, needed to build whole-document PATCHes. */
+  const shipDocs = useRef<Record<string, any>>({});
+  const shipMaxima = useRef<(ship: any) => { maxHull: number; maxShields: number }>(() => ({ maxHull: 0, maxShields: 0 }));
+  const shipsLoadedFor = useRef<string | null>(null);
+  const pendingShipPlays = useRef<PendingShipPlays>({});
+  // Bumped on every campaign switch; loadShips() captures it at call time and
+  // checks it again once its fetches resolve, so a load kicked off for campaign
+  // A can never land its writes after B has taken over (T8 review, Finding 1).
+  const shipLoadSeq = useRef(0);
+  // Per-ship in-flight setShipPlay PATCH count, so a ship:updated echo can tell
+  // a stale re-base apart from a fresh one and leave local optimistic play alone
+  // while more PATCHes for that ship are still in flight (T8 review, Finding 2).
+  const pendingShipPatch = useRef<Record<string, number>>({});
+  // Per-ship spawn-in-flight guard. A ref (mutated synchronously, not via
+  // setState) so a second click landing before React re-renders still sees
+  // the first click's write — spawnShip closes over render-time state, and
+  // two clicks racing inside the token:created round-trip used to both
+  // compute the same open hex and stack two tokens (T10 review, Finding 3).
+  // spawningShipIds mirrors it in state purely so ShipSpawner can disable
+  // the button; spawningShips.current is the mutation source of truth.
+  const spawningShips = useRef<Set<string>>(new Set());
+  const [spawningShipIds, setSpawningShipIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const socket = useRef<CampaignSocket | null>(null);
@@ -157,6 +216,14 @@ export function useTabletop(campaignId: string): TabletopState {
     return () => { alive = false; };
   }, [playerToken]);
 
+  // Ships this player crews (own-character ids resolved above, per shipDocs
+  // loaded so far) — kept in state so canMove and the canvas (T9) both see it.
+  const [ownShipIds, setOwnShipIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const docs = Object.values(shipDocs.current) as { id: string; crew?: { character_id: string }[] }[];
+    setOwnShipIds(crewedShipIds(docs, ownCharacterIds));
+  }, [ships, ownCharacterIds]);
+
   // Load campaign characters + reference once and compute each character's
   // maxHp; play.hp/conditions then track character:updated events live.
   useEffect(() => {
@@ -177,6 +244,77 @@ export function useTabletop(campaignId: string): TabletopState {
       .catch(() => { /* vitals stay empty; rings for character tokens simply don't render */ });
     return () => { cancelled = true; };
   }, [campaignId]);
+
+  // Ships load lazily: only in space scenes, when a ship token exists, or when
+  // the DM opens the spawner. loadShipReference() is several content requests
+  // and must not fire on every ground map.
+  const loadShips = useCallback(async () => {
+    const seq = shipLoadSeq.current;
+    const [starships, shipRules] = await Promise.all([
+      import('../lib/starships'),
+      import('../lib/shipRules'),
+    ]);
+    const [list, ref] = await Promise.all([starships.listStarships(campaignId), starships.loadShipReference()]);
+    // The campaign switched (or reset) while these requests were in flight —
+    // a newer load owns shipDocs/shipsLoadedFor now, so don't write stale data
+    // over it (T8 review, Finding 1).
+    if (seq !== shipLoadSeq.current) return list;
+    const maxima = (s: any) => {
+      const d = shipRules.computeShip(s.data_json, ref);
+      return { maxHull: d.maxHull, maxShields: d.maxShields };
+    };
+    shipMaxima.current = maxima;
+    shipDocs.current = Object.fromEntries(list.map((s: any) => [s.id, s]));
+    // The chassis size key ('medium', 'large', …) lives on the reference row, not
+    // on DerivedShip — this is the one place this plan reads it.
+    const sizeKeyOf = (s: any): string | null => ref.sizes[s.data_json?.identity?.sizeId ?? '']?.key ?? null;
+    setShips(list.map((s: any) => ({
+      id: s.id, name: s.name, scale: shipTokenScale(sizeKeyOf(s)),
+    })));
+    shipsLoadedFor.current = campaignId;
+    setShipVitals(applyPendingShipPlays(buildShipVitals(list as any[], maxima), pendingShipPlays.current));
+    pendingShipPlays.current = {};
+    return list;
+  }, [campaignId]);
+
+  const needShips = shipLoadNonce > 0
+    || state.scene?.mode === 'space'
+    || Object.values(state.tokens).some((t) => !!t.ship_id);
+
+  useEffect(() => {
+    shipLoadSeq.current += 1;
+    shipsLoadedFor.current = null;
+    shipDocs.current = {};
+    pendingShipPlays.current = {};
+    pendingShipPatch.current = {};
+    spawningShips.current = new Set();
+    setShips([]);
+    setShipVitals({});
+    setShipLoadNonce(0);
+    setShipsLoading(false);
+    setSpawningShipIds(new Set());
+  }, [campaignId]);
+
+  useEffect(() => {
+    if (!needShips || shipsLoadedFor.current === campaignId) return;
+    const seq = shipLoadSeq.current;
+    setShipsLoading(true);
+    loadShips()
+      .then(() => {
+        if (seq === shipLoadSeq.current) setError(null);
+      })
+      .catch((e: unknown) => {
+        // Only touch state if this load is still the current one — a stale
+        // failure from a load the campaign has since moved past must not undo
+        // a newer (possibly successful) load's state (T8 review, Finding 1).
+        if (seq !== shipLoadSeq.current) return;
+        shipsLoadedFor.current = null; // latch cleared: the next loadShips() click genuinely retries
+        setError(e instanceof Error ? e.message : 'Failed to load ships');
+      })
+      .finally(() => {
+        if (seq === shipLoadSeq.current) setShipsLoading(false);
+      });
+  }, [needShips, campaignId, loadShips, shipLoadNonce]);
 
   useEffect(() => {
     const hadOpenedRef = { current: false };
@@ -207,6 +345,53 @@ export function useTabletop(campaignId: string): TabletopState {
               })
               .catch(() => { /* character not found (e.g. deleted); stay a silent no-op */ });
           }
+          return v;
+        });
+        return;
+      }
+      if (env.type === 'ship:updated') {
+        // The wire payload is {shipId, name, play, data_json} — data_json is the
+        // full parsed document (see publishShipUpdated's doc comment on the
+        // backend), included precisely so a build-half change elsewhere (a
+        // refit, a crew edit) never leaves this hook's shipDocs cache stale.
+        // Fall back to merging just `play` over the cached doc for tolerance
+        // against a payload shape that omits it.
+        const p = env.payload as { shipId?: string; name?: string; play?: ShipPlayLike; data_json?: any };
+        const shipId = p?.shipId;
+        const play = p?.play;
+        if (!shipId || !play) return;
+        // A setShipPlay PATCH for this ship is still in flight — keep local
+        // play authoritative rather than re-basing from the wire, or a queued
+        // click's optimistic edit gets silently overwritten by an echo of an
+        // earlier click (T8 review, Finding 2). The in-flight PATCH's own
+        // success/failure path (or, on failure, its loadShips() resync) is
+        // what eventually reconciles state; still take the wire's build half
+        // when present so a concurrent refit isn't lost.
+        const patchPending = (pendingShipPatch.current[shipId] ?? 0) > 0;
+        const doc = shipDocs.current[shipId];
+        if (doc) {
+          shipDocs.current[shipId] = patchPending
+            ? { ...doc, name: p.name ?? doc.name, data_json: p.data_json ? { ...p.data_json, play: doc.data_json?.play } : doc.data_json }
+            : { ...doc, name: p.name ?? doc.name, data_json: p.data_json ?? { ...doc.data_json, play } };
+        }
+        if (shipsLoadedFor.current === null) {
+          pendingShipPlays.current[shipId] = play; // loader in flight; don't let it clobber this
+          return;
+        }
+        if (patchPending) return; // local optimistic play stays authoritative until the in-flight PATCH(es) settle
+        // mergeShipPlay intentionally keeps cur.maxHull/maxShields (see its doc
+        // comment in shipVitals.ts) — a refit's new maxima land in shipDocs above
+        // but shipVitals' rings keep the old cap until reload; not a bug here.
+        setShipVitals((v) => {
+          if (v[shipId]) return mergeShipPlay(v, shipId, play);
+          // Ship created after load: adopt it, mirroring the character path.
+          import('../lib/starships')
+            .then((m) => m.getStarship(shipId))
+            .then((ship: any) => {
+              shipDocs.current[shipId] = ship;
+              setShipVitals((v2) => mergeShipPlay(addShipVitals(v2, ship, shipMaxima.current), shipId, play));
+            })
+            .catch(() => { /* deleted meanwhile; stay a silent no-op */ });
           return v;
         });
         return;
@@ -298,11 +483,14 @@ export function useTabletop(campaignId: string): TabletopState {
     ownCharacterIds,
     ownCharacters,
     vitals,
+    shipVitals,
+    ownShipIds,
+    ships: { list: ships, loading: shipsLoading, spawning: spawningShipIds },
     templates: Object.values(state.templates),
     pings,
     rulers: Object.fromEntries(Object.entries(rulers).map(([k, { a, b }]) => [k, { a, b }])),
-    initiative: (state.scene?.initiative_json as Initiative | null) ?? null,
-    canMove: (t) => authed || (!!t.character_id && ownCharacterIds.has(t.character_id)),
+    initiative: parseInitiative(state.scene?.initiative_json ?? null),
+    canMove: (t) => authed || isOwnToken(t, { ownCharacterIds, ownShipIds }),
     actions: {
       move,
       sendDrag,
@@ -315,6 +503,85 @@ export function useTabletop(campaignId: string): TabletopState {
       addToken: wrap(async (body: Partial<TokenDto> & { name: string }) => { if (state.scene) await createToken(state.scene.id, body); }),
       removeToken: wrap(async (id: string) => { await deleteToken(id); }),
       editToken: wrap(async (id: string, body: Record<string, unknown>) => { await patchToken(id, body); }),
+      // One PATCH: mode and the matching grid calibration (5 ft ground / 50 ft space).
+      setSceneMode: wrap(async (id: string, mode: 'ground' | 'space') => {
+        const grid = state.scene?.id === id ? state.scene.grid_json : null;
+        await patchScene(id, {
+          mode,
+          ...(grid ? { grid: { ...grid, unitsPerHex: mode === 'space' ? 50 : 5, unitLabel: grid.unitLabel || 'ft' } } : {}),
+        });
+      }),
+      rotate: wrap(async (tokenId: string, facing: number) => { await rotateToken(tokenId, facing, playerToken); }),
+      setShipPlay: async (shipId: string, edit: (doc: any) => any) => {
+        const doc = shipDocs.current[shipId];
+        if (!doc) return;
+        const next = edit(doc.data_json);
+        shipDocs.current[shipId] = { ...doc, data_json: next };
+        // Optimistic like commitFog: the condition ring must respond instantly.
+        setShipVitals((v) => mergeShipPlay(v, shipId, next.play));
+        // Track this PATCH as in-flight so a ship:updated echo landing before it
+        // resolves doesn't rewind shipDocs/shipVitals out from under a queued
+        // click (T8 review, Finding 2) — see the WS branch's patchPending guard.
+        pendingShipPatch.current[shipId] = (pendingShipPatch.current[shipId] ?? 0) + 1;
+        try {
+          const m = await import('../lib/starships');
+          await m.patchStarship(shipId, { data_json: next }, playerToken);
+          setError(null);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Ship update failed');
+          // Only resync via a full reload once this is the last in-flight PATCH
+          // for this ship: with others still pending, a reload would clobber
+          // their optimistic edits before they get a chance to land or fail on
+          // their own; loadShips() is itself seq-guarded (Finding 1's fix), so
+          // it's safe to fire here — it just isn't the right ship-local trigger
+          // while siblings are still outstanding.
+          if ((pendingShipPatch.current[shipId] ?? 0) <= 1) {
+            // Drive the resync through the ship-load effect (deps include
+            // campaignId) rather than calling loadShips() directly here — a
+            // stale closure over an old campaignId could otherwise outlive a
+            // campaign switch and land writes for the wrong campaign.
+            shipsLoadedFor.current = null;
+            setShipLoadNonce((n) => n + 1);
+          }
+        } finally {
+          const n = (pendingShipPatch.current[shipId] ?? 1) - 1;
+          if (n <= 0) delete pendingShipPatch.current[shipId];
+          else pendingShipPatch.current[shipId] = n;
+        }
+      },
+      spawnShip: wrap(async (shipId: string) => {
+        // spawnShip closes over render-time state (state.tokens, at least),
+        // so two clicks landing inside the same token:created round-trip
+        // would otherwise both compute the same open hex and stack two
+        // tokens for this ship. Checked+set synchronously via the ref (not
+        // setState) so the second click — even from a stale pre-update
+        // closure — still observes the first click's write (T10 review,
+        // Finding 3).
+        if (spawningShips.current.has(shipId)) return;
+        spawningShips.current.add(shipId);
+        setSpawningShipIds(new Set(spawningShips.current));
+        try {
+          const scene = state.scene;
+          const doc = shipDocs.current[shipId];
+          if (!scene || !doc) return;
+          const taken = new Set(Object.values(state.tokens).map((t) => hexKey({ q: t.q, r: t.r })));
+          const spot = spawnPositions({ q: 0, r: 0 }, taken.size + 1).find((h) => !taken.has(hexKey(h))) ?? { q: 0, r: 0 };
+          await createToken(scene.id, {
+            name: doc.name,
+            ship_id: shipId,
+            faction: 'friendly',
+            color: '#7aa2ff',
+            scale: ships.find((s) => s.id === shipId)?.scale ?? 2,
+            facing: 0,
+            q: spot.q,
+            r: spot.r,
+          });
+        } finally {
+          spawningShips.current.delete(shipId);
+          setSpawningShipIds(new Set(spawningShips.current));
+        }
+      }),
+      loadShips: () => setShipLoadNonce((n) => n + 1),
       setTokenImage: wrap(async (id: string, file: File) => { await uploadTokenImage(id, file, playerToken); }),
       clearTokenImage: wrap(async (id: string) => { await deleteTokenImage(id, playerToken); }),
       commitFog: async (reveal: string[], hide: string[]) => {

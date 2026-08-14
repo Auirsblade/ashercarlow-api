@@ -3,8 +3,8 @@ import { applyMapEvent, confirmMove, emptyMapState, optimisticMove, rollbackMove
 import type { TokenDto } from './scenes';
 
 const t = (id: string, q = 0, r = 0): TokenDto => ({
-  id, scene_id: 's1', character_id: null, name: id, color: '#fff', faction: 'friendly',
-  q, r, scale: 1, hp: null, max_hp: null, conditions_json: [], hidden: 0, image_path: null,
+  id, scene_id: 's1', character_id: null, ship_id: null, name: id, color: '#fff', faction: 'friendly',
+  q, r, scale: 1, facing: 0, hp: null, max_hp: null, conditions_json: [], hidden: 0, image_path: null,
   created_at: '', updated_at: '',
 });
 

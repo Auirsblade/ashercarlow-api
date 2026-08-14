@@ -60,20 +60,25 @@ export function isAdminRequest(c: Context): boolean {
 }
 
 /**
- * Throw 403 unless the requester may move this token: dev mode, the admin, or
- * the player owning the token's linked character.
+ * Throw 403 unless the requester may move this token: dev mode, the admin, the
+ * player owning the token's linked character, or — for a ship token — a player
+ * with any of their characters on that ship's crew (crew flies the ship).
  */
-export function assertTokenMoveAccess(c: Context, token: { character_id: string | null }): void {
+export function assertTokenMoveAccess(
+  c: Context,
+  token: { character_id: string | null; ship_id?: string | null },
+): void {
   if (!process.env.ASHERCARLOW_AUTH_TOKEN) return; // dev mode
   if (isAdmin(c)) return;
-  if (token.character_id) {
-    const player = resolvePlayerByToken(playerTokenFrom(c));
-    if (player) {
+  const player = resolvePlayerByToken(playerTokenFrom(c));
+  if (player) {
+    if (token.character_id) {
       const owner = swdndDb
         .query<{ player_id: string | null }, [string]>('SELECT player_id FROM character WHERE id = ?')
         .get(token.character_id);
       if (owner?.player_id && owner.player_id === player.id) return;
     }
+    if (token.ship_id && playerCrewsShip(player.id, token.ship_id)) return;
   }
   throw new HTTPException(403, { message: 'Not allowed to move this token' });
 }

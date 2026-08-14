@@ -1,13 +1,15 @@
 // apps/swdnd/src/panels/Tabletop/SceneCanvas.tsx
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { API_BASE } from '../../lib/api';
-import { hexBlast, hexCorners, hexDistance, hexLine, hexToPixel, pixelToHex, type Hex } from '../../lib/hex';
+import { gridUnits, hexBlast, hexCorners, hexDistance, hexesToUnits, hexLine, hexToPixel, pixelToHex, type Hex } from '../../lib/hex';
 import { clientDeltaToMap, clientToMap, fitViewBox, panViewBox, zoomViewBox, type ViewBox } from '../../lib/viewBox';
 import type { SceneDto, TemplateDto, TokenDto } from '../../lib/scenes';
 import { applyFogPatch, brushKeys, fogActive, toFogSet } from '../../lib/fog';
-import { tokenVisibility, showHpRing } from '../../lib/visibility';
+import { tokenVisibility, showHpRing, isOwnToken } from '../../lib/visibility';
 import { tokenVitals, type Vitals } from '../../lib/vitals';
 import { dirFromPoint, templateHexes } from '../../lib/templates';
+import { facingAngle, rotateFacing } from '../../lib/shipTokens';
+import { tokenShipVitals, type ShipVitals } from '../../lib/shipVitals';
 import TokenGlyph from './TokenGlyph';
 
 interface Props {
@@ -33,7 +35,6 @@ interface Props {
   templates: TemplateDto[];
   pings: { id: string; x: number; y: number }[];
   rulers: Record<string, { a: Hex; b: Hex }>;
-  activeTokenId: string | null;
   onPing: (x: number, y: number) => void;
   onRulerFrame: (a: Hex, b: Hex, done: boolean) => void;
   onCreateTemplate: (body: Record<string, unknown>) => void;
@@ -44,6 +45,16 @@ interface Props {
   onMoveTemplate: (id: string, dq: number, dr: number) => void;
   /** Right-click on a token (client coords, for a floating menu). */
   onTokenContextMenu?: (tokenId: string, clientX: number, clientY: number) => void;
+  /** Ship-bound vitals by ship id (hull/shields/conditions rings). */
+  shipVitals: Record<string, ShipVitals>;
+  /** Ships this viewer crews — own-token fog exemption. */
+  ownShipIds: Set<string>;
+  /** The token whose editor is open; ship tokens then show rotation handles. */
+  selectedTokenId: string | null;
+  /** A ±60° rotation step was requested on a ship token. */
+  onRotate: (tokenId: string, facing: number) => void;
+  /** Tokens taking the current initiative turn (a ship slot pulses with its crew). */
+  activeTokenIds: Set<string>;
 }
 
 /** Grid polygons covering the image area (plus one hex of margin). */
@@ -62,9 +73,9 @@ function gridHexes(scene: SceneDto): Hex[] {
 export default function SceneCanvas({
   scene, tokens, dragGhosts, canMove, onMove, onDragFrame, calibrating,
   isDm, ownCharacterIds, vitals, fogBrush, onFogCommit, onSelectToken,
-  mode, templateSize, templates, pings, rulers, activeTokenId,
+  mode, templateSize, templates, pings, rulers,
   onPing, onRulerFrame, onCreateTemplate, selectedTemplateId, onSelectTemplate, onMoveTemplate,
-  onTokenContextMenu,
+  onTokenContextMenu, shipVitals, ownShipIds, selectedTokenId, onRotate, activeTokenIds,
 }: Props) {
   const g = scene.grid_json;
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -110,6 +121,17 @@ export default function SceneCanvas({
     // Capture is a nicety (keeps fast drags delivered); a synthetic/stale
     // pointer id throws InvalidPointerId and must not abort the gesture.
     try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
+    // Rotation handles live inside the token group: consume the gesture before
+    // any drag/pan branch can claim it.
+    const rotEl = (e.target as Element).closest('[data-rotate]');
+    if (rotEl) {
+      const rotId = rotEl.closest('[data-token-id]')?.getAttribute('data-token-id');
+      const rotTok = tokens.find((t) => t.id === rotId);
+      if (rotTok && canMove(rotTok)) {
+        onRotate(rotTok.id, rotateFacing(rotTok.facing, rotEl.getAttribute('data-rotate') === 'cw' ? 1 : -1));
+      }
+      return;
+    }
     if (fogBrush) {
       const p = mapPoint(e);
       const keys = brushKeys(pixelToHex(p.x, p.y, g), fogBrush.radius);
@@ -252,7 +274,7 @@ export default function SceneCanvas({
       onDragFrame(drag.tokenId, p.x, p.y, true);
       if (!moved) {
         const t = tokens.find((x) => x.id === drag.tokenId);
-        const own = !!t?.character_id && ownCharacterIds.has(t.character_id);
+        const own = !!t && isOwnToken(t, { ownCharacterIds, ownShipIds });
         if (isDm || own) onSelectToken(drag.tokenId);
       } else if (hex.q !== drag.startHex.q || hex.r !== drag.startHex.r) {
         onMove(drag.tokenId, hex.q, hex.r);
@@ -289,6 +311,7 @@ export default function SceneCanvas({
   const renderToken = (t: TokenDto, dimmed: boolean) => {
     const localDrag = drag?.tokenId === t.id ? { x: drag.x, y: drag.y } : undefined;
     const remoteGhost = !localDrag && dragGhosts[t.id] ? dragGhosts[t.id] : undefined;
+    const ship = tokenShipVitals(t, shipVitals);
     return (
       <TokenGlyph
         key={t.id}
@@ -300,7 +323,10 @@ export default function SceneCanvas({
         vitals={tokenVitals(t, vitals)}
         showHp={showHpRing(t, isDm)}
         dimmed={dimmed}
-        active={t.id === activeTokenId}
+        active={activeTokenIds.has(t.id)}
+        ship={ship}
+        facingDeg={t.ship_id ? facingAngle(t.facing, g) : null}
+        showRotate={!!t.ship_id && t.id === selectedTokenId && canMove(t)}
       />
     );
   };
@@ -415,9 +441,9 @@ export default function SceneCanvas({
           // players always see their own token at full strength, never
           // dimmed by fog over their own hex); skip them here or they'd
           // stack two semi-transparent copies and read as more saturated.
-          const ownToken = !!t.character_id && ownCharacterIds.has(t.character_id);
+          const ownToken = isOwnToken(t, { ownCharacterIds, ownShipIds });
           if (!isDm && fogOn && ownToken) return null;
-          const vis = tokenVisibility(t, { isDm, revealed: effectiveRevealed, ownCharacterIds });
+          const vis = tokenVisibility(t, { isDm, revealed: effectiveRevealed, ownCharacterIds, ownShipIds });
           if (!vis.visible) return null;
           return renderToken(t, vis.dimmed);
         })}
@@ -448,9 +474,9 @@ export default function SceneCanvas({
         // closest('[data-token-id]') in onPointerDown would miss it.
         <g>
           {tokens
-            .filter((t) => !!t.character_id && ownCharacterIds.has(t.character_id))
+            .filter((t) => isOwnToken(t, { ownCharacterIds, ownShipIds }))
             .map((t) => {
-              const vis = tokenVisibility(t, { isDm, revealed: effectiveRevealed, ownCharacterIds });
+              const vis = tokenVisibility(t, { isDm, revealed: effectiveRevealed, ownCharacterIds, ownShipIds });
               if (!vis.visible) return null;
               return renderToken(t, vis.dimmed);
             })}
@@ -465,7 +491,8 @@ export default function SceneCanvas({
           const pa = hexToPixel(a, g);
           const pb = hexToPixel(b, g);
           const cells = hexLine(a, b);
-          const dist = hexDistance(a, b) * g.unitsPerHex;
+          const units = gridUnits(g);
+          const dist = hexesToUnits(hexDistance(a, b), g);
           return (
             <g key={`ruler-${key}`}>
               {cells.map((hex) => (
@@ -481,7 +508,7 @@ export default function SceneCanvas({
                 textAnchor="middle" fill="#e6f7ff" fontFamily="monospace" fontSize={g.hexSize * 0.45}
                 stroke="#05070a" strokeWidth={3} paintOrder="stroke"
               >
-                {dist} {g.unitLabel}
+                {dist} {units.label}
               </text>
             </g>
           );

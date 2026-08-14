@@ -313,6 +313,37 @@ describe('swdnd starship write + delete', () => {
     const left = swdndDb.query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM starship_crew WHERE ship_id = ?').get(doomed);
     expect(left?.n).toBe(0);
   });
+
+  it('DELETE broadcasts token:deleted for every map token cascaded away with the ship (migration 007 ON DELETE CASCADE)', async () => {
+    const doomed = ((await (await app.request(`/swdnd/campaigns/${campaignId}/starships`,
+      json('POST', { name: 'Doomed Ride', crew: { characterId: charA, role: 'gunner' } }))).json()) as any).id;
+    const doomedSceneId = ((await (await app.request(`/swdnd/campaigns/${campaignId}/scenes`, json('POST', { name: 'Battle' }))).json()) as any).id;
+    const tokenA = (await (await app.request(`/swdnd/scenes/${doomedSceneId}/tokens`,
+      json('POST', { name: 'Doomed Ride', ship_id: doomed }))).json()) as any;
+    const tokenB = (await (await app.request(`/swdnd/scenes/${doomedSceneId}/tokens`,
+      json('POST', { name: 'Doomed Ride Wing', ship_id: doomed }))).json()) as any;
+
+    publishedEnvelopes = [];
+    expect((await app.request(`/swdnd/starships/${doomed}`, json('DELETE'))).status).toBe(200);
+
+    // seedCharacterTokens also put a friendly PC token in doomedSceneId when it
+    // was created above -- filter to token:deleted so that unrelated token is
+    // invisible to this assertion (it was never bound to the doomed ship).
+    const tokenDeleted = publishedEnvelopes.filter((e) => e.type === 'token:deleted');
+    expect(tokenDeleted).toHaveLength(2);
+    expect(tokenDeleted.map((e) => (e.payload as any).id).sort()).toEqual([tokenA.id, tokenB.id].sort());
+    for (const env of tokenDeleted) {
+      expect(env.room).toBe(`campaign:${campaignId}`);
+      // Exact payload shape -- matches the token route's own DELETE broadcast
+      // (tokens.ts) verbatim, which is what lets the client's existing
+      // token:deleted handler in mapState.ts absorb this with zero changes.
+      expect(Object.keys(env.payload as object)).toEqual(['id']);
+    }
+
+    const remaining = (await (await app.request(`/swdnd/scenes/${doomedSceneId}/tokens`)).json()) as any[];
+    expect(remaining.map((x) => x.id)).not.toContain(tokenA.id);
+    expect(remaining.map((x) => x.id)).not.toContain(tokenB.id);
+  });
 });
 
 describe('swdnd starship crew roster', () => {

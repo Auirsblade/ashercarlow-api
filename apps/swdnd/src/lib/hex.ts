@@ -137,3 +137,24 @@ export function hexWedge(origin: Hex, dir: number, length: number): Hex[] {
   }
   return out;
 }
+
+/**
+ * Distance calibration for a grid, tolerant of legacy or partial grid JSON.
+ * `unitsPerHex` is the single source of truth for scale: 5 ft/hex on ground
+ * scenes, 50 ft/hex in space (the SOTG grid variant). There is deliberately no
+ * separate ftPerHex field.
+ */
+export function gridUnits(
+  cfg: Pick<GridConfig, 'unitsPerHex' | 'unitLabel'> | null | undefined,
+): { per: number; label: string } {
+  const raw = cfg?.unitsPerHex;
+  const per = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : 5;
+  const label = typeof cfg?.unitLabel === 'string' && cfg.unitLabel ? cfg.unitLabel : 'ft';
+  return { per, label };
+}
+
+/** Hex count → grid units (e.g. 3 hexes at 50 ft/hex = 150). */
+export const hexesToUnits = (
+  hexes: number,
+  cfg: Pick<GridConfig, 'unitsPerHex' | 'unitLabel'> | null | undefined,
+): number => hexes * gridUnits(cfg).per;

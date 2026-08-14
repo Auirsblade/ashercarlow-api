@@ -137,4 +137,49 @@ describe('assertShipWriteAccess', () => {
   });
 });
 
+describe('assertTokenMoveAccess — ship crew', () => {
+  beforeAll(() => {
+    const now = new Date().toISOString();
+    dbMod.swdndDb.run('INSERT OR REPLACE INTO campaign (id,name,created_at,updated_at) VALUES (?,?,?,?)', ['c-ship', 'Ships', now, now]);
+    dbMod.swdndDb.run('INSERT OR REPLACE INTO player (id,campaign_id,name,access_token,created_at) VALUES (?,?,?,?,?)', ['pl-crew', 'c-ship', 'Crew', 'tok-crew', now]);
+    dbMod.swdndDb.run('INSERT OR REPLACE INTO player (id,campaign_id,name,access_token,created_at) VALUES (?,?,?,?,?)', ['pl-out', 'c-ship', 'Outsider', 'tok-out', now]);
+    dbMod.swdndDb.run(
+      'INSERT OR REPLACE INTO character (id,campaign_id,player_id,name,data_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?)',
+      ['ch-crew', 'c-ship', 'pl-crew', 'Pilot', '{}', now, now],
+    );
+    dbMod.swdndDb.run(
+      'INSERT OR REPLACE INTO starship (id,campaign_id,name,data_json,created_at,updated_at) VALUES (?,?,?,?,?,?)',
+      ['sh-1', 'c-ship', 'Krayt', '{}', now, now],
+    );
+    dbMod.swdndDb.run('INSERT OR REPLACE INTO starship_crew (ship_id,character_id,role) VALUES (?,?,?)', ['sh-1', 'ch-crew', 'pilot']);
+  });
+
+  // playerCrewsShip itself ships with sub-project 1; this re-checks it against
+  // this describe's fixtures because assertTokenMoveAccess now leans on it.
+  it('playerCrewsShip is true only for a player owning a crew character', () => {
+    expect(mod.playerCrewsShip('pl-crew', 'sh-1')).toBe(true);
+    expect(mod.playerCrewsShip('pl-out', 'sh-1')).toBe(false);
+    expect(mod.playerCrewsShip('pl-crew', 'sh-nope')).toBe(false);
+  });
+
+  it('a crew member may move the ship token; a non-crew player may not', () => {
+    process.env.ASHERCARLOW_AUTH_TOKEN = 'admin-secret';
+    try {
+      const shipToken = { character_id: null, ship_id: 'sh-1' };
+      expect(() => mod.assertTokenMoveAccess(reqWith({ 'x-player-token': 'tok-crew' }), shipToken)).not.toThrow();
+      expect(() => mod.assertTokenMoveAccess(reqWith({ 'x-player-token': 'tok-out' }), shipToken)).toThrow();
+      expect(() => mod.assertTokenMoveAccess(reqWith({}), shipToken)).toThrow();
+      expect(() => mod.assertTokenMoveAccess(reqWith({ authorization: 'Bearer admin-secret' }), shipToken)).not.toThrow();
+    } finally { delete process.env.ASHERCARLOW_AUTH_TOKEN; }
+  });
+
+  it('character ownership still works, and a plain token stays locked', () => {
+    process.env.ASHERCARLOW_AUTH_TOKEN = 'admin-secret';
+    try {
+      expect(() => mod.assertTokenMoveAccess(reqWith({ 'x-player-token': 'tok-crew' }), { character_id: 'ch-crew', ship_id: null })).not.toThrow();
+      expect(() => mod.assertTokenMoveAccess(reqWith({ 'x-player-token': 'tok-crew' }), { character_id: null, ship_id: null })).toThrow();
+    } finally { delete process.env.ASHERCARLOW_AUTH_TOKEN; }
+  });
+});
+
 afterAll(() => { delete process.env.ASHERCARLOW_AUTH_TOKEN; });

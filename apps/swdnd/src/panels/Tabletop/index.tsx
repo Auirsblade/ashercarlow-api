@@ -3,13 +3,17 @@ import { useState } from 'react';
 import { PanelLink } from '../../components/split';
 import RollDock from '../../components/RollDock';
 import { useTabletop } from '../../hooks/useTabletop';
-import type { GridConfig } from '../../lib/hex';
+import { gridUnits, hexesToUnits, type GridConfig } from '../../lib/hex';
 import { nextTurn, prevTurn } from '../../lib/initiative';
 import { conditionColor } from '../../lib/rings';
+import { setSystemDamage, toggleShipCondition } from '../../lib/shipPlay';
+import { isOwnToken } from '../../lib/visibility';
 import { SW5E_CONDITIONS } from '../CharacterSheet/Sheet/ConditionsMenu';
 import SceneCanvas from './SceneCanvas';
 import SceneDrawer from './SceneDrawer';
 import GridCalibrator from './GridCalibrator';
+import ShipStatusMenu from './ShipStatusMenu';
+import ShipSpawner from './ShipSpawner';
 import TokenEditor from './TokenEditor';
 import TokenImageControls from './TokenImageControls';
 import InitiativeStrip from './InitiativeStrip';
@@ -26,6 +30,7 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
   const [tool, setTool] = useState<'move' | 'ruler' | 'ping' | 'blast' | 'cone' | 'line'>('move');
   const [templateSize, setTemplateSize] = useState(2);
   const [initEditorOpen, setInitEditorOpen] = useState(false);
+  const [shipDrawerOpen, setShipDrawerOpen] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ tokenId: string; x: number; y: number } | null>(null);
 
   if (t.loading) return <div className="ht-screen min-h-full p-6 font-mono text-ht-muted">Loading map…</div>;
@@ -45,7 +50,8 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
         <span className="ht-name font-bold">{t.scene?.name ?? 'No active scene'}</span>
         {t.scene && (
           <span className="text-[10px] text-ht-muted">
-            {t.scene.grid_json.unitsPerHex} {t.scene.grid_json.unitLabel}/hex · {t.tokens.length} tokens
+            {t.scene.mode === 'space' ? '✦ space' : '⛰ ground'} · {gridUnits(t.scene.grid_json).per}{' '}
+            {gridUnits(t.scene.grid_json).label}/hex · {t.tokens.length} tokens
           </span>
         )}
         {!t.isDm && t.ownCharacters.map((c) => (
@@ -94,7 +100,11 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
                 value={templateSize}
                 onChange={(e) => setTemplateSize(Number(e.target.value))}
               >
-                {[1, 2, 3, 4, 6].map((n) => <option key={n} value={n}>{n} hex</option>)}
+                {[1, 2, 3, 4, 6].map((n) => (
+                  <option key={n} value={n}>
+                    {n} hex · {hexesToUnits(n, t.scene!.grid_json)} {gridUnits(t.scene!.grid_json).label}
+                  </option>
+                ))}
               </select>
             )}
           </span>
@@ -117,6 +127,22 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
                 />
                 <button type="button" title="calibrate the hex grid to the map image" className={`ht-step ${calibrating ? 'ht-tile-active' : ''}`} onClick={() => setCalibrating((v) => !v)}>
                   ⬡ grid
+                </button>
+                <button
+                  type="button"
+                  title="space encounter — 50 ft/hex, ship tokens and space conditions"
+                  className={`ht-step ${t.scene.mode === 'space' ? 'ht-tile-active' : ''}`}
+                  onClick={() => void t.actions.setSceneMode(t.scene!.id, t.scene!.mode === 'space' ? 'ground' : 'space')}
+                >
+                  ✦ space
+                </button>
+                <button
+                  type="button"
+                  title="spawn a campaign starship as a token"
+                  className={`ht-step ${shipDrawerOpen ? 'ht-tile-active' : ''}`}
+                  onClick={() => { t.actions.loadShips(); setShipDrawerOpen((v) => !v); }}
+                >
+                  ⛴ ship
                 </button>
                 <button
                   type="button"
@@ -208,6 +234,15 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
           <GridCalibrator grid={grid} onChange={(g: GridConfig) => void t.actions.setGrid(t.scene!.id, g)} />
         </div>
       )}
+      {t.isDm && shipDrawerOpen && (
+        <div className="mx-2 mb-2">
+          <ShipSpawner
+            ships={t.ships}
+            onSpawn={(id) => void t.actions.spawnShip(id)}
+            onClose={() => setShipDrawerOpen(false)}
+          />
+        </div>
+      )}
       {t.isDm && selected && (
         <div className="mx-2 mb-2">
           <TokenEditor
@@ -221,7 +256,7 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
           />
         </div>
       )}
-      {!t.isDm && selected && selected.character_id && t.ownCharacterIds.has(selected.character_id) && (
+      {!t.isDm && selected && isOwnToken(selected, { ownCharacterIds: t.ownCharacterIds, ownShipIds: t.ownShipIds }) && (
         <div className="mx-2 mb-2">
           <div className="ht-panel flex items-center gap-3 p-2 text-[11px]">
             <span className="ht-label">{selected.name}</span>
@@ -273,6 +308,7 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
         <InitiativeStrip
           initiative={t.initiative}
           isDm={t.isDm}
+          nameOf={(id) => t.tokens.find((tok) => tok.id === id)?.name ?? '—'}
           onNext={() => void t.actions.setInitiative(nextTurn(t.initiative!))}
           onPrev={() => void t.actions.setInitiative(prevTurn(t.initiative!))}
           onEnd={() => void t.actions.setInitiative(null)}
@@ -300,7 +336,14 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
             templates={t.templates}
             pings={t.pings}
             rulers={t.rulers}
-            activeTokenId={t.initiative ? t.initiative.order[t.initiative.activeIndex]?.tokenId ?? null : null}
+            shipVitals={t.shipVitals}
+            ownShipIds={t.ownShipIds}
+            selectedTokenId={selectedId}
+            onRotate={(id, facing) => void t.actions.rotate(id, facing)}
+            activeTokenIds={(() => {
+              const e = t.initiative?.order[t.initiative.activeIndex];
+              return new Set(e ? [e.tokenId, ...(e.crew ?? [])] : []);
+            })()}
             onPing={t.actions.sendPing}
             onRulerFrame={t.actions.sendRuler}
             onCreateTemplate={(b) => void t.actions.addTemplate(b)}
@@ -314,7 +357,12 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
                 ...(tpl.q2 != null && tpl.r2 != null ? { q2: tpl.q2 + dq, r2: tpl.r2 + dr } : {}),
               });
             }}
-            onTokenContextMenu={t.isDm ? (id, x, y) => setCtxMenu({ tokenId: id, x, y }) : undefined}
+            onTokenContextMenu={(id, x, y) => {
+              const tok = t.tokens.find((x2) => x2.id === id);
+              if (!tok) return;
+              // DMs get every token; a player only their own crewed ship.
+              if (t.isDm || (!!tok.ship_id && t.ownShipIds.has(tok.ship_id))) setCtxMenu({ tokenId: id, x, y });
+            }}
           />
         ) : (
           <div className="p-6 text-[11px] text-ht-muted">
@@ -322,7 +370,7 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
           </div>
         )}
       </div>
-      {t.isDm && ctxMenu && (() => {
+      {ctxMenu && (() => {
         const tok = t.tokens.find((x) => x.id === ctxMenu.tokenId);
         if (!tok) return null;
         return (
@@ -340,29 +388,40 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
                 top: Math.min(ctxMenu.y, window.innerHeight - 290),
               }}
             >
-              <div className="ht-label px-2 py-1">{tok.name} · conditions</div>
-              {tok.character_id ? (
-                <div className="px-2 py-1 text-ht-muted">set from the character sheet</div>
-              ) : (
-                <div className="max-h-56 overflow-y-auto">
-                  {SW5E_CONDITIONS.map((c) => {
-                    const active = tok.conditions_json.includes(c);
-                    return (
-                      <button
-                        key={c} type="button"
-                        className="flex w-full items-center gap-2 rounded px-2 py-0.5 text-left hover:bg-white/5"
-                        onClick={() => void t.actions.editToken(tok.id, {
-                          conditions: active
-                            ? tok.conditions_json.filter((x) => x !== c)
-                            : [...tok.conditions_json, c],
-                        })}
-                      >
-                        <span style={{ color: conditionColor(c) }}>{active ? '◈' : '○'}</span>
-                        <span className={active ? 'text-ht-bright' : 'text-ht-text'}>{c}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+              {tok.ship_id ? (
+                <ShipStatusMenu
+                  name={tok.name}
+                  vitals={t.shipVitals[tok.ship_id] ?? null}
+                  onToggle={(c) => void t.actions.setShipPlay(tok.ship_id!, (doc) => toggleShipCondition(doc, c))}
+                  onSystemDamage={(n) => void t.actions.setShipPlay(tok.ship_id!, (doc) => setSystemDamage(doc, n))}
+                />
+              ) : !t.isDm ? null : ( // defensive: onTokenContextMenu's gate already ensures t.isDm here when !tok.ship_id
+                <>
+                  <div className="ht-label px-2 py-1">{tok.name} · conditions</div>
+                  {tok.character_id ? (
+                    <div className="px-2 py-1 text-ht-muted">set from the character sheet</div>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto">
+                      {SW5E_CONDITIONS.map((c) => {
+                        const active = tok.conditions_json.includes(c);
+                        return (
+                          <button
+                            key={c} type="button"
+                            className="flex w-full items-center gap-2 rounded px-2 py-0.5 text-left hover:bg-white/5"
+                            onClick={() => void t.actions.editToken(tok.id, {
+                              conditions: active
+                                ? tok.conditions_json.filter((x) => x !== c)
+                                : [...tok.conditions_json, c],
+                            })}
+                          >
+                            <span style={{ color: conditionColor(c) }}>{active ? '◈' : '○'}</span>
+                            <span className={active ? 'text-ht-bright' : 'text-ht-text'}>{c}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </>

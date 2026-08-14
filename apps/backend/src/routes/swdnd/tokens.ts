@@ -13,12 +13,14 @@ const Token = z.object({
   id: z.string(),
   scene_id: z.string(),
   character_id: z.string().nullable(),
+  ship_id: z.string().nullable(),
   name: z.string(),
   color: z.string(),
   faction: z.enum(['friendly', 'hostile', 'neutral']),
   q: z.number(),
   r: z.number(),
   scale: z.number(),
+  facing: z.number(),
   hp: z.number().nullable(),
   max_hp: z.number().nullable(),
   conditions_json: z.array(z.string()),
@@ -29,8 +31,9 @@ const Token = z.object({
 }).openapi('SwdndToken');
 
 interface TokenRow {
-  id: string; scene_id: string; character_id: string | null; name: string; color: string;
-  faction: string; q: number; r: number; scale: number; hp: number | null; max_hp: number | null;
+  id: string; scene_id: string; character_id: string | null; ship_id: string | null;
+  name: string; color: string; faction: string; q: number; r: number; scale: number;
+  facing: number; hp: number | null; max_hp: number | null;
   conditions_json: string; hidden: number; image_path: string | null; created_at: string; updated_at: string;
 }
 
@@ -40,9 +43,14 @@ const PostBody = z.object({
   color: z.string().optional(),
   faction: z.enum(['friendly', 'hostile', 'neutral']).optional(),
   character_id: z.string().nullable().optional(),
+  /** Binds this token's vitals to a starship (hull/shields/conditions live on the ship). */
+  ship_id: z.string().nullable().optional(),
   q: z.number().int().optional(),
   r: z.number().int().optional(),
-  scale: z.number().int().min(1).max(3).optional(),
+  /** Hexes across. Ship footprints convert cells → span client-side (footprintScale). */
+  scale: z.number().int().min(1).max(16).optional(),
+  /** 0-5: index into the six axial hex directions. */
+  facing: z.number().int().min(0).max(5).optional(),
   hp: z.number().nullable().optional(),
   max_hp: z.number().nullable().optional(),
 }).openapi('SwdndPostToken');
@@ -50,7 +58,13 @@ const PatchBody = PostBody.partial().extend({
   conditions: z.array(z.string()).optional(),
   hidden: z.number().int().min(0).max(1).optional(),
 }).openapi('SwdndPatchToken');
-const PositionBody = z.object({ q: z.number().int(), r: z.number().int() }).openapi('SwdndTokenPosition');
+/** Move and/or rotate. Omitted fields keep their stored value, so a pure
+ *  rotation can't rewrite position from a stale client copy. */
+const PositionBody = z.object({
+  q: z.number().int().optional(),
+  r: z.number().int().optional(),
+  facing: z.number().int().min(0).max(5).optional(),
+}).openapi('SwdndTokenPosition');
 
 const UPLOADS_DIR = () => process.env.SWDND_UPLOADS_DIR ?? './data/uploads/swdnd';
 const MAX_TOKEN_UPLOAD = 5 * 1024 * 1024;
@@ -130,7 +144,7 @@ const deleteRoute = createRoute({
 });
 const positionRoute = createRoute({
   method: 'patch', path: '/swdnd/tokens/{id}/position', tags: ['swdnd'],
-  summary: 'Move a token (DM any; a player their own character’s token)',
+  summary: 'Move or rotate a token (DM any; a player their own character’s or crewed ship’s token)',
   request: { params: z.object({ id: z.string() }), body: { content: { 'application/json': { schema: PositionBody } } } },
   responses: {
     200: { description: 'Moved', content: { 'application/json': { schema: Token } } },
@@ -175,10 +189,10 @@ export function registerTokenRoutes(app: OpenAPIHono): void {
     const now = new Date().toISOString();
     const id = crypto.randomUUID();
     swdndDb.run(
-      `INSERT INTO token (id, scene_id, character_id, name, color, faction, q, r, scale, hp, max_hp, conditions_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)`,
-      [id, sceneId, b.character_id ?? null, b.name, b.color ?? '#4dd0e1', b.faction ?? 'friendly',
-       b.q ?? 0, b.r ?? 0, b.scale ?? 1, b.hp ?? null, b.max_hp ?? null, now, now],
+      `INSERT INTO token (id, scene_id, character_id, ship_id, name, color, faction, q, r, scale, facing, hp, max_hp, conditions_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)`,
+      [id, sceneId, b.character_id ?? null, b.ship_id ?? null, b.name, b.color ?? '#4dd0e1', b.faction ?? 'friendly',
+       b.q ?? 0, b.r ?? 0, b.scale ?? 1, b.facing ?? 0, b.hp ?? null, b.max_hp ?? null, now, now],
     );
     const row = getTokenRow(id)!;
     broadcastToken(row, 'token:created');
@@ -193,11 +207,12 @@ export function registerTokenRoutes(app: OpenAPIHono): void {
     const b = c.req.valid('json');
     const now = new Date().toISOString();
     swdndDb.run(
-      `UPDATE token SET name = ?, color = ?, faction = ?, character_id = ?, q = ?, r = ?, scale = ?,
-         hp = ?, max_hp = ?, conditions_json = ?, hidden = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE token SET name = ?, color = ?, faction = ?, character_id = ?, ship_id = ?, q = ?, r = ?, scale = ?,
+         facing = ?, hp = ?, max_hp = ?, conditions_json = ?, hidden = ?, updated_at = ? WHERE id = ?`,
       [b.name ?? row.name, b.color ?? row.color, b.faction ?? row.faction,
        b.character_id === undefined ? row.character_id : b.character_id,
-       b.q ?? row.q, b.r ?? row.r, b.scale ?? row.scale,
+       b.ship_id === undefined ? row.ship_id : b.ship_id,
+       b.q ?? row.q, b.r ?? row.r, b.scale ?? row.scale, b.facing ?? row.facing,
        b.hp === undefined ? row.hp : b.hp, b.max_hp === undefined ? row.max_hp : b.max_hp,
        b.conditions ? JSON.stringify(b.conditions) : row.conditions_json,
        b.hidden ?? row.hidden, now, id],
@@ -226,9 +241,12 @@ export function registerTokenRoutes(app: OpenAPIHono): void {
     const row = getTokenRow(id);
     if (!row) throw new HTTPException(404, { message: 'Token not found' });
     assertTokenMoveAccess(c, row);
-    const { q, r } = c.req.valid('json');
+    const { q, r, facing } = c.req.valid('json');
     const now = new Date().toISOString();
-    swdndDb.run('UPDATE token SET q = ?, r = ?, updated_at = ? WHERE id = ?', [q, r, now, id]);
+    swdndDb.run(
+      'UPDATE token SET q = ?, r = ?, facing = ?, updated_at = ? WHERE id = ?',
+      [q ?? row.q, r ?? row.r, facing ?? row.facing, now, id],
+    );
     const updated = getTokenRow(id)!;
     broadcastToken(updated, 'token:updated');
     return c.json(tokenOut(updated), 200);

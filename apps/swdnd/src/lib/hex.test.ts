@@ -3,6 +3,7 @@ import { test, expect } from 'bun:test';
 import {
   AXIAL_DIRS, hexToPixel, pixelToHex, hexRound, hexDistance, hexCorners,
   hexKey, parseHexKey, hexLine, hexBlast, hexRing, hexWedge,
+  gridUnits, hexesToUnits,
   type GridConfig,
 } from './hex';
 
@@ -119,4 +120,18 @@ test('AXIAL_DIRS is the canonical 6-neighbor set', () => {
     { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 },
     { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 },
   ]);
+});
+
+test('gridUnits reads calibration and defaults tolerantly', () => {
+  expect(gridUnits({ unitsPerHex: 50, unitLabel: 'ft' })).toEqual({ per: 50, label: 'ft' });
+  expect(gridUnits(null)).toEqual({ per: 5, label: 'ft' });
+  expect(gridUnits(undefined)).toEqual({ per: 5, label: 'ft' });
+  // legacy / hand-edited grid JSON
+  expect(gridUnits({ unitsPerHex: 0, unitLabel: '' } as any)).toEqual({ per: 5, label: 'ft' });
+  expect(gridUnits({ unitsPerHex: Number.NaN, unitLabel: 'm' } as any)).toEqual({ per: 5, label: 'm' });
+});
+
+test('hexesToUnits scales hex distance into grid units', () => {
+  expect(hexesToUnits(3, { unitsPerHex: 50, unitLabel: 'ft' })).toBe(150);
+  expect(hexesToUnits(3, undefined)).toBe(15);
 });

@@ -288,7 +288,20 @@ export function registerStarshipRoutes(app: OpenAPIHono): void {
     const row = getRow(id);
     if (!row) throw new HTTPException(404, { message: 'Starship not found' });
     assertShipWriteAccess(c, id);
+
+    // Migration 007: token.ship_id REFERENCES starship(id) ON DELETE CASCADE,
+    // so this DELETE silently removes every map token bound to the ship.
+    // Snapshot their ids first so we can tell connected clients, same as the
+    // token route's own DELETE (tokens.ts) -- otherwise viewers keep stale
+    // ghost tokens until reload.
+    const boundTokens = swdndDb.query<{ id: string }, [string]>('SELECT id FROM token WHERE ship_id = ?').all(id);
     swdndDb.run('DELETE FROM starship WHERE id = ?', [id]);
+
+    const room = roomForCampaign(row.campaign_id);
+    for (const t of boundTokens) {
+      publishToRoom(room, { type: 'token:deleted', room, payload: { id: t.id } });
+    }
+
     return c.json({ ok: true }, 200);
   });
 

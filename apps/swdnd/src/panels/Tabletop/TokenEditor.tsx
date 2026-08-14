@@ -21,6 +21,7 @@ export default function TokenEditor({
   const [newCondition, setNewCondition] = useState('');
   const [confirming, setConfirming] = useState(false);
   const isCharacter = !!token.character_id;
+  const isShip = !!token.ship_id;
 
   // hp/max_hp are buffered locally and only PATCHed on blur/Enter — committing
   // per keystroke lets a stale token:updated echo land mid-typing and clobber
@@ -69,6 +70,24 @@ export default function TokenEditor({
             title="open sheet (alt-click: beside the map)"
           >
             ▤ sheet
+          </PanelLink>
+        </span>
+      ) : isShip ? (
+        // hp/max_hp and conditions_json aren't the primary source on a ship-bound
+        // token: TokenGlyph reads shipVitals (hull/shields/conditions from the
+        // ship's play document, edited via the map's right-click menu or the ship
+        // sheet) for these fields, falling back to the token's own hp/conditions
+        // only while shipVitals is null — the ship is still loading, or has since
+        // been deleted.
+        <span className="flex items-center gap-2 text-[10px] text-ht-muted">
+          hull, shields &amp; conditions come from the ship sheet
+          <PanelLink
+            to={{ kind: 'ship', id: token.ship_id! }}
+            current={{ kind: 'map', id: campaignId }}
+            className="ht-step"
+            title="open ship sheet (alt-click: beside the map)"
+          >
+            ▤ ship
           </PanelLink>
         </span>
       ) : (
@@ -132,9 +151,11 @@ export default function TokenEditor({
           value={token.scale}
           onChange={(e) => onEdit(token.id, { scale: Number(e.target.value) })}
         >
-          <option value={1}>1</option>
-          <option value={2}>2</option>
-          <option value={3}>3</option>
+          {(() => {
+            const sizes = [1, 2, 3, 4, 6, 8, 16];
+            const opts = sizes.includes(token.scale) ? sizes : [...sizes, token.scale].sort((a, b) => a - b);
+            return opts.map((n) => <option key={n} value={n}>{n}</option>);
+          })()}
         </select>
       </label>
 
