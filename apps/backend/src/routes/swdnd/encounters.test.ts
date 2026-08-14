@@ -79,3 +79,56 @@ test('campaign delete cascades its encounters', async () => {
   const left = swdndDb.query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM encounter WHERE campaign_id = ?').get('c2');
   expect(left?.n).toBe(0);
 });
+
+test('encounters carry stock-ship members alongside monsters', async () => {
+  const created = await app.request('/swdnd/campaigns/c1/encounters', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Blockade',
+      monsters: [{ monsterId: 'm1', count: 2 }],
+      ships: [{ stockShipRef: 'tRnGAAILKowm8n4T', count: 3 }],
+    }),
+  });
+  expect(created.status).toBe(201);
+  const enc = await created.json();
+  expect(enc.monsters_json).toEqual([{ monsterId: 'm1', count: 2 }]);
+  expect(enc.ships_json).toEqual([{ stockShipRef: 'tRnGAAILKowm8n4T', count: 3 }]);
+
+  const patched = await app.request(`/swdnd/encounters/${enc.id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ships: [{ stockShipRef: 'B5AmMDBTT6TrfW5E', count: 1 }] }),
+  });
+  expect(patched.status).toBe(200);
+  const p = await patched.json();
+  expect(p.ships_json).toEqual([{ stockShipRef: 'B5AmMDBTT6TrfW5E', count: 1 }]);
+  expect(p.monsters_json).toEqual([{ monsterId: 'm1', count: 2 }]); // untouched by a ships-only patch
+
+  const list = await app.request('/swdnd/campaigns/c1/encounters');
+  const rows = await list.json();
+  expect(rows.find((r: { id: string }) => r.id === enc.id).ships_json).toHaveLength(1);
+
+  expect((await app.request(`/swdnd/encounters/${enc.id}`, { method: 'DELETE' })).status).toBe(200);
+});
+
+test('an encounter created without ships reports an empty ship list', async () => {
+  const res = await app.request('/swdnd/campaigns/c1/encounters', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Ground only' }),
+  });
+  const enc = await res.json();
+  expect(enc.ships_json).toEqual([]);
+  expect((await app.request(`/swdnd/encounters/${enc.id}`, { method: 'DELETE' })).status).toBe(200);
+});
+
+test('ships validation rejects count < 1 and an empty ref', async () => {
+  const bad = await app.request('/swdnd/campaigns/c1/encounters', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'bad', ships: [{ stockShipRef: 'x', count: 0 }] }),
+  });
+  expect(bad.status).toBe(400);
+  const bad2 = await app.request('/swdnd/campaigns/c1/encounters', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'bad', ships: [{ stockShipRef: '', count: 1 }] }),
+  });
+  expect(bad2.status).toBe(400);
+});
