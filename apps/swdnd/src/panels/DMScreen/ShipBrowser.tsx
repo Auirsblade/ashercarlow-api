@@ -16,9 +16,6 @@ interface Props {
   encounters: EncounterDto[];
   onAddToFleet: (view: StockShipView) => Promise<void>;
   onSpawn: (view: StockShipView, count: number) => Promise<void>;
-  // Signature is already the eventual Task 11 shape; the DM screen currently
-  // passes a no-op, and the "+ add" button below stays disabled until T11
-  // wires it — flip both there.
   onAddToEncounter: (encounterId: string, stockShipRef: string) => void;
 }
 
@@ -116,27 +113,19 @@ export default function ShipBrowser({ stock, shipRef, encounters, onAddToFleet, 
               >
                 {pendingAction === 'spawn' ? 'spawning…' : 'spawn to map'}
               </button>
-              {/* Whole affordance disabled until Task 11 wires real ship-encounter
-                  membership — onAddToEncounter is a no-op from the DM screen today,
-                  so this stays inert (select included) rather than looking live and
-                  doing nothing. T11 removes disabled/title from both controls. */}
               {encounters.length > 0 && (
                 <span className="ml-auto flex items-center gap-1">
                   <select
-                    className="max-w-[140px] border-b border-ht-line bg-transparent text-ht-text outline-none disabled:opacity-40"
+                    className="max-w-[140px] border-b border-ht-line bg-transparent text-ht-text outline-none"
                     value={encId}
                     onChange={(e) => setEncId(e.target.value)}
-                    disabled
-                    title="Ship encounter membership lands in a later task"
                   >
                     <option value="">encounter…</option>
                     {encounters.map((enc) => <option key={enc.id} value={enc.id}>{enc.name}</option>)}
                   </select>
                   <button
                     type="button"
-                    className="ht-step disabled:opacity-40"
-                    disabled
-                    title="Ship encounter membership lands in a later task"
+                    className="ht-step"
                     onClick={() => encId && onAddToEncounter(encId, selected.id)}
                   >
                     + add

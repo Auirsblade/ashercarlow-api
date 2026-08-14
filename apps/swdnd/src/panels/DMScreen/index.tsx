@@ -13,7 +13,7 @@ import ShipBrowser from './ShipBrowser';
 import FleetRail from './FleetRail';
 import EncounterList from './EncounterList';
 import Reference from './Reference';
-import { addMonster } from '../../lib/encounters';
+import { addMonster, addStockShip } from '../../lib/encounters';
 
 const TABS = ['monsters', 'ships', 'encounters', 'reference'] as const;
 type Tab = (typeof TABS)[number];
@@ -94,19 +94,21 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
                 encounters={dm.encounters}
                 onAddToFleet={(view) => dm.actions.addShipToFleet(view)}
                 onSpawn={(view, count) => dm.actions.spawnShip(view, count)}
-                // Wired in Task 11 (encounter ship members) — ShipBrowser
-                // keeps its add-to-encounter affordance disabled until then,
-                // so this no-op is never reachable from a live button.
-                onAddToEncounter={() => {}}
+                onAddToEncounter={(encounterId, stockShipRef) => {
+                  const enc = dm.encounters.find((e) => e.id === encounterId);
+                  if (enc) void dm.actions.setEncounterShips(encounterId, addStockShip(enc.ships_json, stockShipRef));
+                }}
               />
             )}
             {tab === 'encounters' && (
               <EncounterList
                 encounters={dm.encounters}
                 monsters={dm.monsters}
+                stockShips={dm.stockShips}
                 onCreate={(name) => void dm.actions.addEncounter(name)}
                 onRename={(id, name) => void dm.actions.renameEncounter(id, name)}
                 onSetMonsters={(id, monsters) => void dm.actions.setEncounterMonsters(id, monsters)}
+                onSetShips={(id, ships) => void dm.actions.setEncounterShips(id, ships)}
                 onSpawnAll={(enc) => void dm.actions.spawnEncounter(enc)}
                 onDelete={(id) => void dm.actions.removeEncounter(id)}
               />

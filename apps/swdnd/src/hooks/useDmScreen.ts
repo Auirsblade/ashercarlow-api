@@ -19,7 +19,7 @@ import { refEntryFromRow, type RefEntry, type RefRow } from '../lib/refSearch';
 import { spawnBodies, spawnPositions, copyName, shipSpawnBody } from '../lib/spawn';
 import {
   createEncounter, deleteEncounter, listEncounters, patchEncounter,
-  type EncounterDto, type EncounterMonster,
+  type EncounterDto, type EncounterMonster, type EncounterShip,
 } from '../lib/encounters';
 import {
   createShipFromBuild, fillStockPlay, getStarship, listStarships, listStockShips, loadShipReference,
@@ -62,6 +62,7 @@ export interface DmScreenState {
     addEncounter: (name: string) => Promise<void>;
     renameEncounter: (id: string, name: string) => Promise<void>;
     setEncounterMonsters: (id: string, monsters: EncounterMonster[]) => Promise<void>;
+    setEncounterShips: (id: string, ships: EncounterShip[]) => Promise<void>;
     removeEncounter: (id: string) => Promise<void>;
     reload: () => void;
   };
@@ -261,14 +262,15 @@ export function useDmScreen(campaignId: string): DmScreenState {
     setShipCards(buildShipCards(await listStarships(campaignId), sref));
   }, [campaignId]);
 
-  /** One real `starship` row per copy, then one bound token each. */
-  const spawnShipGroups = useCallback(async (groups: { view: StockShipView; count: number }[]) => {
+  /** One real `starship` row per copy, then one bound token each. `skip` leaves
+   * room for tokens another group already placed in the same centre-out ring. */
+  const spawnShipGroups = useCallback(async (groups: { view: StockShipView; count: number }[], skip = 0) => {
     const sref = shipRefData.current;
     if (!sref) throw new Error('Ship reference not loaded yet — reload the DM screen.');
     const idx = shipRefIndex(sref);
     const { sceneId, center } = await activeSceneCenter();
     const total = groups.reduce((sum, g) => sum + g.count, 0);
-    const positions = spawnPositions(center, total);
+    const positions = spawnPositions(center, skip + total).slice(skip);
     let used = 0;
     try {
       for (const g of groups) {
@@ -335,8 +337,40 @@ export function useDmScreen(campaignId: string): DmScreenState {
         const groups = enc.monsters_json
           .map((e) => ({ view: byId.get(e.monsterId), count: e.count }))
           .filter((g): g is { view: MonsterView; count: number } => !!g.view);
-        if (groups.length === 0) throw new Error('No known monsters in this encounter.');
-        await spawnMany(groups);
+        // Ship members are resolved tolerantly: refs to a stock ship deleted
+        // from the pack since the encounter was built (or a rare duplicate
+        // entry — nothing dedupes ships_json at rest) must never abort the
+        // whole spawn. Known groups still spawn; dangling refs are counted
+        // and surfaced as a note below instead of a silent drop.
+        const shipById = new Map(stockShips.map((s) => [s.id, s]));
+        const shipGroups: { view: StockShipView; count: number }[] = [];
+        const danglingRefs: string[] = [];
+        for (const e of enc.ships_json) {
+          const view = shipById.get(e.stockShipRef);
+          if (view) shipGroups.push({ view, count: e.count });
+          else danglingRefs.push(e.stockShipRef);
+        }
+        if (groups.length === 0 && shipGroups.length === 0) {
+          throw new Error(
+            danglingRefs.length > 0
+              ? `No known monsters or ships in this encounter (${danglingRefs.length} ship ref(s) no longer in the stock pack).`
+              : 'No known monsters or ships in this encounter.',
+          );
+        }
+        if (groups.length > 0) await spawnMany(groups);
+        if (shipGroups.length > 0) {
+          const monsterTotal = groups.reduce((sum, g) => sum + g.count, 0);
+          await spawnShipGroups(shipGroups, monsterTotal);
+        }
+        // Throw after the real work above so a partial spawn (known members
+        // placed) still lands even when some ship refs no longer resolve —
+        // same "note via the error banner" convention as the partial-failure
+        // messages in spawnShipGroups/addShipToFleet above.
+        if (danglingRefs.length > 0) {
+          throw new Error(
+            `Spawned the rest, but skipped ${danglingRefs.length} ship${danglingRefs.length === 1 ? '' : 's'} no longer in the stock pack.`,
+          );
+        }
       }),
       addShipToFleet: wrap(async (view: StockShipView) => {
         const sref = shipRefData.current;
@@ -371,6 +405,10 @@ export function useDmScreen(campaignId: string): DmScreenState {
       renameEncounter: wrap(async (id: string, name: string) => { await patchEncounter(id, { name }); await refreshEncounters(); }),
       setEncounterMonsters: wrap(async (id: string, monsters: EncounterMonster[]) => {
         await patchEncounter(id, { monsters });
+        await refreshEncounters();
+      }),
+      setEncounterShips: wrap(async (id: string, ships: EncounterShip[]) => {
+        await patchEncounter(id, { ships });
         await refreshEncounters();
       }),
       removeEncounter: wrap(async (id: string) => { await deleteEncounter(id); await refreshEncounters(); }),

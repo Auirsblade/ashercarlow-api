@@ -1,27 +1,35 @@
-// apps/swdnd/src/panels/DMScreen/EncounterList.tsx — named monster groups.
+// apps/swdnd/src/panels/DMScreen/EncounterList.tsx — named monster/ship groups.
 import { useState } from 'react';
 import {
-  addMonster, removeMonster, setCount, totalCount,
-  type EncounterDto, type EncounterMonster,
+  addMonster, addStockShip, removeMonster, removeStockShip, setCount, setShipCount,
+  totalCount, totalShipCount,
+  type EncounterDto, type EncounterMonster, type EncounterShip,
 } from '../../lib/encounters';
 import type { MonsterView } from '../../lib/monsters';
+import type { StockShipView } from '../../lib/starships';
 import BufferedText from './BufferedText';
 
 interface Props {
   encounters: EncounterDto[];
   monsters: MonsterView[];
+  stockShips: StockShipView[];
   onCreate: (name: string) => void;
   onRename: (id: string, name: string) => void;
   onSetMonsters: (id: string, monsters: EncounterMonster[]) => void;
+  onSetShips: (id: string, ships: EncounterShip[]) => void;
   onSpawnAll: (enc: EncounterDto) => void;
   onDelete: (id: string) => void;
 }
 
-export default function EncounterList({ encounters, monsters, onCreate, onRename, onSetMonsters, onSpawnAll, onDelete }: Props) {
+export default function EncounterList({
+  encounters, monsters, stockShips, onCreate, onRename, onSetMonsters, onSetShips, onSpawnAll, onDelete,
+}: Props) {
   const [newName, setNewName] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [addPick, setAddPick] = useState<Record<string, string>>({});
+  const [shipPick, setShipPick] = useState<Record<string, string>>({});
   const nameOf = (id: string) => monsters.find((m) => m.id === id)?.name ?? `(unknown ${id})`;
+  const shipNameOf = (ref: string) => stockShips.find((s) => s.id === ref)?.name ?? `(unknown ${ref})`;
 
   const create = () => {
     if (!newName.trim()) return;
@@ -32,7 +40,7 @@ export default function EncounterList({ encounters, monsters, onCreate, onRename
   return (
     <div className="flex flex-col gap-2">
       {encounters.length === 0 && (
-        <div className="text-[11px] text-ht-muted">No encounters yet — create a named group below, then add monsters from the browser or here.</div>
+        <div className="text-[11px] text-ht-muted">No encounters yet — create a named group below, then add monsters and ships from the browsers or here.</div>
       )}
       {encounters.map((enc) => (
         <div key={enc.id} className="ht-panel p-3">
@@ -42,7 +50,10 @@ export default function EncounterList({ encounters, monsters, onCreate, onRename
               onCommit={(name) => onRename(enc.id, name)}
               className="min-w-[140px] border-b border-ht-line bg-transparent px-1 text-ht-bright outline-none"
             />
-            <span className="text-[10px] text-ht-muted">{totalCount(enc.monsters_json)} monsters</span>
+            <span className="text-[10px] text-ht-muted">
+              {totalCount(enc.monsters_json)} monsters
+              {totalShipCount(enc.ships_json) > 0 ? ` · ${totalShipCount(enc.ships_json)} ships` : ''}
+            </span>
             <div className="ml-auto flex items-center gap-2 text-[11px]">
               <button type="button" className="ht-step" onClick={() => onSpawnAll(enc)}>spawn all</button>
               {confirmDelete === enc.id ? (
@@ -81,6 +92,38 @@ export default function EncounterList({ encounters, monsters, onCreate, onRename
                 onClick={() => {
                   const pick = addPick[enc.id];
                   if (pick) onSetMonsters(enc.id, addMonster(enc.monsters_json, pick));
+                }}
+              >
+                +
+              </button>
+            </span>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {enc.ships_json.map((s) => (
+              <span key={s.stockShipRef} className="flex items-center gap-1 rounded border border-ht-line px-1 py-0.5 text-[10px]">
+                <span className="text-ht-bright">{shipNameOf(s.stockShipRef)}</span>
+                <button type="button" className="text-ht-muted" onClick={() => onSetShips(enc.id, setShipCount(enc.ships_json, s.stockShipRef, s.count - 1))}>−</button>
+                <span>×{s.count}</span>
+                <button type="button" className="text-ht-muted" onClick={() => onSetShips(enc.id, setShipCount(enc.ships_json, s.stockShipRef, s.count + 1))}>+</button>
+                <button type="button" className="text-red-400" onClick={() => onSetShips(enc.id, removeStockShip(enc.ships_json, s.stockShipRef))}>✕</button>
+              </span>
+            ))}
+            <span className="flex items-center gap-1 text-[10px]">
+              <select
+                className="max-w-[160px] border-b border-ht-line bg-transparent text-ht-text outline-none"
+                value={shipPick[enc.id] ?? ''}
+                onChange={(e) => setShipPick((cur) => ({ ...cur, [enc.id]: e.target.value }))}
+              >
+                <option value="">add ship…</option>
+                {stockShips.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <button
+                type="button"
+                className="ht-step"
+                onClick={() => {
+                  const pick = shipPick[enc.id];
+                  if (pick) onSetShips(enc.id, addStockShip(enc.ships_json, pick));
                 }}
               >
                 +
