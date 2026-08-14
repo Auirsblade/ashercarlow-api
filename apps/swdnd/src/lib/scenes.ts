@@ -9,7 +9,10 @@ export interface SceneDto {
   is_active: number; sort: number; created_at: string; updated_at: string;
 }
 export interface TokenDto {
-  id: string; scene_id: string; character_id: string | null; name: string; color: string;
+  id: string; scene_id: string; character_id: string | null;
+  /** Binds this token's vitals to a starship (hull/shields/conditions live on the ship). */
+  ship_id: string | null;
+  name: string; color: string;
   faction: 'friendly' | 'hostile' | 'neutral'; q: number; r: number; scale: number;
   hp: number | null; max_hp: number | null; conditions_json: string[]; hidden: number;
   image_path: string | null; created_at: string; updated_at: string;
