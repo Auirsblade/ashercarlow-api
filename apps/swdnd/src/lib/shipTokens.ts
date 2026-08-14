@@ -9,8 +9,14 @@ import { shipConditionOptions } from './shipRules/constants';
  * redeclared: plain conditions plus the levelled 'Slowed 1'…'Slowed 4'. Both the
  * ShipSheet menu and the map's right-click menu write into the same
  * ShipPlayState.conditions array, so they must offer identical strings.
+ *
+ * Named `SHIP_CONDITION_OPTIONS` (not `SHIP_CONDITIONS`) to avoid shadowing
+ * `shipRules/constants.ts`'s own `SHIP_CONDITIONS` — that sibling export holds
+ * only the 4 plain conditions, not the 8-item expanded list this is. Same
+ * identifier, different contents, sibling modules: an autocompleted wrong
+ * import would silently lose 'Slowed 1'…'Slowed 4'.
  */
-export const SHIP_CONDITIONS: readonly string[] = shipConditionOptions();
+export const SHIP_CONDITION_OPTIONS: readonly string[] = shipConditionOptions();
 export type ShipCondition = string;
 
 /** System damage is a 0-6 counter on the ship, not a condition string. */

@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { GridConfig } from './hex';
 import {
-  MAX_SYSTEM_DAMAGE, SHIP_CONDITIONS, facingAngle, footprintScale, normalizeFacing,
+  MAX_SYSTEM_DAMAGE, SHIP_CONDITION_OPTIONS, facingAngle, footprintScale, normalizeFacing,
   rotateFacing, shipSizeCells, shipTokenScale,
 } from './shipTokens';
 import { shipConditionOptions } from './shipRules/constants';
@@ -13,8 +13,8 @@ const flat: GridConfig = { ...pointy, orientation: 'flat' };
 describe('space vocabulary', () => {
   test('the condition list is the spine engine list, not a second vocabulary', () => {
     // Same strings the ShipSheet conditions menu writes into ShipPlayState.conditions.
-    expect([...SHIP_CONDITIONS]).toEqual(shipConditionOptions());
-    expect([...SHIP_CONDITIONS]).toEqual([
+    expect([...SHIP_CONDITION_OPTIONS]).toEqual(shipConditionOptions());
+    expect([...SHIP_CONDITION_OPTIONS]).toEqual([
       'Ionized', 'Shocked', 'Slowed 1', 'Slowed 2', 'Slowed 3', 'Slowed 4', 'Stalled', 'Tractored',
     ]);
     expect(MAX_SYSTEM_DAMAGE).toBe(6);
