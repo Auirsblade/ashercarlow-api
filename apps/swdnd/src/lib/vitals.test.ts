@@ -4,8 +4,8 @@ import { applyPendingPlays, mergePlay, tokenVitals, type PendingPlays, type Vita
 import type { TokenDto } from './scenes';
 
 const baseToken = (over: Partial<TokenDto>): TokenDto => ({
-  id: 't1', scene_id: 's1', character_id: null, name: 'X', color: '#fff',
-  faction: 'hostile', q: 0, r: 0, scale: 1, hp: null, max_hp: null,
+  id: 't1', scene_id: 's1', character_id: null, ship_id: null, name: 'X', color: '#fff',
+  faction: 'hostile', q: 0, r: 0, scale: 1, facing: 0, hp: null, max_hp: null,
   conditions_json: [], hidden: 0, image_path: null, created_at: '', updated_at: '',
   ...over,
 });
