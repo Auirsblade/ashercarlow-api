@@ -31,3 +31,7 @@ Reusable gotchas for this repo (Bun + Hono monorepo). Add to this as corrections
   which database it points at. If tests share the app's default DB path, fix
   the isolation first (done: swdnd DB now defaults to a temp file under
   NODE_ENV=test), then run them.
+
+## 2026-08-14 — dev-DB user data wiped during subagent probes (dm-ship-tools)
+Pattern: subagent "live probes" that import backend route modules via `bun -e`/`bun run` (NOT `bun test`) resolve `swdndDb` to ./data/swdnd.sqlite because NODE_ENV=test is only set by the test runner — any table reset in such a probe wipes dev user data (content tables survive; user tables zeroed). Detected at DM T12 walkthrough: campaigns list empty, mtimes match the sub-project window.
+Rule: every dispatch (implementer AND reviewer) that authorizes live route probing must require `SWDND_DB_PATH=<scratch>` explicitly, and controller walkthrough seeds must treat the dev DB as disposable. Consider a guard in db/swdnd/index.ts (refuse to open ./data default when a marker env like SWDND_ALLOW_DEV is absent under non-server entrypoints) as future hardening.
