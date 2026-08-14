@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { PanelLink } from '../../components/split';
 import RollDock from '../../components/RollDock';
 import { useTabletop } from '../../hooks/useTabletop';
-import { gridUnits, type GridConfig } from '../../lib/hex';
+import { gridUnits, hexesToUnits, type GridConfig } from '../../lib/hex';
 import { nextTurn, prevTurn } from '../../lib/initiative';
 import { conditionColor } from '../../lib/rings';
 import { setSystemDamage, toggleShipCondition } from '../../lib/shipPlay';
@@ -102,7 +102,7 @@ export default function Tabletop({ campaignId }: { campaignId: string }) {
               >
                 {[1, 2, 3, 4, 6].map((n) => (
                   <option key={n} value={n}>
-                    {n} hex · {n * gridUnits(t.scene!.grid_json).per} {gridUnits(t.scene!.grid_json).label}
+                    {n} hex · {hexesToUnits(n, t.scene!.grid_json)} {gridUnits(t.scene!.grid_json).label}
                   </option>
                 ))}
               </select>

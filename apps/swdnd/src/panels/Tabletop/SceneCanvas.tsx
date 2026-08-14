@@ -1,7 +1,7 @@
 // apps/swdnd/src/panels/Tabletop/SceneCanvas.tsx
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { API_BASE } from '../../lib/api';
-import { gridUnits, hexBlast, hexCorners, hexDistance, hexLine, hexToPixel, pixelToHex, type Hex } from '../../lib/hex';
+import { gridUnits, hexBlast, hexCorners, hexDistance, hexesToUnits, hexLine, hexToPixel, pixelToHex, type Hex } from '../../lib/hex';
 import { clientDeltaToMap, clientToMap, fitViewBox, panViewBox, zoomViewBox, type ViewBox } from '../../lib/viewBox';
 import type { SceneDto, TemplateDto, TokenDto } from '../../lib/scenes';
 import { applyFogPatch, brushKeys, fogActive, toFogSet } from '../../lib/fog';
@@ -492,7 +492,7 @@ export default function SceneCanvas({
           const pb = hexToPixel(b, g);
           const cells = hexLine(a, b);
           const units = gridUnits(g);
-          const dist = hexDistance(a, b) * units.per;
+          const dist = hexesToUnits(hexDistance(a, b), g);
           return (
             <g key={`ruler-${key}`}>
               {cells.map((hex) => (

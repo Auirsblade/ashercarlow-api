@@ -24,6 +24,7 @@ import {
 import { parseInitiative, type Initiative } from '../lib/initiative';
 import type { GridConfig, Hex } from '../lib/hex';
 import type { ReferenceData } from '../lib/rules/types';
+import { isOwnToken } from '../lib/visibility';
 
 export interface TabletopState {
   loading: boolean;
@@ -370,7 +371,7 @@ export function useTabletop(campaignId: string): TabletopState {
         const doc = shipDocs.current[shipId];
         if (doc) {
           shipDocs.current[shipId] = patchPending
-            ? { ...doc, name: p.name ?? doc.name, data_json: p.data_json ? { ...p.data_json, play: doc.data_json.play } : doc.data_json }
+            ? { ...doc, name: p.name ?? doc.name, data_json: p.data_json ? { ...p.data_json, play: doc.data_json?.play } : doc.data_json }
             : { ...doc, name: p.name ?? doc.name, data_json: p.data_json ?? { ...doc.data_json, play } };
         }
         if (shipsLoadedFor.current === null) {
@@ -489,9 +490,7 @@ export function useTabletop(campaignId: string): TabletopState {
     pings,
     rulers: Object.fromEntries(Object.entries(rulers).map(([k, { a, b }]) => [k, { a, b }])),
     initiative: parseInitiative(state.scene?.initiative_json ?? null),
-    canMove: (t) => authed
-      || (!!t.character_id && ownCharacterIds.has(t.character_id))
-      || (!!t.ship_id && ownShipIds.has(t.ship_id)),
+    canMove: (t) => authed || isOwnToken(t, { ownCharacterIds, ownShipIds }),
     actions: {
       move,
       sendDrag,
@@ -537,8 +536,12 @@ export function useTabletop(campaignId: string): TabletopState {
           // it's safe to fire here — it just isn't the right ship-local trigger
           // while siblings are still outstanding.
           if ((pendingShipPatch.current[shipId] ?? 0) <= 1) {
+            // Drive the resync through the ship-load effect (deps include
+            // campaignId) rather than calling loadShips() directly here — a
+            // stale closure over an old campaignId could otherwise outlive a
+            // campaign switch and land writes for the wrong campaign.
             shipsLoadedFor.current = null;
-            void loadShips().catch(() => { /* resync failed; rings go stale until reload */ });
+            setShipLoadNonce((n) => n + 1);
           }
         } finally {
           const n = (pendingShipPatch.current[shipId] ?? 1) - 1;
