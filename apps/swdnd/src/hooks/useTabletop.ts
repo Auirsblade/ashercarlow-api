@@ -97,6 +97,14 @@ export function useTabletop(campaignId: string): TabletopState {
   const shipMaxima = useRef<(ship: any) => { maxHull: number; maxShields: number }>(() => ({ maxHull: 0, maxShields: 0 }));
   const shipsLoadedFor = useRef<string | null>(null);
   const pendingShipPlays = useRef<PendingShipPlays>({});
+  // Bumped on every campaign switch; loadShips() captures it at call time and
+  // checks it again once its fetches resolve, so a load kicked off for campaign
+  // A can never land its writes after B has taken over (T8 review, Finding 1).
+  const shipLoadSeq = useRef(0);
+  // Per-ship in-flight setShipPlay PATCH count, so a ship:updated echo can tell
+  // a stale re-base apart from a fresh one and leave local optimistic play alone
+  // while more PATCHes for that ship are still in flight (T8 review, Finding 2).
+  const pendingShipPatch = useRef<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const socket = useRef<CampaignSocket | null>(null);
@@ -214,11 +222,16 @@ export function useTabletop(campaignId: string): TabletopState {
   // the DM opens the spawner. loadShipReference() is several content requests
   // and must not fire on every ground map.
   const loadShips = useCallback(async () => {
+    const seq = shipLoadSeq.current;
     const [starships, shipRules] = await Promise.all([
       import('../lib/starships'),
       import('../lib/shipRules'),
     ]);
     const [list, ref] = await Promise.all([starships.listStarships(campaignId), starships.loadShipReference()]);
+    // The campaign switched (or reset) while these requests were in flight —
+    // a newer load owns shipDocs/shipsLoadedFor now, so don't write stale data
+    // over it (T8 review, Finding 1).
+    if (seq !== shipLoadSeq.current) return list;
     const maxima = (s: any) => {
       const d = shipRules.computeShip(s.data_json, ref);
       return { maxHull: d.maxHull, maxShields: d.maxShields };
@@ -242,9 +255,11 @@ export function useTabletop(campaignId: string): TabletopState {
     || Object.values(state.tokens).some((t) => !!t.ship_id);
 
   useEffect(() => {
+    shipLoadSeq.current += 1;
     shipsLoadedFor.current = null;
     shipDocs.current = {};
     pendingShipPlays.current = {};
+    pendingShipPatch.current = {};
     setShips([]);
     setShipVitals({});
     setWantShips(false);
@@ -252,11 +267,13 @@ export function useTabletop(campaignId: string): TabletopState {
 
   useEffect(() => {
     if (!needShips || shipsLoadedFor.current === campaignId) return;
-    let cancelled = false;
+    const seq = shipLoadSeq.current;
     loadShips().catch(() => {
-      if (!cancelled) shipsLoadedFor.current = null; // ship rings simply don't render
+      // Only reset the latch if this load is still the current one — a stale
+      // failure from a load the campaign has since moved past must not undo
+      // a newer (possibly successful) load's state (T8 review, Finding 1).
+      if (seq === shipLoadSeq.current) shipsLoadedFor.current = null; // ship rings simply don't render
     });
-    return () => { cancelled = true; };
   }, [needShips, campaignId, loadShips]);
 
   useEffect(() => {
@@ -303,18 +320,28 @@ export function useTabletop(campaignId: string): TabletopState {
         const shipId = p?.shipId;
         const play = p?.play;
         if (!shipId || !play) return;
+        // A setShipPlay PATCH for this ship is still in flight — keep local
+        // play authoritative rather than re-basing from the wire, or a queued
+        // click's optimistic edit gets silently overwritten by an echo of an
+        // earlier click (T8 review, Finding 2). The in-flight PATCH's own
+        // success/failure path (or, on failure, its loadShips() resync) is
+        // what eventually reconciles state; still take the wire's build half
+        // when present so a concurrent refit isn't lost.
+        const patchPending = (pendingShipPatch.current[shipId] ?? 0) > 0;
         const doc = shipDocs.current[shipId];
         if (doc) {
-          shipDocs.current[shipId] = {
-            ...doc,
-            name: p.name ?? doc.name,
-            data_json: p.data_json ?? { ...doc.data_json, play },
-          };
+          shipDocs.current[shipId] = patchPending
+            ? { ...doc, name: p.name ?? doc.name, data_json: p.data_json ? { ...p.data_json, play: doc.data_json.play } : doc.data_json }
+            : { ...doc, name: p.name ?? doc.name, data_json: p.data_json ?? { ...doc.data_json, play } };
         }
         if (shipsLoadedFor.current === null) {
           pendingShipPlays.current[shipId] = play; // loader in flight; don't let it clobber this
           return;
         }
+        if (patchPending) return; // local optimistic play stays authoritative until the in-flight PATCH(es) settle
+        // mergeShipPlay intentionally keeps cur.maxHull/maxShields (see its doc
+        // comment in shipVitals.ts) — a refit's new maxima land in shipDocs above
+        // but shipVitals' rings keep the old cap until reload; not a bug here.
         setShipVitals((v) => {
           if (v[shipId]) return mergeShipPlay(v, shipId, play);
           // Ship created after load: adopt it, mirroring the character path.
@@ -454,14 +481,30 @@ export function useTabletop(campaignId: string): TabletopState {
         shipDocs.current[shipId] = { ...doc, data_json: next };
         // Optimistic like commitFog: the condition ring must respond instantly.
         setShipVitals((v) => mergeShipPlay(v, shipId, next.play));
+        // Track this PATCH as in-flight so a ship:updated echo landing before it
+        // resolves doesn't rewind shipDocs/shipVitals out from under a queued
+        // click (T8 review, Finding 2) — see the WS branch's patchPending guard.
+        pendingShipPatch.current[shipId] = (pendingShipPatch.current[shipId] ?? 0) + 1;
         try {
           const m = await import('../lib/starships');
           await m.patchStarship(shipId, { data_json: next }, playerToken);
           setError(null);
         } catch (e) {
           setError(e instanceof Error ? e.message : 'Ship update failed');
-          shipsLoadedFor.current = null;
-          void loadShips().catch(() => { /* resync failed; rings go stale until reload */ });
+          // Only resync via a full reload once this is the last in-flight PATCH
+          // for this ship: with others still pending, a reload would clobber
+          // their optimistic edits before they get a chance to land or fail on
+          // their own; loadShips() is itself seq-guarded (Finding 1's fix), so
+          // it's safe to fire here — it just isn't the right ship-local trigger
+          // while siblings are still outstanding.
+          if ((pendingShipPatch.current[shipId] ?? 0) <= 1) {
+            shipsLoadedFor.current = null;
+            void loadShips().catch(() => { /* resync failed; rings go stale until reload */ });
+          }
+        } finally {
+          const n = (pendingShipPatch.current[shipId] ?? 1) - 1;
+          if (n <= 0) delete pendingShipPatch.current[shipId];
+          else pendingShipPatch.current[shipId] = n;
         }
       },
       spawnShip: wrap(async (shipId: string) => {
