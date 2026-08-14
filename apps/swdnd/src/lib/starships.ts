@@ -294,3 +294,120 @@ export async function loadShipReference(): Promise<ShipReferenceData> {
     ...deploymentRef,
   };
 }
+
+// ---- Stock ships (drakes-shipyard pack -> the `starships` content table) ----
+// Rows are distilled Foundry ACTOR documents (see distillStockShip in the
+// backend importer): same field paths as the raw pack, essentials only.
+
+export interface StockShipRow { id: string; name?: string | null; raw_json: string }
+
+export interface StockShipItem {
+  name: string;
+  /** Reference row id from flags.core.sourceId; null when the pack omits it. */
+  ref: string | null;
+  /** system.armor.type on equipment: starship|ssshield|reactor|powerc|hyper|''. */
+  armorType: string;
+  /** system.weaponType on weapons: 'primary (starship)'…'quaternary (starship)'. */
+  weaponType: string;
+}
+
+export interface StockShipView {
+  id: string;
+  name: string;
+  sizeRef: string | null;
+  sizeName: string;
+  tier: number;
+  abilities: Record<ShipAbilityKey, number>;
+  hull: number | null;
+  shields: number | null;
+  source: string;
+  weapons: StockShipItem[];
+  equipment: StockShipItem[];
+  modifications: StockShipItem[];
+}
+
+const STOCK_ABILITY_KEYS: ShipAbilityKey[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+
+/** Size names in chassis order; anything unknown sorts last, alphabetically. */
+const SIZE_ORDER = [
+  'Tiny Starship', 'Small Starship', 'Medium Starship',
+  'Large Starship', 'Huge Starship', 'Gargantuan Starship',
+];
+
+function stockNum(v: unknown): number | null {
+  const n = Number(v);
+  return typeof v === 'boolean' || v === null || v === undefined || v === '' || !Number.isFinite(n)
+    ? null
+    : n;
+}
+
+/** 'Compendium.sw5e.starshipweapons.A0LPvkVHhH3e2Aeh' -> 'A0LPvkVHhH3e2Aeh'. */
+export function sourceRef(sourceId: unknown): string | null {
+  if (typeof sourceId !== 'string') return null;
+  const parts = sourceId.split('.');
+  return parts.length === 4 && parts[3] ? parts[3] : null;
+}
+
+function stockItem(it: any): StockShipItem {
+  return {
+    name: typeof it?.name === 'string' ? it.name : '',
+    ref: sourceRef(it?.flags?.core?.sourceId),
+    armorType: typeof it?.system?.armor?.type === 'string' ? it.system.armor.type : '',
+    weaponType: typeof it?.system?.weaponType === 'string' ? it.system.weaponType : '',
+  };
+}
+
+/** Parse one `starships` content row into a display view. Never throws. */
+export function parseStockShip(row: StockShipRow): StockShipView {
+  let raw: Record<string, any> = {};
+  try { raw = JSON.parse(row.raw_json) ?? {}; } catch { /* unparsable -> empty view */ }
+  const sys: Record<string, any> = raw.system ?? {};
+  const items: any[] = Array.isArray(raw.items) ? raw.items : [];
+  const sizeItem = items.find((it) => it?.type === 'starshipsize') ?? null;
+  const hp: Record<string, any> = sys.attributes?.hp ?? {};
+
+  const abilities = {} as Record<ShipAbilityKey, number>;
+  for (const k of STOCK_ABILITY_KEYS) abilities[k] = stockNum(sys.abilities?.[k]?.value) ?? 10;
+
+  return {
+    id: row.id,
+    name: row.name || (typeof raw.name === 'string' ? raw.name : row.id),
+    sizeRef: sourceRef(sizeItem?.flags?.core?.sourceId),
+    sizeName: typeof sizeItem?.name === 'string' ? sizeItem.name : '',
+    tier: stockNum(sys.details?.tier) ?? stockNum(sizeItem?.system?.tier) ?? 0,
+    abilities,
+    hull: stockNum(hp.max) ?? stockNum(hp.value),
+    shields: stockNum(hp.tempmax) ?? stockNum(hp.temp),
+    source: typeof sys.details?.source === 'string' ? sys.details.source : '',
+    weapons: items.filter((it) => it?.type === 'weapon').map(stockItem),
+    equipment: items.filter((it) => it?.type === 'equipment').map(stockItem),
+    modifications: items.filter((it) => it?.type === 'starshipmod').map(stockItem),
+  };
+}
+
+export interface StockShipFilter { q: string; size?: string; tierMin?: number; tierMax?: number }
+
+export function filterStockShips(list: StockShipView[], f: StockShipFilter): StockShipView[] {
+  const q = f.q.trim().toLowerCase();
+  return list.filter((s) => {
+    if (q && !s.name.toLowerCase().includes(q)) return false;
+    if (f.size && s.sizeName !== f.size) return false;
+    if (f.tierMin !== undefined && s.tier < f.tierMin) return false;
+    if (f.tierMax !== undefined && s.tier > f.tierMax) return false;
+    return true;
+  });
+}
+
+export function stockShipSizes(list: StockShipView[]): string[] {
+  const present = [...new Set(list.map((s) => s.sizeName).filter(Boolean))];
+  return present.sort((a, b) => {
+    const ia = SIZE_ORDER.indexOf(a);
+    const ib = SIZE_ORDER.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+}
+
+export const listStockShips = () => api<StockShipRow[]>('/swdnd/content/starships');

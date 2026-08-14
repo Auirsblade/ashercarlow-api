@@ -1,8 +1,9 @@
 // apps/swdnd/src/lib/starships.test.ts
-import { expect, test } from 'bun:test';
+import { describe, expect, it, test } from 'bun:test';
 import {
-  mapDeploymentFeatureRow, mapDeploymentRow, mapShipArmorRow, mapShipEquipmentRow, mapShipModRow,
-  mapShipSizeRow, mapShipWeaponRow,
+  filterStockShips, mapDeploymentFeatureRow, mapDeploymentRow, mapShipArmorRow, mapShipEquipmentRow,
+  mapShipModRow, mapShipSizeRow, mapShipWeaponRow, parseStockShip, sourceRef, stockShipSizes,
+  type StockShipRow, type StockShipView,
 } from './starships';
 
 test('mapShipSizeRow pulls dice, speeds and budget inputs (Medium, verbatim from the pack)', () => {
@@ -270,4 +271,131 @@ test('mapDeploymentFeatureRow leaves powerSystem null when nothing is consumed',
     }),
   };
   expect(mapDeploymentFeatureRow(row)).toMatchObject({ powerSystem: null, activation: '' });
+});
+
+// ---- Stock ships (drakes-shipyard pack) ----
+
+const shuttleRaw = JSON.stringify({
+  _id: 'tRnGAAILKowm8n4T',
+  name: "Aka'jor-class Shuttle",
+  type: 'starship',
+  system: {
+    abilities: { str: { value: 13 }, dex: { value: 14 }, con: { value: 13 }, int: { value: 8 }, wis: { value: 12 }, cha: { value: 14 } },
+    attributes: {
+      ac: { flat: null, calc: 'starship' },
+      hp: { value: 27, max: 27, temp: 18, tempmax: 18 },
+      movement: { walk: 30, fly: 0, space: 0, turn: 0, units: 'ft' },
+      systemDamage: 0,
+    },
+    details: { source: "Drake's Shipyard", tier: '2', role: [] },
+    traits: { size: null },
+  },
+  items: [
+    { _id: 'i1', name: 'Small Starship', type: 'starshipsize', flags: { core: { sourceId: 'Compendium.sw5e.starships.6BN8l5E8QtYt103T' } }, system: { tier: 2, size: 'sm' } },
+    { _id: 'i2', name: 'Deflection Armor', type: 'equipment', flags: { core: { sourceId: 'Compendium.sw5e.starshiparmor.aG6mKPerYCFmkI00' } }, system: { armor: { value: 10, type: 'starship', dex: 2 }, quantity: 1 } },
+    { _id: 'i3', name: 'Quick-Charge Shield', type: 'equipment', flags: { core: { sourceId: 'Compendium.sw5e.starshiparmor.M7igMGsBIosGA4dS' } }, system: { armor: { value: 0, type: 'ssshield', dex: null }, quantity: 1 } },
+    { _id: 'i4', name: 'Fuel Cell Reactor', type: 'equipment', flags: { core: { sourceId: 'Compendium.sw5e.starshipequipment.jk7zL3cqhufDKsuh' } }, system: { armor: { value: null, type: 'reactor', dex: null } } },
+    { _id: 'i5', name: 'Hyperdrive, Class 1.5', type: 'equipment', flags: { core: { sourceId: 'Compendium.sw5e.starshipequipment.EllirPMc7jJSHZpL' } }, system: { armor: { value: null, type: 'hyper', dex: null } } },
+    { _id: 'i6', name: 'Heavy blaster cannon', type: 'weapon', flags: { core: { sourceId: 'Compendium.sw5e.starshipweapons.A0LPvkVHhH3e2Aeh' } }, system: { weaponType: 'primary (starship)', mountType: null, quantity: 1 } },
+    { _id: 'i7', name: 'Adaptive Ailerons', type: 'starshipmod', flags: { core: { sourceId: 'Compendium.sw5e.starshipmodifications.H1PmkigBok9ThtyJ' } }, system: { quantity: 1, tier: 0 } },
+    { _id: 'i8', name: 'Attack Run', type: 'feat', flags: { core: { sourceId: 'Compendium.sw5e.starshipactions.O9t2gB5wl6n86Eh4' } }, system: {} },
+    { _id: 'i9', name: 'Proton torpedo', type: 'consumable', flags: { core: { sourceId: 'Compendium.sw5e.starshipweapons.sNop7QuAG9JwcZiG' } }, system: { quantity: 4 } },
+  ],
+});
+
+const shuttleRow: StockShipRow = { id: 'tRnGAAILKowm8n4T', name: "Aka'jor-class Shuttle", raw_json: shuttleRaw };
+
+const view = (over: Partial<StockShipView>): StockShipView => ({
+  id: 'x', name: 'X', sizeRef: null, sizeName: 'Small Starship', tier: 1,
+  abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+  hull: 10, shields: 10, source: '', weapons: [], equipment: [], modifications: [], ...over,
+});
+
+describe('sourceRef', () => {
+  it('extracts the reference id from a Foundry compendium path', () => {
+    expect(sourceRef('Compendium.sw5e.starshipweapons.A0LPvkVHhH3e2Aeh')).toBe('A0LPvkVHhH3e2Aeh');
+    expect(sourceRef('Compendium.sw5e.starships.6BN8l5E8QtYt103T')).toBe('6BN8l5E8QtYt103T');
+  });
+  it('returns null on anything else', () => {
+    expect(sourceRef(undefined)).toBeNull();
+    expect(sourceRef('')).toBeNull();
+    expect(sourceRef('Compendium.sw5e.starships')).toBeNull();
+    expect(sourceRef(42)).toBeNull();
+  });
+});
+
+describe('parseStockShip', () => {
+  it('reads identity, size, tier, abilities and pools', () => {
+    const v = parseStockShip(shuttleRow);
+    expect(v.id).toBe('tRnGAAILKowm8n4T');
+    expect(v.name).toBe("Aka'jor-class Shuttle");
+    expect(v.sizeRef).toBe('6BN8l5E8QtYt103T');
+    expect(v.sizeName).toBe('Small Starship');   // system.traits.size is null on every pack ship
+    expect(v.tier).toBe(2);                      // details.tier is the string '2'
+    expect(v.abilities).toEqual({ str: 13, dex: 14, con: 13, int: 8, wis: 12, cha: 14 });
+    expect(v.hull).toBe(27);                     // hp.max
+    expect(v.shields).toBe(18);                  // hp.tempmax
+    expect(v.source).toBe("Drake's Shipyard");
+  });
+
+  it('groups installed items by type and keeps their refs and kind discriminators', () => {
+    const v = parseStockShip(shuttleRow);
+    expect(v.weapons.map((w) => w.name)).toEqual(['Heavy blaster cannon']);
+    expect(v.weapons[0].ref).toBe('A0LPvkVHhH3e2Aeh');
+    expect(v.weapons[0].weaponType).toBe('primary (starship)');
+    expect(v.equipment.map((e) => e.armorType)).toEqual(['starship', 'ssshield', 'reactor', 'hyper']);
+    expect(v.equipment[1].ref).toBe('M7igMGsBIosGA4dS');
+    expect(v.modifications.map((m) => m.name)).toEqual(['Adaptive Ailerons']);
+    // feats (starship actions) and consumables (ammo) are not build entries
+    expect(JSON.stringify(v)).not.toContain('Attack Run');
+    expect(JSON.stringify(v)).not.toContain('Proton torpedo');
+  });
+
+  it('degrades instead of throwing on malformed rows', () => {
+    const empty = parseStockShip({ id: 'zz', name: null, raw_json: 'not json' });
+    expect(empty.name).toBe('zz');
+    expect(empty.tier).toBe(0);
+    expect(empty.sizeRef).toBeNull();
+    expect(empty.sizeName).toBe('');
+    expect(empty.hull).toBeNull();
+    expect(empty.shields).toBeNull();
+    expect(empty.abilities).toEqual({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
+    expect(empty.weapons).toEqual([]);
+  });
+
+  it('falls back to hp.value/hp.temp when the pack omits the maxima (2 of 87 ships)', () => {
+    const raw = JSON.parse(shuttleRaw);
+    raw.system.attributes.hp = { value: 38, max: null, temp: null, tempmax: null };
+    const v = parseStockShip({ id: 'bw', name: 'A/SF-01 B-wing starfighter', raw_json: JSON.stringify(raw) });
+    expect(v.hull).toBe(38);
+    expect(v.shields).toBeNull();
+  });
+
+  it('takes tier from the embedded size item when details.tier is absent', () => {
+    const raw = JSON.parse(shuttleRaw);
+    delete raw.system.details.tier;
+    expect(parseStockShip({ id: 'a', name: 'A', raw_json: JSON.stringify(raw) }).tier).toBe(2);
+  });
+});
+
+describe('filterStockShips / stockShipSizes', () => {
+  const list = [
+    view({ id: 'a', name: 'ARC-170 Starfighter', sizeName: 'Small Starship', tier: 2 }),
+    view({ id: 'b', name: 'Acclamator-class Assault Ship', sizeName: 'Gargantuan Starship', tier: 5 }),
+    view({ id: 'c', name: 'Amphibious Fighter', sizeName: 'Tiny Starship', tier: 0 }),
+  ];
+
+  it('matches names case-insensitively', () => {
+    expect(filterStockShips(list, { q: 'arc' }).map((s) => s.id)).toEqual(['a']);
+    expect(filterStockShips(list, { q: '  A  ' }).map((s) => s.id)).toEqual(['a', 'b', 'c']);
+  });
+  it('filters by size and tier range', () => {
+    expect(filterStockShips(list, { q: '', size: 'Tiny Starship' }).map((s) => s.id)).toEqual(['c']);
+    expect(filterStockShips(list, { q: '', tierMin: 2 }).map((s) => s.id)).toEqual(['a', 'b']);
+    expect(filterStockShips(list, { q: '', tierMax: 2 }).map((s) => s.id)).toEqual(['a', 'c']);
+    expect(filterStockShips(list, { q: '', tierMin: 2, tierMax: 2 }).map((s) => s.id)).toEqual(['a']);
+  });
+  it('lists the sizes present, in canonical order', () => {
+    expect(stockShipSizes(list)).toEqual(['Tiny Starship', 'Small Starship', 'Gargantuan Starship']);
+  });
 });
