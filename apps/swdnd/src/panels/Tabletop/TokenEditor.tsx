@@ -21,6 +21,7 @@ export default function TokenEditor({
   const [newCondition, setNewCondition] = useState('');
   const [confirming, setConfirming] = useState(false);
   const isCharacter = !!token.character_id;
+  const isShip = !!token.ship_id;
 
   // hp/max_hp are buffered locally and only PATCHed on blur/Enter — committing
   // per keystroke lets a stale token:updated echo land mid-typing and clobber
@@ -69,6 +70,22 @@ export default function TokenEditor({
             title="open sheet (alt-click: beside the map)"
           >
             ▤ sheet
+          </PanelLink>
+        </span>
+      ) : isShip ? (
+        // hp/max_hp and conditions_json are dead weight on a ship-bound token:
+        // TokenGlyph reads shipVitals (hull/shields/conditions from the ship's
+        // play document, edited via the map's right-click menu or the ship
+        // sheet) and ignores these fields entirely for ship_id tokens.
+        <span className="flex items-center gap-2 text-[10px] text-ht-muted">
+          hull, shields &amp; conditions come from the ship sheet
+          <PanelLink
+            to={{ kind: 'ship', id: token.ship_id! }}
+            current={{ kind: 'map', id: campaignId }}
+            className="ht-step"
+            title="open ship sheet (alt-click: beside the map)"
+          >
+            ▤ ship
           </PanelLink>
         </span>
       ) : (

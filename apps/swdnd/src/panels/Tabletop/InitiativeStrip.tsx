@@ -2,10 +2,12 @@
 import type { Initiative } from '../../lib/initiative';
 
 export default function InitiativeStrip({
-  initiative, isDm, onNext, onPrev, onEnd,
+  initiative, isDm, nameOf, onNext, onPrev, onEnd,
 }: {
   initiative: Initiative;
   isDm: boolean;
+  /** Resolve a nested crew token id to a display name. */
+  nameOf: (tokenId: string) => string;
   onNext: () => void;
   onPrev: () => void;
   onEnd: () => void;
@@ -19,6 +21,9 @@ export default function InitiativeStrip({
           className={`ht-step ${i === initiative.activeIndex ? 'ht-tile-active' : ''}`}
         >
           {e.name} <span className="text-ht-muted">{e.roll}</span>
+          {e.crew?.length ? (
+            <span className="text-ht-muted"> ⟨{e.crew.map(nameOf).join(', ')}⟩</span>
+          ) : null}
         </span>
       ))}
       {initiative.order.length === 0 && <span className="text-[10px] text-ht-muted">no combatants</span>}
