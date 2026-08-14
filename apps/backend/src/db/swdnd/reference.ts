@@ -50,6 +50,10 @@ export const REFERENCE_TABLES: RefTable[] = [
   { table: 'ventures', extra: [] },
   { table: 'monsters', extra: [] },
   { table: 'monster_traits', extra: [] },
+  // Pre-built named starships. NOTE the confusing pair: the sw5e pack DIRECTORY
+  // called `starships` holds the six size chassis and feeds `starship_sizes`;
+  // THIS table is fed by the `drakes-shipyard` pack (87 actor documents).
+  { table: 'starships', extra: [] },
 ];
 
 /** Idempotently create all reference tables. */

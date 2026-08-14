@@ -22,6 +22,7 @@ const MIGRATIONS: Migration[] = [
   { version: '005_swdnd_rolls', file: '005_swdnd_rolls.sql' },
   { version: '006_swdnd_starships', file: '006_swdnd_starships.sql' },
   { version: '007_swdnd_space_scenes', file: '007_swdnd_space_scenes.sql' },
+  { version: '008_swdnd_encounter_ships', file: '008_swdnd_encounter_ships.sql' },
 ];
 
 runMigrations(swdndDb, MIGRATIONS, join(import.meta.dir, '..', 'migrations', 'swdnd'));

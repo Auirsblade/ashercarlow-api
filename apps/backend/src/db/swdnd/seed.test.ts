@@ -147,4 +147,45 @@ describe('seedContentFromImage', () => {
     expect(speciesCount(live)).toBe(0);
     live.close();
   });
+
+  it('backfills a content table the live DB has never seen, even at the same commit', () => {
+    const seedPath2 = join(dir, 'newtable-seed.sqlite');
+    const livePath2 = join(dir, 'newtable-live.sqlite');
+
+    // A seed built by the new image: species + the newly-added starships table.
+    writeSeed(seedPath2, 'eee', ['wookiee']);
+    const seed = openDatabase(seedPath2);
+    seed.prepare(
+      "INSERT OR REPLACE INTO starships (id, name, content_source, content_type, raw_json) VALUES (?, ?, NULL, NULL, '{}')",
+    ).run('tRnGAAILKowm8n4T', "Aka'jor-class Shuttle");
+    seed.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    seed.close();
+
+    // The live volume: already seeded at commit 'eee' back when `starships`
+    // did not exist, so the table is present (ensureReferenceTables) but empty.
+    const live = makeDb(livePath2);
+    seedContentFromImage(live, seedPath2);
+    live.exec('DELETE FROM starships');
+    expect(liveCommit(live)).toBe('eee');
+
+    // Same commit — the version short-circuit alone would skip forever.
+    seedContentFromImage(live, seedPath2);
+    expect(live.query<{ n: number }, []>('SELECT count(*) n FROM starships').get()!.n).toBe(1);
+
+    // ...and the next boot is a genuine no-op again: a DM edit to seeded content
+    // must survive, not just get silently re-overwritten by an identical seed row.
+    live.prepare(
+      "INSERT INTO starships (id, name, content_source, content_type, raw_json) VALUES ('local', 'Local', NULL, NULL, '{}')",
+    ).run();
+    live.exec("UPDATE starships SET name = 'DM Renamed' WHERE id = 'tRnGAAILKowm8n4T'");
+    seedContentFromImage(live, seedPath2);
+    expect(
+      live
+        .query<{ name: string }, []>("SELECT name FROM starships WHERE id = 'tRnGAAILKowm8n4T'")
+        .get()!.name,
+    ).toBe('DM Renamed');
+    expect(live.query<{ n: number }, []>('SELECT count(*) n FROM starships').get()!.n).toBe(2);
+    expect(speciesCount(live)).toBe(1);
+    live.close();
+  });
 });

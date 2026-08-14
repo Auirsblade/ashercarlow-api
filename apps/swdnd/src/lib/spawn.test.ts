@@ -1,7 +1,7 @@
 // apps/swdnd/src/lib/spawn.test.ts
 import { describe, expect, it } from 'bun:test';
 import { hexDistance } from './hex';
-import { spawnBodies, spawnPositions } from './spawn';
+import { copyName, shipSpawnBody, spawnBodies, spawnPositions } from './spawn';
 import type { MonsterView } from './monsters';
 
 const view = (over: Partial<MonsterView> = {}): MonsterView => ({
@@ -42,5 +42,34 @@ describe('spawnBodies', () => {
   it('single spawn gets no suffix; null hp passes through as null', () => {
     const bodies = spawnBodies(view({ hp: null }), 1, spawnPositions({ q: 2, r: 2 }, 1));
     expect(bodies).toEqual([{ name: 'Probe Droid', faction: 'hostile', q: 2, r: 2, hp: null, max_hp: null }]);
+  });
+});
+
+describe('copyName', () => {
+  it('suffixes copies after the first', () => {
+    expect(copyName('ARC-170 Starfighter', 0)).toBe('ARC-170 Starfighter');
+    expect(copyName('ARC-170 Starfighter', 1)).toBe('ARC-170 Starfighter #2');
+    expect(copyName('ARC-170 Starfighter', 2)).toBe('ARC-170 Starfighter #3');
+  });
+});
+
+describe('shipSpawnBody', () => {
+  it('binds the token to its starship row, hostile, facing forward, one hex across', () => {
+    expect(shipSpawnBody('ship-1', 'ARC-170 Starfighter', 27, 27, { q: 3, r: -1 })).toEqual({
+      name: 'ARC-170 Starfighter',
+      faction: 'hostile',
+      q: 3,
+      r: -1,
+      hp: 27,
+      max_hp: 27,
+      ship_id: 'ship-1',
+      facing: 0,
+      scale: 1,
+    });
+  });
+
+  it('accepts an explicit facing and footprint span', () => {
+    expect(shipSpawnBody('ship-1', 'X', 10, 20, { q: 0, r: 0 }, 3).facing).toBe(3);
+    expect(shipSpawnBody('ship-1', 'X', 10, 20, { q: 0, r: 0 }, 0, 4).scale).toBe(4);
   });
 });

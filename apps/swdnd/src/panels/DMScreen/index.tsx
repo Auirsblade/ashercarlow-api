@@ -9,11 +9,13 @@ import { useDmScreen } from '../../hooks/useDmScreen';
 import PartyRail from './PartyRail';
 import AdminDrawer from './AdminDrawer';
 import MonsterBrowser from './MonsterBrowser';
+import ShipBrowser from './ShipBrowser';
+import FleetRail from './FleetRail';
 import EncounterList from './EncounterList';
 import Reference from './Reference';
-import { addMonster } from '../../lib/encounters';
+import { addMonster, addStockShip } from '../../lib/encounters';
 
-const TABS = ['monsters', 'encounters', 'reference'] as const;
+const TABS = ['monsters', 'ships', 'encounters', 'reference'] as const;
 type Tab = (typeof TABS)[number];
 
 export default function DMScreen({ campaignId }: { campaignId: string }) {
@@ -55,6 +57,10 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 pt-0 @[700px]:overflow-visible @[860px]:flex-row">
         <aside className="shrink-0 @[860px]:min-h-0 @[860px]:w-[260px] @[860px]:overflow-y-auto">
           <PartyRail cards={dm.cards} />
+          <div className="mt-2">
+            <div className="ht-label mb-1">Fleet</div>
+            <FleetRail cards={dm.shipCards} campaignId={campaignId} />
+          </div>
         </aside>
         <main className="min-w-0 flex-1 @[700px]:flex @[700px]:min-h-0 @[700px]:flex-col">
           <nav className="mb-2 flex shrink-0 gap-1 text-[11px]">
@@ -81,14 +87,29 @@ export default function DMScreen({ campaignId }: { campaignId: string }) {
                 }}
               />
             )}
+            {tab === 'ships' && (
+              <ShipBrowser
+                stock={dm.stockShips}
+                shipRef={dm.shipRef}
+                encounters={dm.encounters}
+                onAddToFleet={(view) => dm.actions.addShipToFleet(view)}
+                onSpawn={(view, count) => dm.actions.spawnShip(view, count)}
+                onAddToEncounter={(encounterId, stockShipRef) => {
+                  const enc = dm.encounters.find((e) => e.id === encounterId);
+                  if (enc) void dm.actions.setEncounterShips(encounterId, addStockShip(enc.ships_json, stockShipRef));
+                }}
+              />
+            )}
             {tab === 'encounters' && (
               <EncounterList
                 encounters={dm.encounters}
                 monsters={dm.monsters}
+                stockShips={dm.stockShips}
                 onCreate={(name) => void dm.actions.addEncounter(name)}
                 onRename={(id, name) => void dm.actions.renameEncounter(id, name)}
                 onSetMonsters={(id, monsters) => void dm.actions.setEncounterMonsters(id, monsters)}
-                onSpawnAll={(enc) => void dm.actions.spawnEncounter(enc)}
+                onSetShips={(id, ships) => void dm.actions.setEncounterShips(id, ships)}
+                onSpawnAll={(enc) => dm.actions.spawnEncounter(enc)}
                 onDelete={(id) => void dm.actions.removeEncounter(id)}
               />
             )}

@@ -4,29 +4,36 @@ import { HTTPException } from 'hono/http-exception';
 import { swdndDb } from '../../db/swdnd';
 
 const MonsterEntry = z.object({ monsterId: z.string().min(1), count: z.number().int().min(1) });
+const ShipEntry = z.object({ stockShipRef: z.string().min(1), count: z.number().int().min(1) });
 const Encounter = z.object({
   id: z.string(), campaign_id: z.string(), name: z.string(),
-  monsters_json: z.array(MonsterEntry), sort: z.number(),
+  monsters_json: z.array(MonsterEntry), ships_json: z.array(ShipEntry), sort: z.number(),
   created_at: z.string(), updated_at: z.string(),
 }).openapi('SwdndEncounter');
 
 const PostBody = z.object({
   name: z.string().min(1),
   monsters: z.array(MonsterEntry).optional(),
+  ships: z.array(ShipEntry).optional(),
 }).openapi('SwdndPostEncounter');
 const PatchBody = z.object({
   name: z.string().min(1).optional(),
   monsters: z.array(MonsterEntry).optional(),
+  ships: z.array(ShipEntry).optional(),
   sort: z.number().int().optional(),
 }).openapi('SwdndPatchEncounter');
 const ErrorBody = z.object({ message: z.string() });
 
 interface EncounterRow {
-  id: string; campaign_id: string; name: string; monsters_json: string;
+  id: string; campaign_id: string; name: string; monsters_json: string; ships_json: string;
   sort: number; created_at: string; updated_at: string;
 }
 
-const encounterOut = (row: EncounterRow) => ({ ...row, monsters_json: JSON.parse(row.monsters_json || '[]') });
+const encounterOut = (row: EncounterRow) => ({
+  ...row,
+  monsters_json: JSON.parse(row.monsters_json || '[]'),
+  ships_json: JSON.parse(row.ships_json || '[]'),
+});
 const getRow = (id: string): EncounterRow | null =>
   swdndDb.query<EncounterRow, [string]>('SELECT * FROM encounter WHERE id = ?').get(id) ?? null;
 
@@ -97,14 +104,15 @@ export function registerEncounterRoutes(app: OpenAPIHono): void {
     // /swdnd/campaigns/:id/encounters matches no selfGated clause — the
     // blanket admin gate already rejected non-admin mutations.
     const { id: campaignId } = c.req.valid('param');
-    const { name, monsters } = c.req.valid('json');
+    const { name, monsters, ships } = c.req.valid('json');
     const campaign = swdndDb.query<{ id: string }, [string]>('SELECT id FROM campaign WHERE id = ?').get(campaignId);
     if (!campaign) throw new HTTPException(404, { message: 'Campaign not found' });
     const now = new Date().toISOString();
     const id = crypto.randomUUID();
     swdndDb.run(
-      'INSERT INTO encounter (id, campaign_id, name, monsters_json, sort, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)',
-      [id, campaignId, name, JSON.stringify(monsters ?? []), now, now],
+      `INSERT INTO encounter (id, campaign_id, name, monsters_json, ships_json, sort, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+      [id, campaignId, name, JSON.stringify(monsters ?? []), JSON.stringify(ships ?? []), now, now],
     );
     return c.json(encounterOut(getRow(id)!), 201);
   });
@@ -116,10 +124,11 @@ export function registerEncounterRoutes(app: OpenAPIHono): void {
     if (!row) throw new HTTPException(404, { message: 'Encounter not found' });
     const now = new Date().toISOString();
     swdndDb.run(
-      'UPDATE encounter SET name = ?, monsters_json = ?, sort = ?, updated_at = ? WHERE id = ?',
+      'UPDATE encounter SET name = ?, monsters_json = ?, ships_json = ?, sort = ?, updated_at = ? WHERE id = ?',
       [
         body.name ?? row.name,
         body.monsters !== undefined ? JSON.stringify(body.monsters) : row.monsters_json,
+        body.ships !== undefined ? JSON.stringify(body.ships) : row.ships_json,
         body.sort ?? row.sort,
         now,
         id,
