@@ -1,11 +1,11 @@
 // apps/swdnd/src/lib/visibility.test.ts
 import { describe, expect, it } from 'bun:test';
-import { showHpRing, tokenVisibility } from './visibility';
+import { isOwnToken, showHpRing, tokenVisibility } from './visibility';
 import type { TokenDto } from './scenes';
 
 const tok = (over: Partial<TokenDto>): TokenDto => ({
-  id: 't1', scene_id: 's1', character_id: null, name: 'X', color: '#fff',
-  faction: 'hostile', q: 0, r: 0, scale: 1, hp: null, max_hp: null,
+  id: 't1', scene_id: 's1', character_id: null, ship_id: null, name: 'X', color: '#fff',
+  faction: 'hostile', q: 0, r: 0, scale: 1, facing: 0, hp: null, max_hp: null,
   conditions_json: [], hidden: 0, image_path: null, created_at: '', updated_at: '',
   ...over,
 });
@@ -49,5 +49,44 @@ describe('showHpRing', () => {
     expect(showHpRing(tok({ faction: 'friendly' }), false)).toBe(true);
     expect(showHpRing(tok({ faction: 'hostile' }), false)).toBe(false);
     expect(showHpRing(tok({ faction: 'neutral' }), false)).toBe(false);
+  });
+});
+
+describe('isOwnToken', () => {
+  const own = { ownCharacterIds: new Set(['c1']), ownShipIds: new Set(['s1']) };
+
+  it('is true for an owned character token and a crewed ship token', () => {
+    expect(isOwnToken(tok({ character_id: 'c1' }), own)).toBe(true);
+    expect(isOwnToken(tok({ ship_id: 's1' }), own)).toBe(true);
+  });
+
+  it('is false for someone else’s character, an uncrewed ship, and a plain token', () => {
+    expect(isOwnToken(tok({ character_id: 'c9' }), own)).toBe(false);
+    expect(isOwnToken(tok({ ship_id: 's9' }), own)).toBe(false);
+    expect(isOwnToken(tok({}), own)).toBe(false);
+  });
+
+  it('tolerates a context with no ownShipIds (legacy call sites)', () => {
+    expect(isOwnToken(tok({ ship_id: 's1' }), { ownCharacterIds: new Set() })).toBe(false);
+  });
+});
+
+describe('tokenVisibility — crewed ships', () => {
+  it('a player always sees their crewed ship, even under unrevealed fog', () => {
+    const t = tok({ ship_id: 's1', q: 9, r: 9 });
+    const ctx = { isDm: false, revealed: ['0,0'], ownCharacterIds: new Set<string>(), ownShipIds: new Set(['s1']) };
+    expect(tokenVisibility(t, ctx)).toEqual({ visible: true, dimmed: false });
+  });
+
+  it('someone else’s ship under fog stays hidden', () => {
+    const t = tok({ ship_id: 's9', q: 9, r: 9 });
+    const ctx = { isDm: false, revealed: ['0,0'], ownCharacterIds: new Set<string>(), ownShipIds: new Set(['s1']) };
+    expect(tokenVisibility(t, ctx)).toEqual({ visible: false, dimmed: false });
+  });
+
+  it('a hidden ship token is still hidden from players', () => {
+    const t = tok({ ship_id: 's1', hidden: 1 });
+    const ctx = { isDm: false, revealed: [], ownCharacterIds: new Set<string>(), ownShipIds: new Set(['s1']) };
+    expect(tokenVisibility(t, ctx).visible).toBe(false);
   });
 });
