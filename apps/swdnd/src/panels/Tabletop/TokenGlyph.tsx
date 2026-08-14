@@ -42,7 +42,9 @@ export default function TokenGlyph({
     : null;
   const shieldFraction = ship && showHp ? hpFraction(ship.shields, ship.maxShields) : null;
   // Band center sits clear of the HP arc (1.08r); band width/font follow rings.ts fractions.
-  const ringR = radius * 1.45;
+  // Ship tokens carry the shield arc at 1.26r, so the band sits further out (1.62r) to keep
+  // its annulus ([1.34r, 1.90r]) clear of the shield stroke ([1.21r, 1.31r] at scale 1).
+  const ringR = radius * (ship ? 1.62 : 1.45);
   const band = ringR * BAND_FRACTION;
   const ringFont = ringR * RING_FONT_FRACTION;
   const segments = statusSegments(ship ? shipStatusNames(ship) : vitals.conditions, ringR);
@@ -95,9 +97,9 @@ export default function TokenGlyph({
           strokeLinecap="round" pointerEvents="none"
         />
       )}
-      {shieldFraction != null && (
+      {shieldFraction != null && shieldFraction > 0 && (
         // Shields ride OUTSIDE the hull arc: a depleted shield reads as a gap
-        // around a still-full hull ring.
+        // around a still-full hull ring. (fraction === 0 renders nothing, not a pip.)
         <path
           d={hpArcPath(radius * 1.26, shieldFraction)}
           fill="none" stroke="#4dd0e1" strokeWidth={grid.hexSize * 0.07}
@@ -112,24 +114,6 @@ export default function TokenGlyph({
           />
         </g>
       )}
-      {showRotate && facingDeg != null && ([
-        ['ccw', facingDeg - 42, '⟲'] as const,
-        ['cw', facingDeg + 42, '⟳'] as const,
-      ]).map(([dir, deg, icon]) => {
-        const p = handleAt(deg);
-        return (
-          <g key={dir} data-rotate={dir} style={{ cursor: 'pointer' }}>
-            <circle cx={p.x} cy={p.y} r={grid.hexSize * 0.3} fill="#05070a" fillOpacity={0.8} stroke="#4dd0e1" strokeWidth={1.5} />
-            <text
-              x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central"
-              fill="#e6f7ff" fontFamily="monospace" fontSize={grid.hexSize * 0.34}
-              style={{ pointerEvents: 'none', userSelect: 'none' }}
-            >
-              {icon}
-            </text>
-          </g>
-        );
-      })}
       {segments.map((s, i) => (
         <g key={s.name} pointerEvents="none">
           <path d={s.path} fill="none" stroke={s.color} strokeWidth={band} strokeOpacity={0.9} />
@@ -152,6 +136,26 @@ export default function TokenGlyph({
           )}
         </g>
       ))}
+      {/* Handles render after the (pointerEvents-none) status band so they paint on top of it
+          and stay unobscured — the band annulus at 1.62r overlaps the 1.5r handle centers. */}
+      {showRotate && facingDeg != null && ([
+        ['ccw', facingDeg - 42, '⟲'] as const,
+        ['cw', facingDeg + 42, '⟳'] as const,
+      ]).map(([dir, deg, icon]) => {
+        const p = handleAt(deg);
+        return (
+          <g key={dir} data-rotate={dir} style={{ cursor: 'pointer' }}>
+            <circle cx={p.x} cy={p.y} r={grid.hexSize * 0.3} fill="#05070a" fillOpacity={0.8} stroke="#4dd0e1" strokeWidth={1.5} />
+            <text
+              x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central"
+              fill="#e6f7ff" fontFamily="monospace" fontSize={grid.hexSize * 0.34}
+              style={{ pointerEvents: 'none', userSelect: 'none' }}
+            >
+              {icon}
+            </text>
+          </g>
+        );
+      })}
       {!token.image_path && (
         <text
           textAnchor="middle" dominantBaseline="central"
