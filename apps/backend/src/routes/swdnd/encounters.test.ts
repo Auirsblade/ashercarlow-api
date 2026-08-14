@@ -103,6 +103,12 @@ test('encounters carry stock-ship members alongside monsters', async () => {
   expect(p.ships_json).toEqual([{ stockShipRef: 'B5AmMDBTT6TrfW5E', count: 1 }]);
   expect(p.monsters_json).toEqual([{ monsterId: 'm1', count: 2 }]); // untouched by a ships-only patch
 
+  const nameOnly = await app.request(`/swdnd/encounters/${enc.id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Blockade renamed' }),
+  });
+  expect((await nameOnly.json()).ships_json).toHaveLength(1); // name-only patch must not drop ships_json
+
   const list = await app.request('/swdnd/campaigns/c1/encounters');
   const rows = await list.json();
   expect(rows.find((r: { id: string }) => r.id === enc.id).ships_json).toHaveLength(1);
