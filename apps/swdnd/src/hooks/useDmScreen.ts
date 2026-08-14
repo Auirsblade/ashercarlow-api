@@ -16,11 +16,25 @@ import { listScenes, createToken } from '../lib/scenes';
 import { pixelToHex } from '../lib/hex';
 import { parseMonster, type MonsterRow, type MonsterView } from '../lib/monsters';
 import { refEntryFromRow, type RefEntry, type RefRow } from '../lib/refSearch';
-import { spawnBodies, spawnPositions } from '../lib/spawn';
+import { spawnBodies, spawnPositions, copyName, shipSpawnBody } from '../lib/spawn';
 import {
   createEncounter, deleteEncounter, listEncounters, patchEncounter,
   type EncounterDto, type EncounterMonster,
 } from '../lib/encounters';
+import {
+  createShipFromBuild, fillStockPlay, getStarship, listStarships, listStockShips, loadShipReference,
+  parseStockShip, shipRefIndex, stockToShipBuild,
+  type StockShipView,
+} from '../lib/starships';
+import {
+  addShipCard, applyPendingShipCards, buildShipCards, mergeShipCardPlay, type ShipCard,
+} from '../lib/shipCards';
+// One buffered-play cache for the whole app — sub-project 3 owns its shape.
+import { shipVitalsFrom, type PendingShipPlays, type ShipPlayLike } from '../lib/shipVitals';
+import { computeShip } from '../lib/shipRules';
+import type { ShipReferenceData } from '../lib/shipRules/types';
+import { shipTokenScale } from '../lib/shipTokens';
+import type { Hex } from '../lib/hex';
 
 export interface PowerEntry extends RefEntry { level: number; castType: 'force' | 'tech' }
 
@@ -31,6 +45,9 @@ export interface DmScreenState {
   cards: PartyCard[];
   players: PlayerDto[];
   monsters: MonsterView[];
+  stockShips: StockShipView[];
+  shipCards: ShipCard[];
+  shipRef: ShipReferenceData | null;
   refEntries: { conditions: RefEntry[]; weaponProperties: RefEntry[]; powers: PowerEntry[] };
   encounters: EncounterDto[];
   actions: {
@@ -40,6 +57,8 @@ export interface DmScreenState {
     removePlayer: (id: string) => Promise<void>;
     spawn: (view: MonsterView, count: number) => Promise<void>;
     spawnEncounter: (enc: EncounterDto) => Promise<void>;
+    addShipToFleet: (view: StockShipView) => Promise<void>;
+    spawnShip: (view: StockShipView, count: number) => Promise<void>;
     addEncounter: (name: string) => Promise<void>;
     renameEncounter: (id: string, name: string) => Promise<void>;
     setEncounterMonsters: (id: string, monsters: EncounterMonster[]) => Promise<void>;
@@ -57,26 +76,43 @@ export function useDmScreen(campaignId: string): DmScreenState {
   const [monsters, setMonsters] = useState<MonsterView[]>([]);
   const [refEntries, setRefEntries] = useState<DmScreenState['refEntries']>({ conditions: [], weaponProperties: [], powers: [] });
   const [encounters, setEncounters] = useState<EncounterDto[]>([]);
+  const [stockShips, setStockShips] = useState<StockShipView[]>([]);
+  const [shipCards, setShipCards] = useState<ShipCard[]>([]);
+  const [shipRef, setShipRef] = useState<ShipReferenceData | null>(null);
   const refData = useRef<ReferenceData | null>(null);
+  const shipRefData = useRef<ShipReferenceData | null>(null);
   const cardsLoaded = useRef(false);
+  const shipCardsLoaded = useRef(false);
   const pending = useRef<PendingCardPlays>({});
+  const pendingShips = useRef<PendingShipPlays>({});
+  /** Names carried by those buffered events — the shared cache holds play only. */
+  const pendingShipNames = useRef<Record<string, string>>({});
 
   const reload = useCallback(() => {
     setLoading(true);
     cardsLoaded.current = false;
+    shipCardsLoaded.current = false;
     pending.current = {};
+    pendingShips.current = {};
+    pendingShipNames.current = {};
     Promise.all([
       getCampaign(campaignId), listCharacters(campaignId), listPlayers(campaignId), loadReference(),
       api<MonsterRow[]>('/swdnd/content/monsters'),
       api<RefRow[]>('/swdnd/content/conditions'),
       api<RefRow[]>('/swdnd/content/weapon_properties'),
       listEncounters(campaignId),
+      listStockShips(),
+      listStarships(campaignId),
+      loadShipReference(),
     ])
-      .then(([camp, chars, slots, ref, monsterRows, conditionRows, wpRows, encs]) => {
+      .then(([camp, chars, slots, ref, monsterRows, conditionRows, wpRows, encs, stockRows, ships, sref]) => {
         refData.current = ref;
+        shipRefData.current = sref;
+        setShipRef(sref);
         setCampaign(camp);
         setPlayers(slots);
         setMonsters(monsterRows.map(parseMonster).sort((a, b) => a.name.localeCompare(b.name)));
+        setStockShips(stockRows.map(parseStockShip).sort((a, b) => a.name.localeCompare(b.name)));
         setRefEntries({
           conditions: conditionRows.map(refEntryFromRow),
           weaponProperties: wpRows.map(refEntryFromRow),
@@ -88,6 +124,10 @@ export function useDmScreen(campaignId: string): DmScreenState {
         cardsLoaded.current = true;
         setCards(applyPendingCardPlays(buildCards(chars, ref), pending.current));
         pending.current = {};
+        shipCardsLoaded.current = true;
+        setShipCards(applyPendingShipCards(buildShipCards(ships, sref), pendingShips.current, pendingShipNames.current));
+        pendingShips.current = {};
+        pendingShipNames.current = {};
         setError(null);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load'))
@@ -101,6 +141,41 @@ export function useDmScreen(campaignId: string): DmScreenState {
     const sock = connectCampaign(campaignId, (env: WsEnvelope) => {
       if (env.type === 'campaign:updated') {
         setCampaign(env.payload as CampaignDto);
+        return;
+      }
+      if (env.type === 'ship:updated') {
+        // Wire payload is {shipId, name, play, data_json}; data_json isn't
+        // needed here (shipCards derives everything from play + the cached
+        // ref). `play` itself is unknown-typed on the wire and
+        // mergeShipCardPlay trusts its input (spreads play.conditions
+        // directly) — narrow/clamp it here first, reusing shipVitalsFrom's
+        // tolerant coercion so a doc missing play.conditions (or any other
+        // field) degrades to a safe default instead of throwing.
+        const s = env.payload as { shipId?: string; name?: string; play?: unknown };
+        if (!s?.shipId || !s.play || typeof s.name !== 'string') return;
+        const { shipId, name } = s as { shipId: string; name: string };
+        const raw = shipVitalsFrom(s.play as Partial<ShipPlayLike>, null);
+        const play: ShipPlayLike = { hull: raw.hull, shields: raw.shields, conditions: raw.conditions, systemDamage: raw.systemDamage };
+        if (!shipCardsLoaded.current) {
+          pendingShips.current[shipId] = play;
+          pendingShipNames.current[shipId] = name;
+          return;
+        }
+        setShipCards((cur) => {
+          if (cur.some((c) => c.id === shipId)) return mergeShipCardPlay(cur, shipId, name, play);
+          // Unknown id: ship created after load (another DM tab spawning). Adopt it.
+          const sref = shipRefData.current;
+          if (sref) {
+            getStarship(shipId)
+              .then((sdto) => {
+                const r = shipRefData.current;
+                if (!r) return;
+                setShipCards((c2) => mergeShipCardPlay(addShipCard(c2, sdto, r), shipId, name, play));
+              })
+              .catch(() => { /* deleted in the gap; stay a silent no-op */ });
+          }
+          return cur;
+        });
         return;
       }
       if (env.type !== 'character:updated') return;
@@ -150,29 +225,80 @@ export function useDmScreen(campaignId: string): DmScreenState {
       catch (e) { setError(e instanceof Error ? e.message : 'Request failed'); }
     };
 
-  // Spawn composes the existing token routes against the ACTIVE scene; tokens
-  // appear on every viewer via the existing token:created broadcasts.
-  const spawnMany = useCallback(async (groups: { view: MonsterView; count: number }[]) => {
+  /** The active scene plus the hex under its image centre. */
+  const activeSceneCenter = useCallback(async (): Promise<{ sceneId: string; center: Hex }> => {
     const scenes = await listScenes(campaignId);
     const active = scenes.find((s) => s.is_active === 1);
     if (!active) throw new Error('No active scene to spawn onto — activate one on the map first.');
     const cx = (active.image_w ?? 0) / 2;
     const cy = (active.image_h ?? 0) / 2;
     const center = active.grid_json ? pixelToHex(cx, cy, active.grid_json) : { q: 0, r: 0 };
+    return { sceneId: active.id, center };
+  }, [campaignId]);
+
+  // Spawn composes the existing token routes against the ACTIVE scene; tokens
+  // appear on every viewer via the existing token:created broadcasts.
+  const spawnMany = useCallback(async (groups: { view: MonsterView; count: number }[]) => {
+    const { sceneId, center } = await activeSceneCenter();
     const total = groups.reduce((sum, g) => sum + g.count, 0);
     const positions = spawnPositions(center, total);
     let used = 0;
     for (const g of groups) {
       const bodies = spawnBodies(g.view, g.count, positions.slice(used, used + g.count));
       used += g.count;
-      for (const body of bodies) await createToken(active.id, body);
+      for (const body of bodies) await createToken(sceneId, body);
     }
-  }, [campaignId]);
+  }, [activeSceneCenter]);
 
   const refreshEncounters = useCallback(
     () => listEncounters(campaignId).then(setEncounters),
     [campaignId],
   );
+
+  const refreshFleet = useCallback(async () => {
+    const sref = shipRefData.current;
+    if (!sref) return;
+    setShipCards(buildShipCards(await listStarships(campaignId), sref));
+  }, [campaignId]);
+
+  /** One real `starship` row per copy, then one bound token each. */
+  const spawnShipGroups = useCallback(async (groups: { view: StockShipView; count: number }[]) => {
+    const sref = shipRefData.current;
+    if (!sref) throw new Error('Ship reference not loaded yet — reload the DM screen.');
+    const idx = shipRefIndex(sref);
+    const { sceneId, center } = await activeSceneCenter();
+    const total = groups.reduce((sum, g) => sum + g.count, 0);
+    const positions = spawnPositions(center, total);
+    let used = 0;
+    try {
+      for (const g of groups) {
+        const base = stockToShipBuild(g.view, idx);
+        const build = fillStockPlay(base, computeShip(base, sref));
+        const scale = shipTokenScale(sref.sizes[build.identity.sizeId]?.key ?? null);
+        for (let i = 0; i < g.count; i++) {
+          const name = copyName(g.view.name, i);
+          // Same partial-failure shape as addShipToFleet: POST can succeed
+          // while PATCH doesn't, leaving a blank-build, token-less row. Name
+          // it explicitly rather than letting a generic "failed" swallow
+          // which copy (of possibly several) is affected.
+          const ship = await createShipFromBuild(campaignId, { ...build, identity: { ...build.identity, name } })
+            .catch((e: unknown) => {
+              throw new Error(
+                `"${name}" may have been created with blank stats and no token (its data failed to save) — check the fleet before retrying.${e instanceof Error ? ` (${e.message})` : ''}`,
+              );
+            });
+          const pos = positions[used++];
+          await createToken(sceneId, shipSpawnBody(ship.id, name, build.play.hull, build.play.hull, pos, 0, scale));
+        }
+      }
+    } finally {
+      // Refresh regardless of outcome so any row(s) already created before a
+      // mid-batch failure aren't hidden from the fleet rail until reload.
+      // Swallow a refresh failure — it must not replace the more actionable
+      // per-copy error already in flight from the loop above.
+      await refreshFleet().catch(() => {});
+    }
+  }, [activeSceneCenter, campaignId, refreshFleet]);
 
   return {
     loading,
@@ -181,6 +307,9 @@ export function useDmScreen(campaignId: string): DmScreenState {
     cards,
     players,
     monsters,
+    stockShips,
+    shipCards,
+    shipRef,
     refEntries,
     encounters,
     actions: {
@@ -196,6 +325,32 @@ export function useDmScreen(campaignId: string): DmScreenState {
           .filter((g): g is { view: MonsterView; count: number } => !!g.view);
         if (groups.length === 0) throw new Error('No known monsters in this encounter.');
         await spawnMany(groups);
+      }),
+      addShipToFleet: wrap(async (view: StockShipView) => {
+        const sref = shipRefData.current;
+        if (!sref) throw new Error('Ship reference not loaded yet — reload the DM screen.');
+        const base = stockToShipBuild(view, shipRefIndex(sref));
+        try {
+          await createShipFromBuild(campaignId, fillStockPlay(base, computeShip(base, sref)));
+        } catch (e) {
+          // createShipFromBuild composes POST (row created with a blank build)
+          // then PATCH (writes the real one); a PATCH failure after a
+          // successful POST still leaves a real, blank-build ship in the
+          // fleet. Say so distinctly — a generic "failed" would read as
+          // "nothing happened" and invite a re-click that doubles the ship.
+          throw new Error(
+            `"${view.name}" may have been created with blank stats (its data failed to save) — check the fleet before retrying.${e instanceof Error ? ` (${e.message})` : ''}`,
+          );
+        } finally {
+          // Refresh regardless of outcome so a partially-created row isn't
+          // hidden from the fleet rail until the next full reload. Swallow a
+          // refresh failure here — it must not replace the more actionable
+          // error already in flight from the try block above.
+          await refreshFleet().catch(() => {});
+        }
+      }),
+      spawnShip: wrap(async (view: StockShipView, count: number) => {
+        await spawnShipGroups([{ view, count }]);
       }),
       addEncounter: wrap(async (name: string) => { await createEncounter(campaignId, name); await refreshEncounters(); }),
       renameEncounter: wrap(async (id: string, name: string) => { await patchEncounter(id, { name }); await refreshEncounters(); }),
