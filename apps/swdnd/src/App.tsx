@@ -14,6 +14,7 @@ import Tabletop from "./panels/Tabletop";
 import DMScreen from "./panels/DMScreen";
 import DmHome from "./panels/DmHome";
 import PlayerHome from "./panels/PlayerHome";
+import Landing from "./panels/Landing";
 
 function SheetPage() {
   const { characterId = "" } = useParams();
@@ -109,23 +110,12 @@ function PlayPage() {
   );
 }
 
-function Landing() {
-  return (
-    <SinglePanel>
-      <div className="p-6">
-        <h1 className="text-2xl font-bold">swdnd</h1>
-        <p className="text-zinc-400">Star Wars D&amp;D — sw5e</p>
-      </div>
-    </SinglePanel>
-  );
-}
-
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<SinglePanel><Landing /></SinglePanel>} />
           <Route path="/player" element={<SinglePanel><PlayerHome /></SinglePanel>} />
           <Route path="/sheet/:characterId" element={<SheetPage />} />
           <Route path="/sheet/:characterId/:mode" element={<SheetPage />} />
