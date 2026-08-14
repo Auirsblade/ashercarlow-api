@@ -29,6 +29,12 @@ export default function ShipStatblock({
   const weapons = build.equipment.filter((e) => e.kind === 'weapon');
   const systems = build.equipment.filter((e) => e.kind !== 'weapon');
   const refName = (table: Record<string, string>, ref: string) => table[ref] ?? `(unknown ${ref})`;
+  // Same used/Max idiom as the builder (Weapons.tsx, Modifications.tsx) — most
+  // stock ships run over on at least one budget, and this pane's contract is
+  // "exactly what add-to-fleet creates," so the overage should show here too.
+  const overBudget = derived.hardpointsUsed > derived.hardpointsMax
+    || derived.modSlotsUsed > derived.modSlotsMax
+    || derived.suitesUsed > derived.suitesMax;
 
   return (
     <div>
@@ -44,6 +50,11 @@ export default function ShipStatblock({
         <span><span className="ht-label">Shields</span> {derived.maxShields}</span>
         <span><span className="ht-label">Speed</span> {derived.speed}</span>
         <span><span className="ht-label">Turn</span> {derived.turnSpeed}</span>
+      </div>
+
+      <div className={`mt-1 text-[10px] ${overBudget ? 'text-yellow-300' : 'text-ht-muted'}`}>
+        {derived.hardpointsUsed}/{derived.hardpointsMax} hardpoints · {derived.modSlotsUsed}/{derived.modSlotsMax} slots · {derived.suitesUsed}/{derived.suitesMax} suite
+        {overBudget && ' — over budget'}
       </div>
 
       <div className="mt-2 grid grid-cols-6 gap-1 text-center text-[10px]">

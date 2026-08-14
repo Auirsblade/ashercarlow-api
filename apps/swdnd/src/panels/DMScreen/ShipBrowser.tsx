@@ -14,8 +14,11 @@ interface Props {
   stock: StockShipView[];
   shipRef: ShipReferenceData | null;
   encounters: EncounterDto[];
-  onAddToFleet: (view: StockShipView) => void;
-  onSpawn: (view: StockShipView, count: number) => void;
+  onAddToFleet: (view: StockShipView) => Promise<void>;
+  onSpawn: (view: StockShipView, count: number) => Promise<void>;
+  // Signature is already the eventual Task 11 shape; the DM screen currently
+  // passes a no-op, and the "+ add" button below stays disabled until T11
+  // wires it — flip both there.
   onAddToEncounter: (encounterId: string, stockShipRef: string) => void;
 }
 
@@ -27,6 +30,16 @@ export default function ShipBrowser({ stock, shipRef, encounters, onAddToFleet, 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [count, setCount] = useState(1);
   const [encId, setEncId] = useState('');
+  // Guards add-to-fleet/spawn against double-clicks — both mutate the fleet
+  // and share the same in-flight semantics, so one flag for the pane is the
+  // smallest mechanism that covers either firing twice, or both firing at once.
+  const [pendingAction, setPendingAction] = useState<'add' | 'spawn' | null>(null);
+
+  const runPending = (key: 'add' | 'spawn', fn: () => Promise<void>) => {
+    if (pendingAction) return;
+    setPendingAction(key);
+    fn().finally(() => setPendingAction(null));
+  };
 
   const sizes = useMemo(() => stockShipSizes(stock), [stock]);
   const filtered = useMemo(() => filterStockShips(stock, {
@@ -84,18 +97,50 @@ export default function ShipBrowser({ stock, shipRef, encounters, onAddToFleet, 
         {selected && shipRef && idx ? (
           <>
             <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px]">
-              <button type="button" className="ht-step" onClick={() => onAddToFleet(selected)}>add to fleet</button>
+              <button
+                type="button"
+                className="ht-step disabled:opacity-40"
+                disabled={pendingAction !== null}
+                onClick={() => runPending('add', () => onAddToFleet(selected))}
+              >
+                {pendingAction === 'add' ? 'adding…' : 'add to fleet'}
+              </button>
               <select className="border-b border-ht-line bg-transparent text-ht-text outline-none" value={count} onChange={(e) => setCount(Number(e.target.value))}>
                 {[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>×{n}</option>)}
               </select>
-              <button type="button" className="ht-step" onClick={() => onSpawn(selected, count)}>spawn to map</button>
+              <button
+                type="button"
+                className="ht-step disabled:opacity-40"
+                disabled={pendingAction !== null}
+                onClick={() => runPending('spawn', () => onSpawn(selected, count))}
+              >
+                {pendingAction === 'spawn' ? 'spawning…' : 'spawn to map'}
+              </button>
+              {/* Whole affordance disabled until Task 11 wires real ship-encounter
+                  membership — onAddToEncounter is a no-op from the DM screen today,
+                  so this stays inert (select included) rather than looking live and
+                  doing nothing. T11 removes disabled/title from both controls. */}
               {encounters.length > 0 && (
                 <span className="ml-auto flex items-center gap-1">
-                  <select className="max-w-[140px] border-b border-ht-line bg-transparent text-ht-text outline-none" value={encId} onChange={(e) => setEncId(e.target.value)}>
+                  <select
+                    className="max-w-[140px] border-b border-ht-line bg-transparent text-ht-text outline-none disabled:opacity-40"
+                    value={encId}
+                    onChange={(e) => setEncId(e.target.value)}
+                    disabled
+                    title="Ship encounter membership lands in a later task"
+                  >
                     <option value="">encounter…</option>
                     {encounters.map((enc) => <option key={enc.id} value={enc.id}>{enc.name}</option>)}
                   </select>
-                  <button type="button" className="ht-step" onClick={() => encId && onAddToEncounter(encId, selected.id)}>+ add</button>
+                  <button
+                    type="button"
+                    className="ht-step disabled:opacity-40"
+                    disabled
+                    title="Ship encounter membership lands in a later task"
+                    onClick={() => encId && onAddToEncounter(encId, selected.id)}
+                  >
+                    + add
+                  </button>
                 </span>
               )}
             </div>
