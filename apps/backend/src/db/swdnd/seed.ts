@@ -19,6 +19,26 @@ function columnNames(db: Database, schema: string, table: string): string[] {
 }
 
 /**
+ * True when the seed has rows for a content table the live DB has none of.
+ * A volume seeded before a new reference table existed still reports the same
+ * `commit_hash` as the seed, so the version check alone would leave that table
+ * empty forever (this is how `starships` reaches already-deployed instances).
+ * Tables missing from either side are skipped, matching the copy loop.
+ */
+function backfillNeeded(db: Database): boolean {
+  for (const table of CONTENT_TABLES) {
+    if (table === 'data_version') continue;
+    if (columnNames(db, 'seed', table).length === 0) continue;
+    if (columnNames(db, 'main', table).length === 0) continue;
+    const seedRows = db.query<{ n: number }, []>(`SELECT count(*) n FROM seed.${table}`).get()?.n ?? 0;
+    if (seedRows === 0) continue;
+    const liveRows = db.query<{ n: number }, []>(`SELECT count(*) n FROM main.${table}`).get()?.n ?? 0;
+    if (liveRows === 0) return true;
+  }
+  return false;
+}
+
+/**
  * Merge the baked-in sw5e reference content (see Dockerfile) into a live database.
  *
  * Opt-in via `SWDND_SEED_PATH`, which the Docker image sets and local dev leaves unset
@@ -50,7 +70,11 @@ export function seedContentFromImage(
       )
       .get();
 
-    if (liveVersion && seedVersion && liveVersion.commit_hash === seedVersion.commit_hash) {
+    if (
+      liveVersion && seedVersion
+      && liveVersion.commit_hash === seedVersion.commit_hash
+      && !backfillNeeded(db)
+    ) {
       return; // content already matches the baked-in seed
     }
 
