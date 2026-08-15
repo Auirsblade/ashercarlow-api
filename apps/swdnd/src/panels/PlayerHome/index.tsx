@@ -6,6 +6,7 @@ import {
   type CharacterDto, type PlayerDto,
 } from '../../lib/characters';
 import { listStarships, type StarshipDto } from '../../lib/starships';
+import { clearStoredToken } from '../../lib/playerSession';
 import { classSummary } from '../../lib/sheetView';
 import { computeSheet } from '../../lib/rules';
 import { stepStatus, STEP_ORDER } from '../../lib/validation';
@@ -86,6 +87,13 @@ export default function PlayerHome() {
       <div className="ht-glow mb-3 rounded-md p-3">
         <div className="ht-name text-sm font-bold">{player.name}</div>
         <div className="text-[10px] text-ht-muted">your characters</div>
+        <button
+          type="button"
+          className="ht-step mt-1 text-[10px]"
+          onClick={() => { clearStoredToken(); navigate('/'); }}
+        >
+          switch player
+        </button>
       </div>
 
       <div className="flex flex-col gap-2">
